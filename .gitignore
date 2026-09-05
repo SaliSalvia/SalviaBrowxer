@@ -1,0 +1,95 @@
+# Android
+*.iml
+.idea
+/gen
+/build
+/out
+
+# Android Studio
+*.suo
+*.user
+*.userosscache
+*.sublime-workspace
+*.sublime-project
+
+# Android NDK
+obj/
+
+# Android Gradle
+.gradle
+
+# Local history for Android Studio
+.localhistory
+
+# Built application files
+*.apk
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+
+# Local configuration file (sdk path, etc.)
+local.properties
+
+# Log files
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Build
+build/
+
+# Distribution
+*.zip
+*.tar.gz
+*.tar.bz2
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test
+/test/
+
+# Coverage
+coverage/
+
+# Node
+node_modules/
+
+# Yarn
+yarn-error.log
+
+# npm
+npm-debug.log
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
