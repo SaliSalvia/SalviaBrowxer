@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night mode colors (same as default for dark theme) -->
+    <color name="matte_charcoal">#121214</color>
+    <color name="deep_charcoal">#1B1B1F</color>
+    <color name="gold">#D4AF37</color>
+    <color name="violet">#8B5CF6</color>
+    <color name="electric_indigo">#4F46E5</color>
+    <color name="primary">#D4AF37</color>
+    <color name="primary_container">#1B1B1F</color>
+    <color name="on_primary">#121214</color>
+    <color name="on_primary_container">#D4AF37</color>
+    <color name="secondary">#8B5CF6</color>
+    <color name="secondary_container">#4F46E5</color>
+    <color name="on_secondary">#121214</color>
+    <color name="on_secondary_container">#8B5CF6</color>
+    <color name="background">#121214</color>
+    <color name="on_background">#D4AF37</color>
+    <color name="surface">#1B1B1F</color>
+    <color name="on_surface">#D4AF37</color>
+    <color name="surface_variant">#4F46E5</color>
+    <color name="on_surface_variant">#8B5CF6</color>
+    <color name="error">#FF5722</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="media_detected_indicator">#8B5CF6</color>
+    <color name="download_button_active">#D4AF37</color>
+    <color name="download_button_inactive">#4A4A4A</color>
+    <color name="floating_button_background">#1B1B1F</color>
+    <color name="floating_button_foreground">#D4AF37</color>
+    <color name="status_bar">#121214</color>
+    <color name="navigation_bar">#121214</color>
+</resources>

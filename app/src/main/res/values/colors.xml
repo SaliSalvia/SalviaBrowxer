@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Palette -->
+    <color name="matte_charcoal">#121214</color>
+    <color name="deep_charcoal">#1B1B1F</color>
+    <color name="gold">#D4AF37</color>
+    <color name="violet">#8B5CF6</color>
+    <color name="electric_indigo">#4F46E5</color>
+
+    <!-- Material 3 Theme Colors -->
+    <color name="primary">@color/gold</color>
+    <color name="primary_container">@color/deep_charcoal</color>
+    <color name="on_primary">@color/matte_charcoal</color>
+    <color name="on_primary_container">@color/gold</color>
+
+    <color name="secondary">@color/violet</color>
+    <color name="secondary_container">@color/electric_indigo</color>
+    <color name="on_secondary">@color/matte_charcoal</color>
+    <color name="on_secondary_container">@color/violet</color>
+
+    <color name="background">@color/matte_charcoal</color>
+    <color name="on_background">@color/gold</color>
+    <color name="surface">@color/deep_charcoal</color>
+    <color name="on_surface">@color/gold</color>
+    <color name="surface_variant">@color/electric_indigo</color>
+    <color name="on_surface_variant">@color/violet</color>
+
+    <color name="error">#FF5722</color>
+    <color name="on_error">#FFFFFF</color>
+
+    <!-- Semantic Colors -->
+    <color name="media_detected_indicator">@color/violet</color>
+    <color name="download_button_active">@color/gold</color>
+    <color name="download_button_inactive">#4A4A4A</color>
+    <color name="floating_button_background">@color/deep_charcoal</color>
+    <color name="floating_button_foreground">@color/gold</color>
+
+    <!-- System UI -->
+    <color name="status_bar">@color/matte_charcoal</color>
+    <color name="navigation_bar">@color/matte_charcoal</color>
+</resources>

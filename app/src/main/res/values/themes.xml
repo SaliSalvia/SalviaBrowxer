@@ -1,0 +1,28 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.SalviaBrowxer" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorScheme">@style/ColorScheme.SalviaBrowxer</item>
+        <item name="android:windowBackground">@color/matte_charcoal</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/status_bar</item>
+        <item name="android:navigationBarColor">@color/navigation_bar</item>
+    </style>
+
+    <style name="ColorScheme.SalviaBrowxer" parent="">
+        <item name="primary">@color/primary</item>
+        <item name="primaryContainer">@color/primary_container</item>
+        <item name="onPrimary">@color/on_primary</item>
+        <item name="onPrimaryContainer">@color/on_primary_container</item>
+        <item name="secondary">@color/secondary</item>
+        <item name="secondaryContainer">@color/secondary_container</item>
+        <item name="onSecondary">@color/on_secondary</item>
+        <item name="onSecondaryContainer">@color/on_secondary_container</item>
+        <item name="background">@color/background</item>
+        <item name="onBackground">@color/on_background</item>
+        <item name="surface">@color/surface</item>
+        <item name="onSurface">@color/on_surface</item>
+        <item name="surfaceVariant">@color/surface_variant</item>
+        <item name="onSurfaceVariant">@color/on_surface_variant</item>
+        <item name="error">@color/error</item>
+        <item name="onError">@color/on_error</item>
+    </style>
+</resources>

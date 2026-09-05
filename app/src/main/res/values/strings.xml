@@ -1,0 +1,93 @@
+<resources>
+    <string name="app_name">SalviaBrowxer</string>
+    <string name="app_description">A fast, modern, and premium native Android browser with intelligent media detection and download capabilities.</string>
+
+    <!-- Browser -->
+    <string name="browser_title">Browser</string>
+    <string name="new_tab">New Tab</string>
+    <string name="close_tab">Close Tab</string>
+    <string name="private_browsing">Private Browsing</string>
+    <string name="desktop_site">Desktop Site</string>
+    <string name="reload">Reload</string>
+    <string name="stop">Stop</string>
+    <string name="go_back">Back</string>
+    <string name="go_forward">Forward</string>
+    <string name="home">Home</string>
+    <string name="tabs">Tabs</string>
+    <string name="downloads">Downloads</string>
+    <string name="bookmarks">Bookmarks</string>
+    <string name="history">History</string>
+    <string name="settings">Settings</string>
+
+    <!-- Downloads -->
+    <string name="downloads_title">Downloads</string>
+    <string name="download_queue">Queue</string>
+    <string name="download_active">Active</string>
+    <string name="download_completed">Completed</string>
+    <string name="download_failed">Failed</string>
+    <string name="download_pause">Pause</string>
+    <string name="download_resume">Resume</string>
+    <string name="download_cancel">Cancel</string>
+    <string name="download_retry">Retry</string>
+    <string name="download_open">Open</string>
+    <string name="download_share">Share</string>
+    <string name="download_delete">Delete</string>
+    <string name="no_active_downloads">No active downloads</string>
+    <string name="no_queued_downloads">No queued downloads</string>
+    <string name="no_completed_downloads">No completed downloads</string>
+    <string name="no_failed_downloads">No failed downloads</string>
+
+    <!-- Media Detection -->
+    <string name="media_detected">%d media detected</string>
+    <string name="no_media_detected">No downloadable media detected</string>
+    <string name="select_quality">Select Quality</string>
+    <string name="download_start">Start Download</string>
+
+    <!-- Settings -->
+    <string name="settings_browser">Browser</string>
+    <string name="settings_downloads">Downloads</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_about">About</string>
+    <string name="settings_search_engine">Search Engine</string>
+    <string name="settings_homepage">Homepage</string>
+    <string name="settings_javascript">JavaScript</string>
+    <string name="settings_cookies">Cookies</string>
+    <string name="settings_cache">Cache</string>
+    <string name="settings_clear_browsing_data">Clear Browsing Data</string>
+    <string name="settings_download_directory">Download Directory</string>
+    <string name="settings_simultaneous_downloads">Simultaneous Downloads</string>
+    <string name="settings_wifi_only">Wi-Fi Only</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_dark_theme">Dark Theme</string>
+    <string name="settings_floating_button_size">Floating Button Size</string>
+    <string name="settings_floating_button_position">Floating Button Position</string>
+    <string name="settings_private_browsing">Private Browsing</string>
+    <string name="settings_clear_history">Clear History</string>
+    <string name="settings_clear_cookies">Clear Cookies</string>
+    <string name="settings_clear_cache">Clear Cache</string>
+
+    <!-- Errors -->
+    <string name="error_connection_unavailable">Connection unavailable</string>
+    <string name="error_unable_to_resolve_media">Unable to resolve this media</string>
+    <string name="error_unsupported_media">This media cannot be downloaded</string>
+    <string name="error_drm_protected">Protected media cannot be downloaded</string>
+    <string name="error_size_unavailable">Size unavailable</string>
+    <string name="error_disk_full">Not enough storage space</string>
+    <string name="error_permission_required">Storage permission required</string>
+
+    <!-- Actions -->
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_yes">Yes</string>
+    <string name="action_no">No</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_clear">Clear</string>
+
+    <!-- About -->
+    <string name="about_title">About SalviaBrowxer</string>
+    <string name="about_version">Version %s</string>
+    <string name="about_description">%s is a fast, modern, and premium native Android browser with intelligent media detection and download capabilities.</string>
+    <string name="about_license">License: GPL-3.0</string>
+    <string name="about_source_code">Source Code</string>
+</resources>
