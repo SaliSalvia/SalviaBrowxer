@@ -343,21 +343,31 @@ class DownloadService : Service() {
     }
 
     private fun promoteToForeground(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ServiceCompat.startForeground(
-                this,
-                notificationId,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                notificationId,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            startForeground(notificationId, notification)
+        val promoted = runCatching {
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
+                    ServiceCompat.startForeground(
+                        this,
+                        notificationId,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                    startForeground(
+                        notificationId,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                }
+                else -> {
+                    startForeground(notificationId, notification)
+                }
+            }
+        }
+        if (promoted.isFailure) {
+            Log.w(TAG, "promoteToForeground failed, stopping service", promoted.exceptionOrNull())
+            stopSelf()
         }
     }
 
@@ -408,7 +418,16 @@ class DownloadService : Service() {
                 this.action = action
                 downloadId?.let { putExtra(EXTRA_DOWNLOAD_ID, it) }
             }
-            ContextCompat.startForegroundService(context, intent)
+            try {
+                ContextCompat.startForegroundService(context, intent)
+            } catch (error: IllegalStateException) {
+                // e.g. background start blocked on Android 12+: degrade to a plain startService.
+                Log.w(TAG, "startForegroundService($action) blocked, falling back to startService", error)
+                runCatching { context.startService(intent) }
+            } catch (error: SecurityException) {
+                // App is not allowed to start this service at all; nothing to fall back to.
+                Log.w(TAG, "startService($action) not permitted", error)
+            }
         }
     }
 }

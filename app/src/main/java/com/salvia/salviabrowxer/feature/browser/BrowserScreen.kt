@@ -123,8 +123,8 @@ fun BrowserScreen(
                         settings.mediaPlaybackRequiresUserGesture = false
 
                         webViewClient = WebViewClientWrapper(
-                            onPageStarted = { _, url, _ -> viewModel.onPageStarted(url) },
-                            onPageFinished = { view, url ->
+                            onPageStartedHook = { _, url, _ -> viewModel.onPageStarted(url) },
+                            onPageFinishedHook = { view, url ->
                                 val pageUrl = view.url ?: url ?: ""
                                 viewModel.onPageFinished(pageUrl, view.title)
                                 viewModel.updateNavigationState(
@@ -143,7 +143,7 @@ fun BrowserScreen(
                                     }
                                 )
                             },
-                            onMediaDetected = { candidate -> viewModel.onMediaIntercepted(candidate) }
+                            onMediaDetectedHook = { candidate -> viewModel.onMediaIntercepted(candidate) }
                         )
 
                         webChromeClient = object : WebChromeClient() {
