@@ -167,6 +167,7 @@ class SettingsViewModel @Inject constructor(
     fun clearCookies() {
         viewModelScope.launch {
             runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
+            runCatching { android.webkit.CookieManager.getInstance().flush() }
             _messages.trySend("Cookies cleared")
         }
     }
@@ -175,9 +176,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { historyRepository.deleteAllHistory() }
             runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
-            runCatching { android.webkit.CookieManager.getInstance().removeAllSessionCookies(null) }
-            runCatching { android.webkit.WebView.removeSessionCache(true) }
-            runCatching { android.webkit.WebView.removeAllVisitedHistory(null) }
+            runCatching { android.webkit.CookieManager.getInstance().flush() }
+            runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
             _messages.trySend("Browsing data cleared")
         }
     }

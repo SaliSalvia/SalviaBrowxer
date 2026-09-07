@@ -53,13 +53,13 @@ fun FloatingDownloadButton(
     mediaCount: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    size: Dp = 56.dp,
+    buttonSize: Dp = 56.dp,
     containerSize: IntSize = IntSize.Zero,
     initialOffset: Offset = Offset.Zero,
     onOffsetChanged: (Offset) -> Unit = {}
 ) {
     val density = LocalDensity.current
-    val buttonSizePx = with(density) { size.toPx() }
+    val buttonSizePx = with(density) { buttonSize.toPx() }
 
     var offsetX by remember { mutableFloatStateOf(initialOffset.x) }
     var offsetY by remember { mutableFloatStateOf(initialOffset.y) }
@@ -79,7 +79,7 @@ fun FloatingDownloadButton(
 
     Box(
         modifier = modifier
-            .size(size)
+            .size(buttonSize)
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
             .clip(CircleShape)
             .background(FloatingButtonBackground)
@@ -97,7 +97,7 @@ fun FloatingDownloadButton(
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = drawSize.minDimension / 2f
+            val radius = size.minDimension / 2f
             drawCircle(color = buttonColor, radius = radius)
             drawCircle(
                 color = Color.Black.copy(alpha = 0.18f),
