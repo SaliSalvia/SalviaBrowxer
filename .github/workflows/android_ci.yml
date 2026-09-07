@@ -71,7 +71,7 @@ jobs:
           print("----- GRADLE TEST FAILURE -----")
           print(chunk)
           for line in chunk.splitlines()[:80]:
-              safe = line.replace("%", "%25").replace("\r", "")
+              safe = line.replace("%", "%25").replace("\r", "").replace("::", " - ")
               print(f"::error title=Gradle-test::{safe}")
           for xml in Path(".").rglob("*.xml"):
               if "testDebugUnitTest" not in str(xml):
@@ -84,7 +84,7 @@ jobs:
                   for failure in tc.findall("failure"):
                       name = f"{tc.get('classname')}.{tc.get('name')}"
                       detail = (failure.get("message") or "") + "\n" + (failure.text or "")
-                      detail = detail[:1200].replace("%", "%25").replace("\r", "")
+                      detail = detail[:1200].replace("%", "%25").replace("\r", "").replace("::", " - ")
                       print(f"::error title=Test::{name}::{detail}")
           PY
           if [ -n "${{ github.event.pull_request.number }}" ]; then
