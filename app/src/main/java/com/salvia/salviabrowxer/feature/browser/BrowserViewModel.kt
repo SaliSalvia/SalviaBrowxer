@@ -184,6 +184,7 @@ class BrowserViewModel @Inject constructor(
                 url = tab.url,
                 addressBarInput = tab.url,
                 title = tab.title,
+                isPrivateMode = tab.isPrivate,
                 detectedMedia = emptyList()
             )
         }
@@ -337,7 +338,10 @@ class BrowserViewModel @Inject constructor(
     fun detectMediaInPage(pageUrl: String, html: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             val candidates = runCatching { mediaDetector.detect(pageUrl, html) }.getOrNull().orEmpty()
-            mergeCandidates(candidates)
+            // Detection can finish after navigating away; never show media from the old page.
+            if (_uiState.value.url == pageUrl) {
+                mergeCandidates(candidates)
+            }
         }
     }
 
@@ -384,6 +388,7 @@ class BrowserViewModel @Inject constructor(
 
             _uiState.update { state ->
                 val current = state.qualitySheet ?: return@update state
+                if (current.candidate.mediaUrl != candidate.mediaUrl) return@update state
                 state.copy(qualitySheet = current.copy(mediaInfo = merged, isResolving = false))
             }
         }
@@ -511,7 +516,10 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun addHistoryEntry(url: String, title: String) {
-        if (_uiState.value.isPrivateMode || url.isBlank()) return
+        val activeTabIsPrivate = _uiState.value.tabs
+            .firstOrNull { it.id == _uiState.value.currentTabId }
+            ?.isPrivate == true
+        if (_uiState.value.isPrivateMode || activeTabIsPrivate || url.isBlank()) return
         viewModelScope.launch {
             runCatching {
                 historyRepository.addHistory(

@@ -1,5 +1,6 @@
 package com.salvia.salviabrowxer.ui.utils
 
+import android.os.Build
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -20,8 +21,13 @@ fun configureWebView(
         loadWithOverviewMode = true
         useWideViewPort = true
         builtInZoomControls = true
-        allowFileAccess = true
-        allowContentAccess = true
+        // Remote pages must not gain access to local app or content-provider data.
+        allowFileAccess = false
+        allowContentAccess = false
+        mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            safeBrowsingEnabled = true
+        }
 
         if (isDesktopMode) {
             userAgentString = getDesktopUserAgent(this)

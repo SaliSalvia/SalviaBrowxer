@@ -1,5 +1,6 @@
 package com.salvia.salviabrowxer.feature.browser
 
+import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -62,6 +63,7 @@ fun BrowserScreen(
     var webView: WebView? by remember { mutableStateOf(null) }
     var pageAreaSize by remember { mutableStateOf(IntSize.Zero) }
     val initialUrl = remember { state.url }
+    var defaultUserAgent by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.commands.collectLatest { command ->
@@ -121,6 +123,13 @@ fun BrowserScreen(
                         settings.useWideViewPort = true
                         settings.cacheMode = WebSettings.LOAD_DEFAULT
                         settings.mediaPlaybackRequiresUserGesture = false
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            settings.safeBrowsingEnabled = true
+                        }
+                        defaultUserAgent = settings.userAgentString
 
                         webViewClient = WebViewClientWrapper(
                             onPageStartedHook = { _, url, _ -> viewModel.onPageStarted(url) },
@@ -132,13 +141,11 @@ fun BrowserScreen(
                                     canGoForward = view.canGoForward()
                                 )
                                 view.evaluateJavascript(
-                                    "document.documentElement ? document.documentElement.outerHTML : null;",
+                                    MEDIA_DETECTION_JAVASCRIPT,
                                     { rawHtml ->
                                         if (pageUrl.isNotEmpty()) {
-                                            viewModel.detectMediaInPage(
-                                                pageUrl,
-                                                decodeJavascriptString(rawHtml)
-                                            )
+                                            decodeJavascriptString(rawHtml)
+                                                ?.let { html -> viewModel.detectMediaInPage(pageUrl, html) }
                                         }
                                     }
                                 )
@@ -162,7 +169,11 @@ fun BrowserScreen(
                     webView = view
                     view.settings.javaScriptEnabled = state.isJavaScriptEnabled
                     CookieManager.getInstance().setAcceptCookie(state.areCookiesEnabled)
-                    val agent = if (state.isDesktopSite) Constants.DESKTOP_USER_AGENT else null
+                    val agent = if (state.isDesktopSite) {
+                        Constants.DESKTOP_USER_AGENT
+                    } else {
+                        defaultUserAgent ?: view.settings.userAgentString
+                    }
                     if (view.settings.userAgentString != agent) {
                         view.settings.userAgentString = agent
                     }
@@ -255,3 +266,31 @@ private fun decodeJavascriptString(raw: String?): String? {
         .getOrNull()
         ?: trimmed.removeSurrounding("\"")
 }
+
+/**
+ * Return only the DOM nodes the detector needs instead of `document.outerHTML`.
+ *
+ * `evaluateJavascript` sends its result across a Binder boundary before Kotlin receives it. A
+ * large page can therefore crash the WebView renderer or host process even if Kotlin trims the
+ * callback value afterwards. This snapshot preserves video/audio/source nodes and direct media
+ * links, while enforcing the size limit inside the renderer before the result crosses processes.
+ */
+private const val MEDIA_DETECTION_JAVASCRIPT = """
+    (function () {
+        // Keep ample headroom for JSON escaping in the evaluateJavascript callback.
+        var maxCharacters = 65536;
+        var mediaPath = /\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|mpd|ts|mp3|m4a|aac|wav|flac|ogg|wma)(?:[?#]|$)/i;
+        var nodes = Array.prototype.slice.call(
+            document.querySelectorAll('video, audio, source, a[href]')
+        ).filter(function (node) {
+            return node.tagName !== 'A' || mediaPath.test(node.getAttribute('href') || '');
+        });
+        var html = '<html><body>';
+        for (var i = 0; i < nodes.length && html.length < maxCharacters; i++) {
+            var nodeHtml = nodes[i].outerHTML;
+            if (html.length + nodeHtml.length > maxCharacters) break;
+            html += nodeHtml;
+        }
+        return html + '</body></html>';
+    })();
+"""

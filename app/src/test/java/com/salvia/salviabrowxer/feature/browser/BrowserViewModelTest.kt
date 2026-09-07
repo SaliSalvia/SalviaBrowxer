@@ -195,6 +195,15 @@ class BrowserViewModelTest {
     }
 
     @Test
+    fun `switching to a private tab keeps its visits out of history`() {
+        viewModel.createNewTab("https://example.com/private", isPrivate = true)
+
+        viewModel.onPageFinished("https://example.com/private", "Private page")
+
+        coVerify(exactly = 0) { historyRepository.addHistory(any()) }
+    }
+
+    @Test
     fun `dragging the floating button persists its position`() {
         viewModel.saveFabPosition(-120f, -340f)
 
