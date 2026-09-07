@@ -134,13 +134,29 @@ class DownloadsViewModelTest {
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(downloads)
 
         val vm = DownloadsViewModel(mockDownloadRepository, mockContext)
-        val state = vm.uiState.value
+        val state = awaitUiState(vm) { it.all.size == downloads.size }
 
         assertEquals(1, state.active.size)
         assertEquals(1, state.queued.size)
         assertEquals(1, state.completed.size)
         assertEquals(1, state.failed.size)
         assertEquals(4, state.all.size)
+    }
+
+    /** Polls until the init collector has produced a matching UI state (it runs on IO). */
+    private fun awaitUiState(
+        vm: DownloadsViewModel,
+        condition: (DownloadsUiState) -> Boolean
+    ): DownloadsUiState {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline) {
+            val state = vm.uiState.value
+            if (condition(state)) return state
+            Thread.sleep(50)
+        }
+        return vm.uiState.value.also {
+            assert(condition(it))
+        }
     }
 
     private fun download(id: String, status: DownloadState) = DownloadEntity(
