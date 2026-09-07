@@ -64,7 +64,9 @@ jobs:
           errors = [ln for ln in text.splitlines()
                     if "FAILED" in ln or "> Task" in ln and "FAILED" in ln
                     or ln.startswith("e:") or "error:" in ln
-                    or "Unresolved reference" in ln or "Compilation error" in ln]
+                    or "Unresolved reference" in ln or "Compilation error" in ln
+                    or "AssertionError" in ln or "expected:" in ln or "expected:<" in ln
+                    or "Verification" in ln or "MockKException" in ln or "Caused by" in ln]
           fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
           chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
           Path("gradle-test-failure.txt").write_text(chunk)
