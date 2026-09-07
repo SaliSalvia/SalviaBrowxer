@@ -32,6 +32,7 @@ class DirectMediaResolverTest {
         server.enqueue(
             MockResponse()
                 .setHeader("Content-Type", "video/mp4")
+                .setHeader("Content-Length", "1024")
                 .setBody("x".repeat(1024))
         )
         val url = server.url("/video.mp4").toString()
