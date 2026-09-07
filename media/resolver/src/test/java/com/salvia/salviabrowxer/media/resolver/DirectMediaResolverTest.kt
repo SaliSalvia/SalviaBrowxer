@@ -7,7 +7,6 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -49,8 +48,8 @@ class DirectMediaResolverTest {
         assertEquals(url, result.formats[0].url)
         assertEquals("video/mp4", result.formats[0].mimeType)
         assertEquals("mp4", result.formats[0].extension)
-        assertTrue(result.formats[0].size >= 0L)
-        assertTrue(result.formats[0].isVideo)
+        assertEquals(true, result.formats[0].size >= 0L)
+        assertEquals(true, result.formats[0].isVideo)
         assertEquals(false, result.formats[0].isAudio)
     }
 
