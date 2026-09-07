@@ -60,7 +60,10 @@ jobs:
           from pathlib import Path
           log = Path("gradle-test.log")
           text = log.read_text(errors="replace") if log.exists() else "gradle-test.log missing"
-          errors = [ln for ln in text.splitlines() if "FAILED" in ln or "> Task" in ln and "FAILED" in ln]
+          errors = [ln for ln in text.splitlines()
+                    if "FAILED" in ln or "> Task" in ln and "FAILED" in ln
+                    or ln.startswith("e:") or "error:" in ln
+                    or "Unresolved reference" in ln or "Compilation error" in ln]
           fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
           chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
           Path("gradle-test-failure.txt").write_text(chunk)
