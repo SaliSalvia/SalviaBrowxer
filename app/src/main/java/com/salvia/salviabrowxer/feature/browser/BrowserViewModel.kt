@@ -116,7 +116,7 @@ class BrowserViewModel @Inject constructor(
      * SettingsScreen is reflected without recreating the browser destination.
      */
     private fun observeSettings() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             launch {
                 settingsDataStore.homepage.collectLatest { value ->
                     val safe = value.ifBlank { Constants.DEFAULT_HOMEPAGE }
