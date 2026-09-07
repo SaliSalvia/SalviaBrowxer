@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -48,6 +49,7 @@ import java.text.DecimalFormat
 @Composable
 fun DownloadItem(
     download: DownloadEntity,
+    onOpenClick: () -> Unit = {},
     onPauseClick: () -> Unit,
     onResumeClick: () -> Unit,
     onCancelClick: () -> Unit,
@@ -206,6 +208,13 @@ fun DownloadItem(
                 }
             }
             DownloadState.COMPLETED -> {
+                IconButton(onClick = onOpenClick) {
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = stringResource(R.string.download_open),
+                        tint = Gold
+                    )
+                }
                 IconButton(onClick = onDeleteClick) {
                     Icon(
                         imageVector = Icons.Default.Close,

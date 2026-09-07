@@ -3,140 +3,182 @@ package com.salvia.salviabrowxer.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.repository.HistoryRepository
+import com.salvia.salviabrowxer.ui.utils.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Every preference the settings screen renders, in one immutable snapshot. */
+data class SettingsUiState(
+    val isLoading: Boolean = true,
+    val searchEngine: String = Constants.DEFAULT_SEARCH_ENGINE,
+    val homepage: String = Constants.DEFAULT_HOMEPAGE,
+    val isDesktopSite: Boolean = false,
+    val isJavaScriptEnabled: Boolean = true,
+    val areCookiesEnabled: Boolean = true,
+    val downloadDirectory: String = "",
+    val maxSimultaneousDownloads: Int = 3,
+    val isWifiOnly: Boolean = false,
+    val isDarkTheme: Boolean = true,
+    val floatingButtonSize: Int = 56
+) {
+    val searchEngineOptions: List<String> get() = Constants.SEARCH_ENGINES.keys.toList()
+    val downloadDirectoryLabel: String get() = downloadDirectory.ifBlank { "Downloads" }
+}
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val historyRepository: HistoryRepository
 ) : ViewModel() {
 
-    private val _searchEngine = MutableStateFlow("Google")
-    val searchEngine: StateFlow<String> = _searchEngine.asStateFlow()
+    private val _uiState = MutableStateFlow(SettingsUiState())
+    val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-    private val _homepage = MutableStateFlow("https://www.google.com")
-    val homepage: StateFlow<String> = _homepage.asStateFlow()
-
-    private val _isDesktopSite = MutableStateFlow(false)
-    val isDesktopSite: StateFlow<Boolean> = _isDesktopSite.asStateFlow()
-
-    private val _isJavaScriptEnabled = MutableStateFlow(true)
-    val isJavaScriptEnabled: StateFlow<Boolean> = _isJavaScriptEnabled.asStateFlow()
-
-    private val _areCookiesEnabled = MutableStateFlow(true)
-    val areCookiesEnabled: StateFlow<Boolean> = _areCookiesEnabled.asStateFlow()
-
-    private val _downloadDirectory = MutableStateFlow("")
-    val downloadDirectory: StateFlow<String> = _downloadDirectory.asStateFlow()
-
-    private val _maxSimultaneousDownloads = MutableStateFlow(3)
-    val maxSimultaneousDownloads: StateFlow<Int> = _maxSimultaneousDownloads.asStateFlow()
-
-    private val _isWifiOnly = MutableStateFlow(false)
-    val isWifiOnly: StateFlow<Boolean> = _isWifiOnly.asStateFlow()
-
-    private val _isDarkTheme = MutableStateFlow(true)
-    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
-
-    private val _floatingButtonSize = MutableStateFlow(56)
-    val floatingButtonSize: StateFlow<Int> = _floatingButtonSize.asStateFlow()
-
-    private val _floatingButtonX = MutableStateFlow(0f)
-    val floatingButtonX: StateFlow<Float> = _floatingButtonX.asStateFlow()
-
-    private val _floatingButtonY = MutableStateFlow(0f)
-    val floatingButtonY: StateFlow<Float> = _floatingButtonY.asStateFlow()
+    private val _messages = Channel<String>(Channel.BUFFERED)
+    val messages: Flow<String> = _messages.receiveAsFlow()
 
     init {
         loadSettings()
     }
 
     private fun loadSettings() {
-        viewModelScope.launch(Dispatchers.IO) {
-            launch { settingsDataStore.searchEngine.collectLatest { _searchEngine.value = it } }
-            launch { settingsDataStore.homepage.collectLatest { _homepage.value = it } }
-            launch { settingsDataStore.isDesktopSite.collectLatest { _isDesktopSite.value = it } }
-            launch { settingsDataStore.isJavaScriptEnabled.collectLatest { _isJavaScriptEnabled.value = it } }
-            launch { settingsDataStore.areCookiesEnabled.collectLatest { _areCookiesEnabled.value = it } }
-            launch { settingsDataStore.downloadDirectory.collectLatest { _downloadDirectory.value = it } }
-            launch { settingsDataStore.maxSimultaneousDownloads.collectLatest { _maxSimultaneousDownloads.value = it } }
-            launch { settingsDataStore.isWifiOnly.collectLatest { _isWifiOnly.value = it } }
-            launch { settingsDataStore.isDarkTheme.collectLatest { _isDarkTheme.value = it } }
-            launch { settingsDataStore.floatingButtonSize.collectLatest { _floatingButtonSize.value = it } }
-            launch { settingsDataStore.floatingButtonX.collectLatest { _floatingButtonX.value = it } }
-            launch { settingsDataStore.floatingButtonY.collectLatest { _floatingButtonY.value = it } }
+        viewModelScope.launch {
+            launch { settingsDataStore.searchEngine.collectLatest { value -> mutate { copy(searchEngine = value) } } }
+            launch { settingsDataStore.homepage.collectLatest { value -> mutate { copy(homepage = value) } } }
+            launch { settingsDataStore.isDesktopSite.collectLatest { value -> mutate { copy(isDesktopSite = value) } } }
+            launch { settingsDataStore.isJavaScriptEnabled.collectLatest { value -> mutate { copy(isJavaScriptEnabled = value) } } }
+            launch { settingsDataStore.areCookiesEnabled.collectLatest { value -> mutate { copy(areCookiesEnabled = value) } } }
+            launch { settingsDataStore.downloadDirectory.collectLatest { value -> mutate { copy(downloadDirectory = value) } } }
+            launch {
+                settingsDataStore.maxSimultaneousDownloads.collectLatest { value ->
+                    mutate { copy(maxSimultaneousDownloads = value) }
+                }
+            }
+            launch { settingsDataStore.isWifiOnly.collectLatest { value -> mutate { copy(isWifiOnly = value) } } }
+            launch { settingsDataStore.isDarkTheme.collectLatest { value -> mutate { copy(isDarkTheme = value) } } }
+            launch { settingsDataStore.floatingButtonSize.collectLatest { value -> mutate { copy(floatingButtonSize = value) } } }
+            mutate { copy(isLoading = false) }
         }
     }
 
+    private fun mutate(transform: SettingsUiState.() -> SettingsUiState) {
+        _uiState.update { current -> current.transform() }
+    }
+
     fun updateSearchEngine(engine: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setSearchEngine(engine)
+        mutate { copy(searchEngine = engine) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setSearchEngine(engine) }
         }
     }
 
     fun updateHomepage(url: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setHomepage(url)
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return
+        mutate { copy(homepage = trimmed) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setHomepage(trimmed) }
         }
+        _messages.trySend("Homepage updated")
     }
 
     fun updateDesktopSite(isDesktop: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setDesktopSite(isDesktop)
+        mutate { copy(isDesktopSite = isDesktop) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setDesktopSite(isDesktop) }
         }
     }
 
     fun updateJavaScriptEnabled(enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setJavaScriptEnabled(enabled)
+        mutate { copy(isJavaScriptEnabled = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setJavaScriptEnabled(enabled) }
         }
     }
 
     fun updateCookiesEnabled(enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setCookiesEnabled(enabled)
+        mutate { copy(areCookiesEnabled = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setCookiesEnabled(enabled) }
         }
     }
 
     fun updateDownloadDirectory(directory: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setDownloadDirectory(directory)
+        val trimmed = directory.trim()
+        mutate { copy(downloadDirectory = trimmed) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setDownloadDirectory(trimmed) }
         }
     }
 
     fun updateMaxSimultaneousDownloads(count: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setMaxSimultaneousDownloads(count)
+        val safe = count.coerceIn(1, 5)
+        mutate { copy(maxSimultaneousDownloads = safe) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setMaxSimultaneousDownloads(safe) }
         }
     }
 
     fun updateWifiOnly(enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setWifiOnly(enabled)
+        mutate { copy(isWifiOnly = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setWifiOnly(enabled) }
         }
     }
 
     fun updateDarkTheme(enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setDarkTheme(enabled)
+        mutate { copy(isDarkTheme = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setDarkTheme(enabled) }
         }
     }
 
     fun updateFloatingButtonPosition(x: Float, y: Float) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setFloatingButtonPosition(x, y)
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setFloatingButtonPosition(x, y) }
         }
     }
 
     fun updateFloatingButtonSize(size: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            settingsDataStore.setFloatingButtonSize(size)
+        val safe = size.coerceIn(40, 72)
+        mutate { copy(floatingButtonSize = safe) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setFloatingButtonSize(safe) }
+        }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch {
+            runCatching { historyRepository.deleteAllHistory() }
+            _messages.trySend("History cleared")
+        }
+    }
+
+    fun clearCookies() {
+        viewModelScope.launch {
+            runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
+            _messages.trySend("Cookies cleared")
+        }
+    }
+
+    fun clearBrowsingData() {
+        viewModelScope.launch {
+            runCatching { historyRepository.deleteAllHistory() }
+            runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
+            runCatching { android.webkit.CookieManager.getInstance().removeAllSessionCookies(null) }
+            runCatching { android.webkit.WebView.removeSessionCache(true) }
+            runCatching { android.webkit.WebView.removeAllVisitedHistory(null) }
+            _messages.trySend("Browsing data cleared")
         }
     }
 }

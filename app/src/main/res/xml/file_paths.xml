@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- context.getExternalFilesDir(DIRECTORY_DOWNLOADS) -->
+    <external-files-path
+        name="external_downloads"
+        path="." />
+    <!-- context.filesDir -->
+    <files-path
+        name="internal_files"
+        path="." />
+    <cache-path
+        name="internal_cache"
+        path="." />
+</paths>

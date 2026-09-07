@@ -14,6 +14,20 @@ interface DownloadRepository {
     suspend fun updateDownload(download: DownloadEntity)
     suspend fun updateDownloadState(id: String, state: DownloadState)
     suspend fun updateDownloadProgress(id: String, progress: DownloadProgress)
+
+    /**
+     * Persists the outcome of a transfer. Only the values that are passed in are overwritten so
+     * that callers can update just what changed (e.g. a failure reason).
+     */
+    suspend fun updateDownloadResult(
+        id: String,
+        status: DownloadState,
+        downloadedBytes: Long? = null,
+        totalBytes: Long? = null,
+        finalPath: String? = null,
+        mimeType: String? = null,
+        error: String? = null
+    )
     suspend fun deleteDownload(id: String)
     suspend fun deleteDownloadsByState(state: DownloadState)
     suspend fun clearAllDownloads()
@@ -24,6 +38,8 @@ interface DownloadRepository {
         destination: String,
         mediaTitle: String? = null,
         thumbnail: String? = null,
-        selectedQuality: String? = null
+        selectedQuality: String? = null,
+        mimeType: String? = null,
+        totalBytes: Long? = null
     ): DownloadEntity
 }
