@@ -11,6 +11,7 @@ import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -63,6 +64,7 @@ class BrowserViewModelTest {
         every { downloadRepository.getDownloadsByStates(any()) } returns
             flowOf(emptyList<DownloadEntity>())
         every { settingsDataStore.floatingButtonSize } returns flowOf(56)
+        coEvery { historyRepository.addHistory(any()) } returns Unit
 
         viewModel = BrowserViewModel(
             historyRepository = historyRepository,
