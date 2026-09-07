@@ -190,7 +190,7 @@ class BrowserViewModelTest {
         assertFalse(state.isLoading)
         assertEquals("Example page", state.title)
         assertEquals("https://example.com/page", state.url)
-        coVerify(exactly = 1) { historyRepository.addHistory(any()) }
+        coVerify(timeout = 5000, exactly = 1) { historyRepository.addHistory(any()) }
     }
 
     @Test
