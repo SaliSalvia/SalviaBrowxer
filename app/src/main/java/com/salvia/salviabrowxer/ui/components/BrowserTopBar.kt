@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
@@ -120,10 +123,10 @@ fun BrowserTopBar(
                 }
                 innerTextField()
             },
-            keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(
-                imeAction = androidx.compose.ui.text.input.ImeAction.Go
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Go
             ),
-            keyboardActions = androidx.compose.ui.text.input.KeyboardActions(
+            keyboardActions = KeyboardActions(
                 onGo = {
                     onUrlSubmit(urlText.text)
                 }

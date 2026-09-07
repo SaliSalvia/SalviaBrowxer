@@ -48,8 +48,9 @@ jobs:
           from pathlib import Path
           log = Path("gradle-build.log")
           text = log.read_text(errors="replace") if log.exists() else "gradle-build.log missing"
-          idx = text.rfind("FAILURE:")
-          chunk = text[idx:idx + 3500] if idx >= 0 else text[-3500:]
+          errors = [ln for ln in text.splitlines() if ln.startswith("e:") or "Unresolved reference" in ln or "error: " in ln]
+          fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
+          chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
           Path("gradle-failure.txt").write_text(chunk)
           print("----- GRADLE FAILURE -----")
           print(chunk)

@@ -103,7 +103,10 @@ fun BrowserScreen(
                                 view?.evaluateJavascript(
                                     "(function() { return document.documentElement.outerHTML; })();"
                                 ) { html ->
-                                    viewModel.detectMediaInPage(url ?: "", html.removeSurrounding("\""))
+                                    viewModel.detectMediaInPage(
+                                        url ?: "",
+                                        html?.removeSurrounding("\"")
+                                    )
                                 }
                             }
                         }
