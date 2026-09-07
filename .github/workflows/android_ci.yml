@@ -58,6 +58,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          from xml.etree import ElementTree as ET
           log = Path("gradle-test.log")
           text = log.read_text(errors="replace") if log.exists() else "gradle-test.log missing"
           errors = [ln for ln in text.splitlines()
@@ -72,6 +73,17 @@ jobs:
           for line in chunk.splitlines()[:80]:
               safe = line.replace("%", "%25").replace("\r", "")
               print(f"::error title=Gradle-test::{safe}")
+          for xml in Path(".").rglob("test-results/testDebugUnitTest/*.xml"):
+              try:
+                  root = ET.parse(xml).getroot()
+              except Exception:
+                  continue
+              for tc in root.iter("testcase"):
+                  for failure in tc.findall("failure"):
+                      name = f"{tc.get('classname')}.{tc.get('name')}"
+                      detail = (failure.get("message") or "") + "\n" + (failure.text or "")
+                      detail = detail[:1200].replace("%", "%25").replace("\r", "")
+                      print(f"::error title=Test::{name}::{detail}")
           PY
           if [ -n "${{ github.event.pull_request.number }}" ]; then
             gh pr comment "${{ github.event.pull_request.number }}" --body "$(printf 'Gradle unit tests failed:\n\n```\n%s\n```\n' "$(cat gradle-test-failure.txt)")" || true
