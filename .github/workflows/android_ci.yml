@@ -93,6 +93,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload failing test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-test-results
+          path: |
+            gradle-test.log
+            gradle-test-failure.txt
+            **/test-results/testDebugUnitTest/*.xml
+
       - name: Build Debug APK
         run: |
           set -o pipefail
