@@ -80,6 +80,7 @@
     <string name="settings_dark_theme_subtitle">SalviaBrowxer ships a dark identity only</string>
     <string name="settings_floating_button_size_subtitle">%1$d dp</string>
     <string name="settings_floating_button_position_subtitle">Drag the floating button anywhere on the page</string>
+    <string name="settings_floating_button_position_message">Reset the floating download button to the bottom-right corner of the page?</string>
     <string name="settings_clear_browsing_data_message">History, cookies and cached session data will be removed.</string>
 
     <!-- Errors -->
@@ -98,6 +99,7 @@
     <string name="action_no">No</string>
     <string name="action_delete">Delete</string>
     <string name="action_clear">Clear</string>
+    <string name="action_reset">Reset</string>
 
     <!-- About -->
     <string name="about_title">About SalviaBrowxer</string>

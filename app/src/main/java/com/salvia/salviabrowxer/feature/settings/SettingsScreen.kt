@@ -63,7 +63,7 @@ import com.salvia.salviabrowxer.ui.theme.Gold
 import com.salvia.salviabrowxer.ui.theme.Surface
 import kotlinx.coroutines.flow.collectLatest
 
-private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, DownloadDirectory, ClearData }
+private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, ButtonPosition, DownloadDirectory, ClearData }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -224,7 +224,7 @@ fun SettingsScreen(
                     icon = Icons.Default.Settings,
                     title = stringResource(R.string.settings_floating_button_position),
                     subtitle = stringResource(R.string.settings_floating_button_position_subtitle),
-                    onClick = { }
+                    onClick = { dialog = SettingsDialog.ButtonPosition }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -331,6 +331,17 @@ fun SettingsScreen(
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { value ->
                 viewModel.updateFloatingButtonSize(value.toInt())
+                dialog = SettingsDialog.None
+            }
+        )
+
+        SettingsDialog.ButtonPosition -> ConfirmationDialog(
+            title = stringResource(R.string.settings_floating_button_position),
+            message = stringResource(R.string.settings_floating_button_position_message),
+            confirmLabel = stringResource(R.string.action_reset),
+            onDismiss = { dialog = SettingsDialog.None },
+            onConfirm = {
+                viewModel.updateFloatingButtonPosition(0f, 0f)
                 dialog = SettingsDialog.None
             }
         )
