@@ -1,6 +1,6 @@
 package com.salvia.salviabrowxer.feature.browser
 
-import android.app.Application
+import android.content.Context
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.MediaCandidate
@@ -46,7 +46,7 @@ class BrowserViewModelTest {
     private val settingsDataStore: SettingsDataStore = mockk(relaxed = true)
     private val mediaDetector: MediaDetector = mockk(relaxed = true)
     private val mediaResolver: MediaResolver = mockk(relaxed = true)
-    private val application: Application = mockk(relaxed = true)
+    private val context: Context = mockk(relaxed = true)
 
     @Before
     fun setup() {
@@ -68,7 +68,7 @@ class BrowserViewModelTest {
             settingsDataStore = settingsDataStore,
             mediaDetector = mediaDetector,
             mediaResolver = mediaResolver,
-            application = application
+            context = context
         )
     }
 

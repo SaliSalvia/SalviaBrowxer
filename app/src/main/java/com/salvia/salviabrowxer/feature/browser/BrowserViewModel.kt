@@ -1,6 +1,6 @@
 package com.salvia.salviabrowxer.feature.browser
 
-import android.app.Application
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salvia.salviabrowxer.R
@@ -88,7 +88,7 @@ class BrowserViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val mediaDetector: MediaDetector,
     private val mediaResolver: MediaResolver,
-    @ApplicationContext private val application: Application
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BrowserUiState())
@@ -446,9 +446,9 @@ class BrowserViewModel @Inject constructor(
             val destination = runCatching { downloadRepository.getDefaultDownloadDestination() }
                 .getOrNull()
                 ?.takeIf { it.isNotBlank() }
-                ?: application.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                ?: context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
                     ?.absolutePath
-                ?: application.filesDir.absolutePath
+                ?: context.filesDir.absolutePath
 
             val entity = downloadRepository.createDownloadEntity(
                 url = format.url,
@@ -462,10 +462,10 @@ class BrowserViewModel @Inject constructor(
             ).copy(status = DownloadState.QUEUED)
 
             downloadRepository.addDownload(entity)
-            DownloadService.enqueueDownload(application, entity.id)
+            DownloadService.enqueueDownload(context, entity.id)
 
             _uiState.update { it.copy(qualitySheet = null) }
-            _messages.trySend(application.getString(R.string.download_enqueued))
+            _messages.trySend(context.getString(R.string.download_enqueued))
         }
     }
 

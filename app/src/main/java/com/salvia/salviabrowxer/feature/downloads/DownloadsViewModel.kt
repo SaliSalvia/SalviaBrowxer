@@ -1,6 +1,6 @@
 package com.salvia.salviabrowxer.feature.downloads
 
-import android.app.Application
+import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
@@ -39,7 +39,7 @@ data class DownloadsUiState(
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
-    @ApplicationContext private val application: Application
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DownloadsUiState())
@@ -74,34 +74,34 @@ class DownloadsViewModel @Inject constructor(
             }
         }
         // Pick up anything the service may have left behind (process death, app restart, ...).
-        DownloadService.processQueue(application)
+        DownloadService.processQueue(context)
     }
 
     fun retryDownload(downloadId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             downloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED)
-            DownloadService.enqueueDownload(application, downloadId)
+            DownloadService.enqueueDownload(context, downloadId)
         }
     }
 
     fun pauseDownload(downloadId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
-            DownloadService.pauseDownload(application, downloadId)
+            DownloadService.pauseDownload(context, downloadId)
         }
     }
 
     fun resumeDownload(downloadId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             downloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED)
-            DownloadService.enqueueDownload(application, downloadId)
+            DownloadService.enqueueDownload(context, downloadId)
         }
     }
 
     fun cancelDownload(downloadId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             downloadRepository.updateDownloadState(downloadId, DownloadState.CANCELLED)
-            DownloadService.cancelDownload(application, downloadId)
+            DownloadService.cancelDownload(context, downloadId)
         }
     }
 
@@ -133,8 +133,8 @@ class DownloadsViewModel @Inject constructor(
             }
             val launched = runCatching {
                 val uri = FileProvider.getUriForFile(
-                    application,
-                    "${application.packageName}.fileprovider",
+                    context,
+                    "${context.packageName}.fileprovider",
                     file
                 )
                 val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -142,7 +142,7 @@ class DownloadsViewModel @Inject constructor(
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                application.startActivity(intent)
+                context.startActivity(intent)
             }
             if (launched.isFailure) {
                 _messages.trySend("No app can open this file")

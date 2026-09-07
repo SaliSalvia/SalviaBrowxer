@@ -29,13 +29,13 @@ class DownloadsViewModelTest {
 
     private lateinit var viewModel: DownloadsViewModel
     private val mockDownloadRepository: DownloadRepository = mockk(relaxed = true)
-    private val mockApplication: android.app.Application = mockk(relaxed = true)
+    private val mockContext: android.content.Context = mockk(relaxed = true)
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(emptyList())
-        viewModel = DownloadsViewModel(mockDownloadRepository, mockApplication)
+        viewModel = DownloadsViewModel(mockDownloadRepository, mockContext)
     }
 
     @Test
@@ -125,7 +125,7 @@ class DownloadsViewModelTest {
         )
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(downloads)
 
-        val vm = DownloadsViewModel(mockDownloadRepository, mockApplication)
+        val vm = DownloadsViewModel(mockDownloadRepository, mockContext)
         val state = vm.uiState.value
 
         assertEquals(1, state.active.size)
