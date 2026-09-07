@@ -73,7 +73,9 @@ jobs:
           for line in chunk.splitlines()[:80]:
               safe = line.replace("%", "%25").replace("\r", "")
               print(f"::error title=Gradle-test::{safe}")
-          for xml in Path(".").rglob("test-results/testDebugUnitTest/*.xml"):
+          for xml in Path(".").rglob("*.xml"):
+              if "testDebugUnitTest" not in str(xml):
+                  continue
               try:
                   root = ET.parse(xml).getroot()
               except Exception:

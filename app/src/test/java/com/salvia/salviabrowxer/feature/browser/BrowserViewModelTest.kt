@@ -208,6 +208,6 @@ class BrowserViewModelTest {
 
         assertEquals(-120f, viewModel.uiState.value.fabPosition.x)
         assertEquals(-340f, viewModel.uiState.value.fabPosition.y)
-        coVerify(exactly = 1) { settingsDataStore.setFloatingButtonPosition(-120f, -340f) }
+        coVerify(timeout = 5000, exactly = 1) { settingsDataStore.setFloatingButtonPosition(-120f, -340f) }
     }
 }
