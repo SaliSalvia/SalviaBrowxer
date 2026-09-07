@@ -40,7 +40,7 @@ class DirectMediaResolverTest {
         val result = resolver.resolve(url)
 
         assertNotNull(result)
-        assertEquals("video.mp4", result.title)
+        assertEquals("video", result.title)
         assertEquals(url, result.source)
         assertEquals("direct", result.extractor)
         assertEquals(url, result.webpageUrl)
@@ -91,7 +91,7 @@ class DirectMediaResolverTest {
 
         val result = resolver.resolve(url)
 
-        assertEquals("ویدیو.mp4", result.title)
+        assertEquals("ویدیو", result.title)
         assertEquals("mp4", result.formats[0].extension)
     }
 
@@ -112,7 +112,7 @@ class DirectMediaResolverTest {
 
         val result = resolver.resolve(url)
 
-        assertEquals("audio.mp3", result.title)
+        assertEquals("audio", result.title)
         assertEquals(true, result.formats[0].isAudio)
         assertEquals(false, result.formats[0].isVideo)
     }

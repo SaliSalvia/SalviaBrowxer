@@ -28,7 +28,9 @@ class DomMediaDetector : MediaDetector {
         detectSourceElements(doc, pageUrl, candidates)
         detectMediaLinks(doc, pageUrl, candidates)
 
-        return candidates
+        // Source tags are reported by both the video/audio element walker and the global
+        // `<source>` walker; deduplicate so the UI does not show the same item twice.
+        return candidates.distinctBy { it.mediaUrl }
     }
 
     private fun detectVideoElements(doc: Document, pageUrl: String, candidates: MutableList<MediaCandidate>) {
