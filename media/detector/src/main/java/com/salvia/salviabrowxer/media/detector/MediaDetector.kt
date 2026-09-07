@@ -6,7 +6,7 @@ interface MediaDetector {
     suspend fun detect(pageUrl: String, html: String? = null): List<MediaCandidate>
 }
 
-class MediaDetector : MediaDetector {
+class DefaultMediaDetector : MediaDetector {
     private val domDetector = DomMediaDetector()
     private val jsDetector = JsMediaDetector()
 

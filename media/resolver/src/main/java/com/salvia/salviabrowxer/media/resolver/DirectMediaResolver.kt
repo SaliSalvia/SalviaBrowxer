@@ -3,9 +3,8 @@ package com.salvia.salviabrowxer.media.resolver
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
 import okhttp3.OkHttpClient
-import javax.inject.Inject
 
-class DirectMediaResolver @Inject constructor(
+class DirectMediaResolver(
     private val okHttpClient: OkHttpClient
 ) : MediaResolver {
 

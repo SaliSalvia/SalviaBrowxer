@@ -25,6 +25,6 @@ class BookmarkRepositoryImpl @Inject constructor(
     override suspend fun deleteAllBookmarks() = bookmarkDao.deleteAll()
 
     override suspend fun isBookmarked(url: String): Boolean {
-        return bookmarkDao.getAll().value.any { it.url == url }
+        return bookmarkDao.countByUrl(url) > 0
     }
 }

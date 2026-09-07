@@ -24,7 +24,8 @@ class DomMediaDetector : MediaDetector {
         "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav"
     )
 
-    override suspend fun detect(pageUrl: String, html: String): List<MediaCandidate> {
+    override suspend fun detect(pageUrl: String, html: String?): List<MediaCandidate> {
+        if (html.isNullOrBlank()) return emptyList()
         val candidates = mutableListOf<MediaCandidate>()
         val doc: Document = Jsoup.parse(html, pageUrl)
 

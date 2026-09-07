@@ -2,14 +2,16 @@ package com.salvia.salviabrowxer.feature.settings
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import com.salvia.salviabrowxer.core.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.Before
 import org.junit.Test
 
@@ -24,6 +26,18 @@ class SettingsViewModelTest {
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        coEvery { mockSettingsDataStore.searchEngine } returns flowOf("Google")
+        coEvery { mockSettingsDataStore.homepage } returns flowOf("https://www.google.com")
+        coEvery { mockSettingsDataStore.isDesktopSite } returns flowOf(false)
+        coEvery { mockSettingsDataStore.isJavaScriptEnabled } returns flowOf(true)
+        coEvery { mockSettingsDataStore.areCookiesEnabled } returns flowOf(true)
+        coEvery { mockSettingsDataStore.downloadDirectory } returns flowOf("")
+        coEvery { mockSettingsDataStore.maxSimultaneousDownloads } returns flowOf(3)
+        coEvery { mockSettingsDataStore.isWifiOnly } returns flowOf(false)
+        coEvery { mockSettingsDataStore.isDarkTheme } returns flowOf(true)
+        coEvery { mockSettingsDataStore.floatingButtonSize } returns flowOf(56)
+        coEvery { mockSettingsDataStore.floatingButtonX } returns flowOf(0f)
+        coEvery { mockSettingsDataStore.floatingButtonY } returns flowOf(0f)
         viewModel = SettingsViewModel(mockSettingsDataStore)
     }
 

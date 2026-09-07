@@ -2,7 +2,7 @@ package com.salvia.salviabrowxer.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.salvia.salviabrowxer.core.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -119,6 +119,12 @@ class SettingsViewModel @Inject constructor(
     fun updateWifiOnly(enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             settingsDataStore.setWifiOnly(enabled)
+        }
+    }
+
+    fun updateDarkTheme(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.setDarkTheme(enabled)
         }
     }
 

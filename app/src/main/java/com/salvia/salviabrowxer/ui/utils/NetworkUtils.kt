@@ -39,15 +39,6 @@ fun getDomainFromUrl(url: String): String {
     }
 }
 
-fun isValidUrl(url: String): Boolean {
-    return try {
-        URL(url)
-        true
-    } catch (e: Exception) {
-        false
-    }
-}
-
 fun makeUrlAbsolute(baseUrl: String, relativeUrl: String): String {
     return if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
         relativeUrl

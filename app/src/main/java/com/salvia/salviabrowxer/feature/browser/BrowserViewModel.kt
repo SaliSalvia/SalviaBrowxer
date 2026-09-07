@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salvia.salviabrowxer.core.database.entities.BookmarkEntity
 import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
-import com.salvia.salviabrowxer.core.media.detector.MediaDetector
+import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.Tab
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository

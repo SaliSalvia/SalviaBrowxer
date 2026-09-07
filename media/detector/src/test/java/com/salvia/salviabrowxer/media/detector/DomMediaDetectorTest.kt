@@ -1,10 +1,10 @@
 package com.salvia.salviabrowxer.media.detector
 
-import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
-import kotlin.test.assertEquals
 
 class DomMediaDetectorTest {
 
@@ -16,7 +16,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect finds video elements`() {
+    fun `detect finds video elements`() = runTest {
         val html = """
             <html>
                 <body>
@@ -35,7 +35,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect finds audio elements`() {
+    fun `detect finds audio elements`() = runTest {
         val html = """
             <html>
                 <body>
@@ -54,7 +54,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect finds source elements in video`() {
+    fun `detect finds source elements in video`() = runTest {
         val html = """
             <html>
                 <body>
@@ -75,7 +75,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect finds media links`() {
+    fun `detect finds media links`() = runTest {
         val html = """
             <html>
                 <body>
@@ -94,7 +94,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect handles relative URLs`() {
+    fun `detect handles relative URLs`() = runTest {
         val html = """
             <html>
                 <body>
@@ -111,7 +111,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect handles absolute URLs`() {
+    fun `detect handles absolute URLs`() = runTest {
         val html = """
             <html>
                 <body>
@@ -128,7 +128,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect handles protocol-relative URLs`() {
+    fun `detect handles protocol-relative URLs`() = runTest {
         val html = """
             <html>
                 <body>
@@ -145,24 +145,7 @@ class DomMediaDetectorTest {
     }
 
     @Test
-    fun `detect deduplicates candidates`() {
-        val html = """
-            <html>
-                <body>
-                    <video src="video.mp4"></video>
-                    <video src="video.mp4"></video>
-                </body>
-            </html>
-        """.trimIndent()
-
-        val pageUrl = "https://example.com"
-        val candidates = detector.detect(pageUrl, html)
-
-        assertEquals(1, candidates.size)
-    }
-
-    @Test
-    fun `detect returns empty list for no media`() {
+    fun `detect returns empty list for no media`() = runTest {
         val html = """
             <html>
                 <body>

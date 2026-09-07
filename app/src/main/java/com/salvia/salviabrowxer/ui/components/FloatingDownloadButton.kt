@@ -1,8 +1,9 @@
 package com.salvia.salviabrowxer.ui.components
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,28 +15,23 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.ui.theme.DownloadButtonActive
 import com.salvia.salviabrowxer.ui.theme.DownloadButtonInactive
 import com.salvia.salviabrowxer.ui.theme.FloatingButtonBackground
 import com.salvia.salviabrowxer.ui.theme.FloatingButtonForeground
 import com.salvia.salviabrowxer.ui.theme.MediaDetectedIndicator
-import kotlinx.coroutines.launch
 
 @Composable
 fun FloatingDownloadButton(
@@ -46,19 +42,15 @@ fun FloatingDownloadButton(
     initialPosition: Offset = Offset(0f, 0f),
     onPositionChange: (Offset) -> Unit = {}
 ) {
-    val scope = rememberCoroutineScope()
     var position by remember { mutableStateOf(initialPosition) }
     var offsetX by remember { mutableFloatStateOf(initialPosition.x) }
     var offsetY by remember { mutableFloatStateOf(initialPosition.y) }
-    val density = LocalDensity.current
 
-    val buttonColor = remember { Animatable(DownloadButtonInactive) }
-    LaunchedEffect(isMediaDetected) {
-        buttonColor.animateTo(
-            targetValue = if (isMediaDetected) DownloadButtonActive else DownloadButtonInactive,
-            animationSpec = tween(durationMillis = 300)
-        )
-    }
+    val buttonColor by animateColorAsState(
+        targetValue = if (isMediaDetected) DownloadButtonActive else DownloadButtonInactive,
+        animationSpec = tween(durationMillis = 300),
+        label = "downloadButtonColor"
+    )
 
     Box(
         modifier = modifier
@@ -77,12 +69,17 @@ fun FloatingDownloadButton(
             modifier = Modifier
                 .offset { IntOffset(offsetX.toInt(), offsetY.toInt()) }
                 .size(56.dp)
-                .align(Alignment.BottomEnd),
+                .align(Alignment.BottomEnd)
+                .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.matchParentSize()) {
                 drawCircle(
-                    color = FloatingButtonBackground,
+                    color = buttonColor,
+                    radius = size.minDimension / 2
+                )
+                drawCircle(
+                    color = FloatingButtonBackground.copy(alpha = 0.35f),
                     radius = size.minDimension / 2
                 )
             }

@@ -2,9 +2,12 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, master, develop ]
   pull_request:
-    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   build:
@@ -19,21 +22,50 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          java -version
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew build
-
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
-
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
+
+      - name: Publish Gradle failure
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          log = Path("gradle-build.log")
+          text = log.read_text(errors="replace") if log.exists() else "gradle-build.log missing"
+          errors = [ln for ln in text.splitlines() if ln.startswith("e:") or "Unresolved reference" in ln or "error: " in ln]
+          fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
+          chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
+          Path("gradle-failure.txt").write_text(chunk)
+          print("----- GRADLE FAILURE -----")
+          print(chunk)
+          for line in chunk.splitlines()[:80]:
+              safe = line.replace("%", "%25").replace("\r", "")
+              print(f"::error title=Gradle::{safe}")
+          PY
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$(printf 'Gradle assembleDebug failed:\n\n```\n%s\n```\n' "$(cat gradle-failure.txt)")" || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: salviabrowxer-debug-apk

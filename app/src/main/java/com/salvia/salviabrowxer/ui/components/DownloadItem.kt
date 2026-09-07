@@ -54,8 +54,9 @@ fun DownloadItem(
     onRetryClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
-    val progress = if (download.totalBytes != null && download.totalBytes > 0) {
-        (download.downloadedBytes.toFloat() / download.totalBytes) * 100
+    val totalBytes = download.totalBytes
+    val progress = if (totalBytes != null && totalBytes > 0) {
+        (download.downloadedBytes.toFloat() / totalBytes) * 100
     } else {
         0f
     }

@@ -1,6 +1,10 @@
 package com.salvia.salviabrowxer.ui.utils
 
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
@@ -11,10 +15,10 @@ fun Modifier.draggable(
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit = {}
 ) = composed {
-    var isDragging by mutableStateOf(false)
+    var isDragging by remember { mutableStateOf(false) }
     pointerInput(Unit) {
         detectDragGestures(
-            onDragStart = { offset ->
+            onDragStart = {
                 isDragging = true
                 onDragStart()
             },
@@ -28,8 +32,4 @@ fun Modifier.draggable(
             }
         )
     }
-}
-
-fun Modifier.mutableStateOf(initial: Boolean): Modifier {
-    return this
 }
