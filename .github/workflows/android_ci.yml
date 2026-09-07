@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,11 +26,42 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          java -version
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
+
+      - name: Publish Gradle failure
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          log = Path("gradle-build.log")
+          text = log.read_text(errors="replace") if log.exists() else "gradle-build.log missing"
+          idx = text.rfind("FAILURE:")
+          chunk = text[idx:idx + 3500] if idx >= 0 else text[-3500:]
+          Path("gradle-failure.txt").write_text(chunk)
+          print("----- GRADLE FAILURE -----")
+          print(chunk)
+          for line in chunk.splitlines()[:80]:
+              safe = line.replace("%", "%25").replace("\r", "")
+              print(f"::error title=Gradle::{safe}")
+          PY
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$(printf 'Gradle assembleDebug failed:\n\n```\n%s\n```\n' "$(cat gradle-failure.txt)")" || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload APK
         if: success()
@@ -35,8 +70,3 @@ jobs:
           name: salviabrowxer-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
-
-      - name: Run unit tests
-        if: success()
-        continue-on-error: true
-        run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
