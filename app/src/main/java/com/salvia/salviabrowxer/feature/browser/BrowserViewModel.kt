@@ -121,10 +121,16 @@ class BrowserViewModel @Inject constructor(
                 settingsDataStore.homepage.collectLatest { value ->
                     val safe = value.ifBlank { Constants.DEFAULT_HOMEPAGE }
                     _uiState.update { it.copy(homepage = safe) }
+                    // Only the first emitted homepage should drive navigation, and only when the
+                    // user has not already started browsing. This keeps startup deterministic and
+                    // avoids overriding an address typed/reloaded during the async settings load.
                     if (initialHomepageHandled.compareAndSet(false, true)) {
-                        val alreadyAtDefault =
-                            safe == Constants.DEFAULT_HOMEPAGE && _uiState.value.url == Constants.DEFAULT_HOMEPAGE
-                        if (!alreadyAtDefault && safe != _uiState.value.url) navigate(safe)
+                        val current = _uiState.value.url
+                        if (safe != Constants.DEFAULT_HOMEPAGE &&
+                            (current.isBlank() || current == Constants.DEFAULT_HOMEPAGE)
+                        ) {
+                            navigate(safe)
+                        }
                     }
                 }
             }
