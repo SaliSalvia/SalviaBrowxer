@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -20,24 +21,30 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.core.model.DownloadState
+import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.ui.components.DownloadItem
 import com.salvia.salviabrowxer.ui.theme.Gold
 import com.salvia.salviabrowxer.ui.theme.Surface
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,182 +52,150 @@ fun DownloadsScreen(
     onBack: () -> Unit,
     viewModel: DownloadsViewModel = hiltViewModel()
 ) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-    Column(
+    LaunchedEffect(Unit) {
+        viewModel.messages.collectLatest { message ->
+            if (message.isNotBlank()) snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Surface)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = stringResource(R.string.go_back),
-                    tint = Gold
-                )
-            }
-
-            Spacer(modifier = Modifier.padding(8.dp))
-
-            Text(
-                text = stringResource(R.string.downloads_title),
-                style = MaterialTheme.typography.titleLarge,
-                color = Gold
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            IconButton(
-                onClick = {
-                    when (selectedTabIndex) {
-                        0 -> viewModel.clearAllDownloads()
-                        2 -> viewModel.clearCompletedDownloads()
-                        3 -> viewModel.clearFailedDownloads()
-                    }
-                }
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.ClearAll,
-                    contentDescription = "Clear all",
-                    tint = Gold
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = stringResource(R.string.go_back),
+                        tint = Gold
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = stringResource(R.string.downloads_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Gold
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                IconButton(
+                    onClick = {
+                        when (selectedTabIndex) {
+                            0 -> viewModel.clearAllDownloads()
+                            2 -> viewModel.clearCompletedDownloads()
+                            3 -> viewModel.clearFailedDownloads()
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ClearAll,
+                        contentDescription = stringResource(R.string.action_clear),
+                        tint = Gold
+                    )
+                }
+            }
+
+            TabRow(
+                selectedTabIndex = selectedTabIndex,
+                containerColor = Surface,
+                contentColor = Gold
+            ) {
+                Tab(
+                    selected = selectedTabIndex == 0,
+                    onClick = { selectedTabIndex = 0 },
+                    text = { Text("${stringResource(R.string.download_active)} (${state.active.size})") }
+                )
+                Tab(
+                    selected = selectedTabIndex == 1,
+                    onClick = { selectedTabIndex = 1 },
+                    text = { Text("${stringResource(R.string.download_queue)} (${state.queued.size})") }
+                )
+                Tab(
+                    selected = selectedTabIndex == 2,
+                    onClick = { selectedTabIndex = 2 },
+                    text = { Text("${stringResource(R.string.download_completed)} (${state.completed.size})") }
+                )
+                Tab(
+                    selected = selectedTabIndex == 3,
+                    onClick = { selectedTabIndex = 3 },
+                    text = { Text("${stringResource(R.string.download_failed)} (${state.failed.size})") }
                 )
             }
+
+            val items = when (selectedTabIndex) {
+                0 -> state.active
+                1 -> state.queued
+                2 -> state.completed
+                else -> state.failed
+            }
+            val emptyMessage = when (selectedTabIndex) {
+                0 -> stringResource(R.string.no_active_downloads)
+                1 -> stringResource(R.string.no_queued_downloads)
+                2 -> stringResource(R.string.no_completed_downloads)
+                else -> stringResource(R.string.no_failed_downloads)
+            }
+
+            if (items.isEmpty()) {
+                EmptyDownloadsState(
+                    icon = Icons.Default.ClearAll,
+                    message = if (state.isLoading) {
+                        stringResource(R.string.download_queue)
+                    } else {
+                        emptyMessage
+                    }
+                )
+            } else {
+                DownloadList(items = items, viewModel = viewModel)
+            }
         }
 
-        TabRow(
-            selectedTabIndex = selectedTabIndex,
-            containerColor = Surface,
-            contentColor = Gold
-        ) {
-            Tab(
-                selected = selectedTabIndex == 0,
-                onClick = { selectedTabIndex = 0 },
-                text = { Text(stringResource(R.string.download_active)) }
-            )
-            Tab(
-                selected = selectedTabIndex == 1,
-                onClick = { selectedTabIndex = 1 },
-                text = { Text(stringResource(R.string.download_queue)) }
-            )
-            Tab(
-                selected = selectedTabIndex == 2,
-                onClick = { selectedTabIndex = 2 },
-                text = { Text(stringResource(R.string.download_completed)) }
-            )
-            Tab(
-                selected = selectedTabIndex == 3,
-                onClick = { selectedTabIndex = 3 },
-                text = { Text(stringResource(R.string.download_failed)) }
-            )
-        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(12.dp)
+        )
+    }
+}
 
-        when (selectedTabIndex) {
-            0 -> {
-                if (viewModel.activeDownloads.isEmpty()) {
-                    EmptyDownloadsState(
-                        icon = Icons.Default.ClearAll,
-                        message = stringResource(R.string.no_active_downloads)
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(viewModel.activeDownloads) { download ->
-                            DownloadItem(
-                                download = download,
-                                onPauseClick = { viewModel.pauseDownload(download.id) },
-                                onResumeClick = { viewModel.resumeDownload(download.id) },
-                                onCancelClick = { viewModel.cancelDownload(download.id) },
-                                onRetryClick = { viewModel.retryDownload(download.id) },
-                                onDeleteClick = { viewModel.deleteDownload(download.id) }
-                            )
-                        }
-                    }
-                }
-            }
-            1 -> {
-                if (viewModel.queuedDownloads.isEmpty()) {
-                    EmptyDownloadsState(
-                        icon = Icons.Default.ClearAll,
-                        message = stringResource(R.string.no_queued_downloads)
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(viewModel.queuedDownloads) { download ->
-                            DownloadItem(
-                                download = download,
-                                onPauseClick = {},
-                                onResumeClick = {},
-                                onCancelClick = { viewModel.cancelDownload(download.id) },
-                                onRetryClick = { viewModel.retryDownload(download.id) },
-                                onDeleteClick = { viewModel.deleteDownload(download.id) }
-                            )
-                        }
-                    }
-                }
-            }
-            2 -> {
-                if (viewModel.completedDownloads.isEmpty()) {
-                    EmptyDownloadsState(
-                        icon = Icons.Default.ClearAll,
-                        message = stringResource(R.string.no_completed_downloads)
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(viewModel.completedDownloads) { download ->
-                            DownloadItem(
-                                download = download,
-                                onPauseClick = {},
-                                onResumeClick = {},
-                                onCancelClick = {},
-                                onRetryClick = {},
-                                onDeleteClick = { viewModel.deleteDownload(download.id) }
-                            )
-                        }
-                    }
-                }
-            }
-            3 -> {
-                if (viewModel.failedDownloads.isEmpty()) {
-                    EmptyDownloadsState(
-                        icon = Icons.Default.ClearAll,
-                        message = stringResource(R.string.no_failed_downloads)
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(viewModel.failedDownloads) { download ->
-                            DownloadItem(
-                                download = download,
-                                onPauseClick = {},
-                                onResumeClick = {},
-                                onCancelClick = {},
-                                onRetryClick = { viewModel.retryDownload(download.id) },
-                                onDeleteClick = { viewModel.deleteDownload(download.id) }
-                            )
-                        }
-                    }
-                }
-            }
+@Composable
+private fun DownloadList(
+    items: List<DownloadEntity>,
+    viewModel: DownloadsViewModel
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(items) { download ->
+            DownloadItem(
+                download = download,
+                onOpenClick = { viewModel.openDownload(download.id) },
+                onPauseClick = { viewModel.pauseDownload(download.id) },
+                onResumeClick = { viewModel.resumeDownload(download.id) },
+                onCancelClick = { viewModel.cancelDownload(download.id) },
+                onRetryClick = { viewModel.retryDownload(download.id) },
+                onDeleteClick = { viewModel.deleteDownload(download.id) }
+            )
         }
     }
 }
 
 @Composable
 fun EmptyDownloadsState(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     message: String
 ) {
     Box(
@@ -239,11 +214,11 @@ fun EmptyDownloadsState(
                 tint = Gold,
                 modifier = Modifier.size(64.dp)
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Gold
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
     }

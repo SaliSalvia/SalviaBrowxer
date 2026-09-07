@@ -17,6 +17,7 @@ import com.salvia.salviabrowxer.media.downloader.DownloadManager
 import com.salvia.salviabrowxer.media.detector.DefaultMediaDetector
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
+import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
 import dagger.Module
 import dagger.Provides
@@ -24,6 +25,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -34,6 +36,12 @@ object AppModule {
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
+            .connectTimeout(Constants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            // Downloads stream large bodies: no read/write timeout, the caller cancels instead.
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .writeTimeout(0, TimeUnit.MILLISECONDS)
+            .callTimeout(0, TimeUnit.MILLISECONDS)
+            .retryOnConnectionFailure(true)
             .followRedirects(true)
             .followSslRedirects(true)
             .build()

@@ -33,8 +33,20 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           java -version
 
+      - name: Verify Gradle wrapper
+        run: |
+          set -o pipefail
+          test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
+          test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-wrapper.properties is missing"; exit 1; }
+          unzip -t gradle/wrapper/gradle-wrapper.jar > /dev/null
+          unzip -l gradle/wrapper/gradle-wrapper.jar | grep -q 'org/gradle/wrapper/GradleWrapperMain.class'
+          grep -q '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+
+      - name: Print Gradle version
+        run: ./gradlew --version --no-daemon
 
       - name: Build Debug APK
         run: |
@@ -64,10 +76,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Verify debug APK output
+        if: success()
+        run: |
+          ls -l app/build/outputs/apk/debug/
+          test -f app/build/outputs/apk/debug/app-debug.apk || { echo "app-debug.apk was not produced"; exit 1; }
+
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: salviabrowxer-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 7

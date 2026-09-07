@@ -51,6 +51,8 @@ object Constants {
     const val NOTIFICATION_CHANNEL_DESCRIPTION = "Download notifications"
     const val NOTIFICATION_ID_DOWNLOAD = 1000
 
+    const val DEFAULT_SEARCH_ENGINE = "Google"
+
     val SEARCH_ENGINES = mapOf(
         "Google" to "https://www.google.com/search?q=%s",
         "DuckDuckGo" to "https://duckduckgo.com/?q=%s",

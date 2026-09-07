@@ -49,6 +49,30 @@ class DownloadRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun updateDownloadResult(
+        id: String,
+        status: DownloadState,
+        downloadedBytes: Long?,
+        totalBytes: Long?,
+        finalPath: String?,
+        mimeType: String?,
+        error: String?
+    ) {
+        downloadDao.getById(id)?.let { download ->
+            downloadDao.update(
+                download.copy(
+                    status = status,
+                    downloadedBytes = downloadedBytes ?: download.downloadedBytes,
+                    totalBytes = totalBytes ?: download.totalBytes,
+                    finalPath = finalPath ?: download.finalPath,
+                    mimeType = mimeType ?: download.mimeType,
+                    error = error,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
     override suspend fun deleteDownload(id: String) = downloadDao.delete(id)
 
     override suspend fun deleteDownloadsByState(state: DownloadState) =
@@ -65,13 +89,17 @@ class DownloadRepositoryImpl @Inject constructor(
         destination: String,
         mediaTitle: String?,
         thumbnail: String?,
-        selectedQuality: String?
+        selectedQuality: String?,
+        mimeType: String?,
+        totalBytes: Long?
     ): DownloadEntity {
         return DownloadEntity(
             url = url,
             finalUrl = null,
             filename = filename,
+            mimeType = mimeType,
             destination = destination,
+            totalBytes = totalBytes,
             mediaTitle = mediaTitle,
             thumbnail = thumbnail,
             selectedQuality = selectedQuality,

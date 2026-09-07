@@ -7,23 +7,25 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Divider
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,50 +35,52 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
+import com.salvia.salviabrowxer.ui.theme.DownloadButtonActive
 import com.salvia.salviabrowxer.ui.theme.Gold
-import com.salvia.salviabrowxer.ui.theme.MediaDetectedIndicator
-import com.salvia.salviabrowxer.ui.theme.Surface
+import com.salvia.salviabrowxer.ui.theme.Surface as SurfaceColor
 import java.text.DecimalFormat
 
+/**
+ * Quality picker for a detected media item. Picking a row and confirming enqueues a real download
+ * (the callback hands the selected [MediaFormat] to the ViewModel, which writes the queue entry and
+ * starts DownloadService).
+ */
 @Composable
 fun MediaQualitySelectionSheet(
     mediaInfo: MediaInfo,
+    isResolving: Boolean,
     onDismiss: () -> Unit,
-    onQualitySelected: (MediaFormat) -> Unit,
-    onDownloadStarted: () -> Unit
+    onQualitySelected: (MediaFormat) -> Unit
 ) {
-    var selectedFormat by remember { mutableStateOf<MediaFormat?>(null) }
+    val formats = mediaInfo.combinedFormats.ifEmpty { mediaInfo.formats }
+    var selectedFormat by remember(mediaInfo.title, formats.size) {
+        mutableStateOf<MediaFormat?>(formats.firstOrNull())
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = androidx.compose.material3.CardDefaults.cardColors(
-                containerColor = Surface
-            )
+            color = SurfaceColor,
+            tonalElevation = 6.dp
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -87,61 +91,53 @@ fun MediaQualitySelectionSheet(
                         style = MaterialTheme.typography.titleLarge,
                         color = Gold
                     )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(32.dp)
-                    ) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
+                            contentDescription = stringResource(R.string.action_cancel),
                             tint = Gold
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(80.dp)
+                            .size(72.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
                     ) {
-                        mediaInfo.thumbnail?.let { thumbnailUrl ->
+                        val thumbnail = mediaInfo.thumbnail
+                        if (thumbnail != null) {
                             AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(thumbnailUrl)
-                                    .crossfade(true)
-                                    .build(),
+                                model = thumbnail,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.matchParentSize()
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                             )
-                        }
-                        if (mediaInfo.thumbnail == null) {
+                        } else {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Default.Download,
                                 contentDescription = null,
                                 tint = Gold,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.padding(8.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = mediaInfo.title,
                             style = MaterialTheme.typography.titleMedium,
                             color = Gold,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                         mediaInfo.duration?.let { duration ->
@@ -154,50 +150,58 @@ fun MediaQualitySelectionSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = MaterialTheme.colorScheme.surfaceVariant)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = stringResource(R.string.select_quality),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Gold
-                )
-
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                ) {
-                    items(mediaInfo.combinedFormats) { format ->
-                        QualityOptionItem(
-                            format = format,
-                            isSelected = selectedFormat?.id == format.id,
-                            onClick = { selectedFormat = format }
+                if (isResolving && formats.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            color = Gold,
+                            strokeWidth = 2.dp
                         )
-                        Divider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(196.dp)
+                    ) {
+                        items(formats.size) { index ->
+                            val format = formats[index]
+                            QualityOptionItem(
+                                format = format,
+                                isSelected = selectedFormat?.id == format.id,
+                                onClick = { selectedFormat = format }
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = {
-                        selectedFormat?.let { format ->
-                            onQualitySelected(format)
-                            onDownloadStarted()
-                            onDismiss()
-                        }
-                    },
-                    enabled = selectedFormat != null,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
+                    onClick = { selectedFormat?.let { onQualitySelected(it) } },
+                    enabled = selectedFormat != null && !isResolving,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DownloadButtonActive,
+                        contentColor = MaterialTheme.colorScheme.background
+                    )
                 ) {
                     Text(
                         text = stringResource(R.string.download_start),
-                        color = MaterialTheme.colorScheme.onPrimary
+                        style = MaterialTheme.typography.titleSmall
                     )
                 }
             }
@@ -215,28 +219,22 @@ fun QualityOptionItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 4.dp),
+            .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (isSelected) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = "Selected",
-                tint = MediaDetectedIndicator,
-                modifier = Modifier.size(20.dp)
-            )
-        } else {
-            Spacer(modifier = Modifier.size(20.dp))
-        }
+        Icon(
+            imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Close,
+            contentDescription = null,
+            tint = if (isSelected) Gold else Color.Transparent,
+            modifier = Modifier.size(20.dp)
+        )
 
-        Spacer(modifier = Modifier.padding(4.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = format.format,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = Gold
             )
             Row {
@@ -247,12 +245,20 @@ fun QualityOptionItem(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
-                if (format.isVideo && format.width != null && format.height != null) {
+                if (format.width != null && format.height != null) {
                     Text(
-                        text = "${format.width}x${format.height}",
+                        text = " · ${format.width}x${format.height}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(start = 8.dp)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+                if (format.mimeType.isNotBlank()) {
+                    Text(
+                        text = " · ${format.mimeType}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -272,8 +278,9 @@ private fun formatDuration(milliseconds: Long): String {
 }
 
 private fun formatFileSize(bytes: Long): String {
-    if (bytes <= 0) return "Unknown"
+    if (bytes <= 0) return "?"
     val units = arrayOf("B", "KB", "MB", "GB")
-    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
-    return DecimalFormat("#,##0.#").format(bytes / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups]
+    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, 3)
+    return DecimalFormat("#,##0.#")
+        .format(bytes / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups]
 }

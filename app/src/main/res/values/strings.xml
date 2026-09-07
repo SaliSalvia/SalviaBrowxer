@@ -18,6 +18,8 @@
     <string name="bookmarks">Bookmarks</string>
     <string name="history">History</string>
     <string name="settings">Settings</string>
+    <string name="search_or_type_url">Search or type URL</string>
+    <string name="download_enqueued">Added to download queue</string>
 
     <!-- Downloads -->
     <string name="downloads_title">Downloads</string>
