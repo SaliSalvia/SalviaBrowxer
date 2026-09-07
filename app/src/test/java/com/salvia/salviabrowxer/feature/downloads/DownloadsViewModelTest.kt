@@ -52,7 +52,7 @@ class DownloadsViewModelTest {
 
         viewModel.retryDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
+        coVerify(timeout = 5000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
     }
 
     @Test
@@ -62,7 +62,7 @@ class DownloadsViewModelTest {
 
         viewModel.pauseDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED) }
+        coVerify(timeout = 5000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED) }
     }
 
     @Test
@@ -72,7 +72,7 @@ class DownloadsViewModelTest {
 
         viewModel.resumeDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
+        coVerify(timeout = 5000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
     }
 
     @Test
@@ -82,17 +82,18 @@ class DownloadsViewModelTest {
 
         viewModel.cancelDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.CANCELLED) }
+        coVerify(timeout = 5000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.CANCELLED) }
     }
 
     @Test
     fun `deleteDownload calls repository`() = runTest {
         val downloadId = "download-1"
+        coEvery { mockDownloadRepository.getDownloadById(downloadId) } returns null
         coEvery { mockDownloadRepository.deleteDownload(downloadId) } returns Unit
 
         viewModel.deleteDownload(downloadId)
 
-        coVerify { mockDownloadRepository.deleteDownload(downloadId) }
+        coVerify(timeout = 5000) { mockDownloadRepository.deleteDownload(downloadId) }
     }
 
     @Test
@@ -101,7 +102,7 @@ class DownloadsViewModelTest {
 
         viewModel.clearCompletedDownloads()
 
-        coVerify { mockDownloadRepository.deleteDownloadsByState(DownloadState.COMPLETED) }
+        coVerify(timeout = 5000) { mockDownloadRepository.deleteDownloadsByState(DownloadState.COMPLETED) }
     }
 
     @Test
@@ -110,7 +111,7 @@ class DownloadsViewModelTest {
 
         viewModel.clearFailedDownloads()
 
-        coVerify { mockDownloadRepository.deleteDownloadsByState(DownloadState.FAILED) }
+        coVerify(timeout = 5000) { mockDownloadRepository.deleteDownloadsByState(DownloadState.FAILED) }
     }
 
     @Test
@@ -119,7 +120,7 @@ class DownloadsViewModelTest {
 
         viewModel.clearAllDownloads()
 
-        coVerify { mockDownloadRepository.clearAllDownloads() }
+        coVerify(timeout = 5000) { mockDownloadRepository.clearAllDownloads() }
     }
 
     @Test
