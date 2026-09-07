@@ -122,7 +122,9 @@ class BrowserViewModel @Inject constructor(
                     val safe = value.ifBlank { Constants.DEFAULT_HOMEPAGE }
                     _uiState.update { it.copy(homepage = safe) }
                     if (initialHomepageHandled.compareAndSet(false, true)) {
-                        if (safe != _uiState.value.url) navigate(safe)
+                        val alreadyAtDefault =
+                            safe == Constants.DEFAULT_HOMEPAGE && _uiState.value.url == Constants.DEFAULT_HOMEPAGE
+                        if (!alreadyAtDefault && safe != _uiState.value.url) navigate(safe)
                     }
                 }
             }
