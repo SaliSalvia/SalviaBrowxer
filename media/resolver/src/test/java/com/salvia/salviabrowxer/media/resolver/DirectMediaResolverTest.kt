@@ -48,7 +48,7 @@ class DirectMediaResolverTest {
         assertEquals(url, result.formats[0].url)
         assertEquals("video/mp4", result.formats[0].mimeType)
         assertEquals("mp4", result.formats[0].extension)
-        assertEquals(true, result.formats[0].size >= 0L)
+        assertEquals(true, (result.formats[0].size ?: 0L) >= 0L)
         assertEquals(true, result.formats[0].isVideo)
         assertEquals(false, result.formats[0].isAudio)
     }
