@@ -122,15 +122,7 @@ fun BrowserTopBar(
                     )
                 }
                 innerTextField()
-            },
-            keyboardOptions = KeyboardOptions(
-                imeAction = ImeAction.Go
-            ),
-            keyboardActions = KeyboardActions(
-                onGo = {
-                    onUrlSubmit(urlText.text)
-                }
-            )
+            }
         )
 
         if (urlText.text.isNotEmpty()) {

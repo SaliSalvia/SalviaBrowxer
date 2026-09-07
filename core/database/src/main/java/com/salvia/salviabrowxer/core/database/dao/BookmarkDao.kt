@@ -27,6 +27,9 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks ORDER BY title ASC")
     fun getAll(): Flow<List<BookmarkEntity>>
 
+    @Query("SELECT COUNT(*) FROM bookmarks WHERE url = :url")
+    suspend fun countByUrl(url: String): Int
+
     @Query("SELECT * FROM bookmarks WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY title ASC")
     fun search(query: String): Flow<List<BookmarkEntity>>
 
