@@ -1,6 +1,6 @@
 package com.salvia.salviabrowxer.ui.components
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures

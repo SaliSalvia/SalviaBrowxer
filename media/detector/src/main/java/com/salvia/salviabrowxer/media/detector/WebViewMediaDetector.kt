@@ -29,7 +29,7 @@ class WebViewMediaDetector : MediaDetector {
             override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
                 request?.let { webRequest ->
                     val url = webRequest.url.toString()
-                    val mimeType = webRequest.mimeType
+                    val mimeType = webRequest.requestHeaders["Accept"]
 
                     if (isMediaRequest(url, mimeType)) {
                         val candidate = MediaCandidate(

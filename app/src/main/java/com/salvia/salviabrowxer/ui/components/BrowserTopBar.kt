@@ -111,7 +111,7 @@ fun BrowserTopBar(
             cursorBrush = androidx.compose.ui.graphics.SolidColor(Gold),
             decorationBox = { innerTextField ->
                 if (urlText.text.isEmpty() && !isUrlFocused) {
-                    android.widget.Text(
+                    androidx.compose.material3.Text(
                         text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.Gray,

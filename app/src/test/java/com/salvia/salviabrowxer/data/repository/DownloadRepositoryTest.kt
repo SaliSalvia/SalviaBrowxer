@@ -5,15 +5,18 @@ import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.storage.StorageManager
+import io.mockk.any
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.withArg
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.Before
 import org.junit.Test
 
@@ -35,8 +38,8 @@ class DownloadRepositoryTest {
     @Test
     fun `getAllDownloads returns flow from DAO`() = runTest {
         val downloads = listOf(
-            DownloadEntity(id = "1", url = "https://example.com/file1.mp4"),
-            DownloadEntity(id = "2", url = "https://example.com/file2.mp4")
+            DownloadEntity(id = "1", url = "https://example.com/file1.mp4", filename = "file1.mp4", destination = "/tmp"),
+            DownloadEntity(id = "2", url = "https://example.com/file2.mp4", filename = "file2.mp4", destination = "/tmp")
         )
         coEvery { mockDownloadDao.getAll() } returns flowOf(downloads)
 
@@ -49,7 +52,7 @@ class DownloadRepositoryTest {
     @Test
     fun `getDownloadsByState returns flow from DAO`() = runTest {
         val downloads = listOf(
-            DownloadEntity(id = "1", url = "https://example.com/file1.mp4", status = DownloadState.DOWNLOADING)
+            DownloadEntity(id = "1", url = "https://example.com/file1.mp4", filename = "file1.mp4", destination = "/tmp", status = DownloadState.DOWNLOADING)
         )
         coEvery { mockDownloadDao.getByStatus(DownloadState.DOWNLOADING) } returns flowOf(downloads)
 
@@ -61,7 +64,7 @@ class DownloadRepositoryTest {
 
     @Test
     fun `getDownloadById returns from DAO`() = runTest {
-        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4")
+        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4", filename = "file.mp4", destination = "/tmp")
         coEvery { mockDownloadDao.getById("1") } returns download
 
         val result = repository.getDownloadById("1")
@@ -72,7 +75,7 @@ class DownloadRepositoryTest {
 
     @Test
     fun `addDownload calls DAO`() = runTest {
-        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4")
+        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4", filename = "file.mp4", destination = "/tmp")
         coEvery { mockDownloadDao.insert(download) } returns Unit
 
         repository.addDownload(download)
@@ -82,7 +85,7 @@ class DownloadRepositoryTest {
 
     @Test
     fun `updateDownload calls DAO`() = runTest {
-        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4")
+        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4", filename = "file.mp4", destination = "/tmp")
         coEvery { mockDownloadDao.update(download) } returns Unit
 
         repository.updateDownload(download)
@@ -92,7 +95,7 @@ class DownloadRepositoryTest {
 
     @Test
     fun `updateDownloadState calls DAO`() = runTest {
-        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4")
+        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4", filename = "file.mp4", destination = "/tmp")
         coEvery { mockDownloadDao.getById("1") } returns download
         coEvery { mockDownloadDao.update(any()) } returns Unit
 

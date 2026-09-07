@@ -33,7 +33,7 @@ class WebViewClientWrapper(
                 val candidate = MediaCandidate(
                     pageUrl = view?.url ?: "",
                     mediaUrl = url,
-                    mimeType = req.mimeType,
+                    mimeType = req.requestHeaders["Accept"],
                     source = MediaSource.WEBVIEW,
                     confidence = 0.8f
                 )

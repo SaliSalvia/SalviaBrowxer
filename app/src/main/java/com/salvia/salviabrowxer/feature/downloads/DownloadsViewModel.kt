@@ -56,6 +56,7 @@ class DownloadsViewModel @Inject constructor(
                         DownloadState.QUEUED,
                         DownloadState.RETRYING -> _queuedDownloads.add(download)
                         DownloadState.COMPLETED -> _completedDownloads.add(download)
+                        DownloadState.PAUSED -> _activeDownloads.add(download)
                         DownloadState.FAILED,
                         DownloadState.CANCELLED -> _failedDownloads.add(download)
                     }

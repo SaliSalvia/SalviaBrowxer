@@ -6,6 +6,7 @@ import com.salvia.salviabrowxer.core.database.AppDatabase
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStoreImpl
+import com.salvia.salviabrowxer.data.datastore.dataStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.BookmarkRepositoryImpl
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
@@ -13,6 +14,7 @@ import com.salvia.salviabrowxer.data.repository.DownloadRepositoryImpl
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepositoryImpl
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
+import com.salvia.salviabrowxer.media.detector.DefaultMediaDetector
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
@@ -86,15 +88,15 @@ object AppModule {
     @Singleton
     fun provideDownloadManager(
         @ApplicationContext context: Context,
-        downloadRepository: DownloadRepository
+        okHttpClient: OkHttpClient
     ): DownloadManager {
-        return DownloadManager(context, downloadRepository)
+        return DownloadManager(context, okHttpClient)
     }
 
     @Provides
     @Singleton
     fun provideMediaDetector(): MediaDetector {
-        return MediaDetector()
+        return DefaultMediaDetector()
     }
 
     @Provides
