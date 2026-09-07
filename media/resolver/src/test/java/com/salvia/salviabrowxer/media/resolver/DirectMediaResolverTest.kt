@@ -1,12 +1,10 @@
 package com.salvia.salviabrowxer.media.resolver
 
-import io.mockk.any
-import io.mockk.coEvery
-import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
@@ -14,28 +12,29 @@ import org.junit.Test
 
 class DirectMediaResolverTest {
 
+    private lateinit var server: MockWebServer
     private lateinit var resolver: DirectMediaResolver
-    private val mockOkHttpClient: OkHttpClient = mockk()
 
     @Before
     fun setup() {
-        resolver = DirectMediaResolver(mockOkHttpClient)
+        server = MockWebServer()
+        server.start()
+        resolver = DirectMediaResolver(OkHttpClient())
+    }
+
+    @After
+    fun tearDown() {
+        server.shutdown()
     }
 
     @Test
     fun `resolve returns MediaInfo with correct values`() = runTest {
-        val url = "https://example.com/video.mp4"
-        val mockResponse = mockk<Response>(relaxed = true)
-        val mockRequest = Request.Builder().url(url).build()
-
-        coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
-        coEvery { mockOkHttpClient.newCall(any()).execute() } returns mockResponse
-        coEvery { mockResponse.isSuccessful } returns true
-        coEvery { mockResponse.body } returns mockk()
-        coEvery { mockResponse.body?.contentLength() } returns 1024L
-        coEvery { mockResponse.header("Content-Type") } returns "video/mp4"
-        coEvery { mockResponse.header("Content-Disposition") } returns null
-        coEvery { mockResponse.request } returns mockRequest
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "video/mp4")
+                .setBody("x".repeat(1024))
+        )
+        val url = server.url("/video.mp4").toString()
 
         val result = resolver.resolve(url)
 
@@ -55,18 +54,13 @@ class DirectMediaResolverTest {
 
     @Test
     fun `resolve extracts filename from Content-Disposition`() = runTest {
-        val url = "https://example.com/download"
-        val mockResponse = mockk<Response>(relaxed = true)
-        val mockRequest = Request.Builder().url(url).build()
-
-        coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
-        coEvery { mockOkHttpClient.newCall(any()).execute() } returns mockResponse
-        coEvery { mockResponse.isSuccessful } returns true
-        coEvery { mockResponse.body } returns mockk()
-        coEvery { mockResponse.body?.contentLength() } returns 2048L
-        coEvery { mockResponse.header("Content-Type") } returns "application/octet-stream"
-        coEvery { mockResponse.header("Content-Disposition") } returns "attachment; filename=\"my-file.mp4\""
-        coEvery { mockResponse.request } returns mockRequest
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/octet-stream")
+                .setHeader("Content-Disposition", "attachment; filename=\"my-file.mp4\"")
+                .setBody("x".repeat(2048))
+        )
+        val url = server.url("/download").toString()
 
         val result = resolver.resolve(url)
 
@@ -76,20 +70,16 @@ class DirectMediaResolverTest {
 
     @Test
     fun `resolve extracts RFC 5987 utf-8 filename`() = runTest {
-        val url = "https://example.com/download"
-        val mockResponse = mockk<Response>(relaxed = true)
-        val mockRequest = Request.Builder().url(url).build()
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "video/mp4")
+                .setHeader(
+                    "Content-Disposition",
+                    "attachment; filename*=UTF-8''%D9%88%DB%8C%D8%AF%DB%8C%D9%88.mp4"
+                )
+        )
 
-        coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
-        coEvery { mockOkHttpClient.newCall(any()).execute() } returns mockResponse
-        coEvery { mockResponse.isSuccessful } returns true
-        coEvery { mockResponse.body } returns mockk()
-        coEvery { mockResponse.header("Content-Type") } returns "video/mp4"
-        coEvery {
-            mockResponse.header("Content-Disposition")
-        } returns "attachment; filename*=UTF-8''%D9%88%DB%8C%D8%AF%DB%8C%D9%88.mp4"
-
-        val result = resolver.resolve(url)
+        val result = resolver.resolve(server.url("/download").toString())
 
         assertEquals("ویدیو", result.title)
         assertEquals("mp4", result.formats[0].extension)
@@ -97,18 +87,12 @@ class DirectMediaResolverTest {
 
     @Test
     fun `resolve handles audio files`() = runTest {
-        val url = "https://example.com/audio.mp3"
-        val mockResponse = mockk<Response>(relaxed = true)
-        val mockRequest = Request.Builder().url(url).build()
-
-        coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
-        coEvery { mockOkHttpClient.newCall(any()).execute() } returns mockResponse
-        coEvery { mockResponse.isSuccessful } returns true
-        coEvery { mockResponse.body } returns mockk()
-        coEvery { mockResponse.body?.contentLength() } returns 3072L
-        coEvery { mockResponse.header("Content-Type") } returns "audio/mpeg"
-        coEvery { mockResponse.header("Content-Disposition") } returns null
-        coEvery { mockResponse.request } returns mockRequest
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "audio/mpeg")
+                .setBody("x".repeat(3072))
+        )
+        val url = server.url("/audio.mp3").toString()
 
         val result = resolver.resolve(url)
 
