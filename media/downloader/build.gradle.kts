@@ -23,6 +23,5 @@ android {
 
 dependencies {
     implementation(project(":core:model"))
-    implementation(project(":media:resolver"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

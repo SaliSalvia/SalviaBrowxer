@@ -20,6 +20,7 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
+import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.media.downloader.AbortReason
 import com.salvia.salviabrowxer.media.downloader.DownloadAbortedException
@@ -34,6 +35,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -56,9 +59,16 @@ class DownloadService : Service() {
     @Inject
     lateinit var downloadManager: DownloadManager
 
+    @Inject
+    lateinit var settingsDataStore: SettingsDataStore
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val queue = Channel<String>(Channel.UNLIMITED)
     private val inFlight = AtomicInteger(0)
+
+    @Volatile
+    private var maxSimultaneousDownloads = DEFAULT_MAX_SIMULTANEOUS_DOWNLOADS
+
     private var processorJob: Job? = null
 
     private val notificationId = 1
@@ -73,6 +83,12 @@ class DownloadService : Service() {
         super.onCreate()
         createNotificationChannel()
         promoteToForeground(buildSummaryNotification(getString(R.string.downloads_title), 0L, 0L))
+        scope.launch {
+            settingsDataStore.maxSimultaneousDownloads
+                .collect { value ->
+                    maxSimultaneousDownloads = value.coerceIn(1, MAX_SIMULTANEOUS_DOWNLOADS)
+                }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -111,16 +127,25 @@ class DownloadService : Service() {
         processorJob = scope.launch {
             while (isActive) {
                 val downloadId = queue.receive()
-                try {
-                    processDownload(downloadId)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (error: Exception) {
-                    Log.w(TAG, "Download $downloadId failed", error)
+                // Enforce the user's simultaneous-download preference before starting a new one.
+                while (inFlight.get() >= maxSimultaneousDownloads && isActive) {
+                    delay(SLOT_POLLING_MILLIS)
                 }
-                if (inFlight.get() == 0 && queue.isEmpty) {
-                    stopWhenIdle()
-                    return@launch
+                if (!isActive) break
+
+                inFlight.incrementAndGet()
+                scope.launch {
+                    try {
+                        processDownload(downloadId)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Download $downloadId failed", error)
+                    } finally {
+                        inFlight.decrementAndGet()
+                        refreshSummary()
+                        if (inFlight.get() == 0 && queue.isEmpty) stopWhenIdle()
+                    }
                 }
             }
         }
@@ -130,7 +155,6 @@ class DownloadService : Service() {
         val stored = downloadRepository.getDownloadById(downloadId) ?: return
         if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED) return
 
-        inFlight.incrementAndGet()
         try {
             downloadRepository.updateDownloadState(downloadId, DownloadState.PREPARING)
 
@@ -178,6 +202,25 @@ class DownloadService : Service() {
                 }
             )
 
+            // A pause/cancel may have raced with the last progress check; never let a paused
+            // transfer silently become COMPLETED after the user cancelled or paused it.
+            when (downloadRepository.getDownloadById(downloadId)?.status) {
+                DownloadState.CANCELLED -> {
+                    temporaryPathFor(stored).delete()
+                    downloadRepository.updateDownloadResult(
+                        id = downloadId,
+                        status = DownloadState.CANCELLED,
+                        error = getString(R.string.download_cancel)
+                    )
+                    return
+                }
+                DownloadState.PAUSED -> {
+                    downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
+                    return
+                }
+                else -> Unit
+            }
+
             downloadRepository.updateDownloadResult(
                 id = downloadId,
                 status = DownloadState.COMPLETED,
@@ -190,7 +233,10 @@ class DownloadService : Service() {
             scanFile(result.file)
             notifyCompleted(stored, result.file)
         } catch (aborted: DownloadAbortedException) {
-            if (aborted.reason == AbortReason.CANCELLED) {
+            // Cancel must win over pause. Re-read the persisted state; it is the authoritative
+            // source because pause/cancel commands both write there before signalling the engine.
+            val current = downloadRepository.getDownloadById(downloadId)?.status
+            if (current == DownloadState.CANCELLED || aborted.reason == AbortReason.CANCELLED) {
                 temporaryPathFor(stored).delete()
                 downloadRepository.updateDownloadResult(
                     id = downloadId,
@@ -208,9 +254,6 @@ class DownloadService : Service() {
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
-        } finally {
-            inFlight.decrementAndGet()
-            refreshSummary()
         }
     }
 
@@ -376,6 +419,9 @@ class DownloadService : Service() {
 
         private const val TAG = "DownloadService"
         private const val NOTIFICATION_COMPLETED_BASE_ID = 2000
+        private const val DEFAULT_MAX_SIMULTANEOUS_DOWNLOADS = 3
+        private const val MAX_SIMULTANEOUS_DOWNLOADS = 5
+        private const val SLOT_POLLING_MILLIS = 100L
 
         private val ACTIVE_STATES = listOf(
             DownloadState.QUEUED,

@@ -63,7 +63,7 @@ import com.salvia.salviabrowxer.ui.theme.Gold
 import com.salvia.salviabrowxer.ui.theme.Surface
 import kotlinx.coroutines.flow.collectLatest
 
-private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, ClearData }
+private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, DownloadDirectory, ClearData }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,7 +141,7 @@ fun SettingsScreen(
                 SwitchSettingsItem(
                     icon = Icons.Default.Sync,
                     title = stringResource(R.string.settings_desktop_site),
-                    subtitle = "Use the desktop user agent",
+                    subtitle = stringResource(R.string.settings_desktop_site_subtitle),
                     isChecked = state.isDesktopSite,
                     onCheckedChange = { viewModel.updateDesktopSite(it) }
                 )
@@ -149,7 +149,7 @@ fun SettingsScreen(
                 SwitchSettingsItem(
                     icon = Icons.Default.Security,
                     title = stringResource(R.string.settings_javascript),
-                    subtitle = "Pages can run scripts and media can be detected",
+                    subtitle = stringResource(R.string.settings_javascript_subtitle),
                     isChecked = state.isJavaScriptEnabled,
                     onCheckedChange = { viewModel.updateJavaScriptEnabled(it) }
                 )
@@ -157,7 +157,7 @@ fun SettingsScreen(
                 SwitchSettingsItem(
                     icon = Icons.Default.Storage,
                     title = stringResource(R.string.settings_cookies),
-                    subtitle = "Sites can store cookies on this device",
+                    subtitle = stringResource(R.string.settings_cookies_subtitle),
                     isChecked = state.areCookiesEnabled,
                     onCheckedChange = { viewModel.updateCookiesEnabled(it) }
                 )
@@ -165,7 +165,7 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Clear,
                     title = stringResource(R.string.settings_clear_browsing_data),
-                    subtitle = "History, cookies and session data",
+                    subtitle = stringResource(R.string.settings_clear_browsing_data_subtitle),
                     onClick = { dialog = SettingsDialog.ClearData }
                 )
 
@@ -180,20 +180,20 @@ fun SettingsScreen(
                     icon = Icons.Default.Folder,
                     title = stringResource(R.string.settings_download_directory),
                     subtitle = state.downloadDirectoryLabel,
-                    onClick = { }
+                    onClick = { dialog = SettingsDialog.DownloadDirectory }
                 )
 
                 SettingsItem(
                     icon = Icons.Default.Download,
                     title = stringResource(R.string.settings_simultaneous_downloads),
-                    subtitle = "${state.maxSimultaneousDownloads} at a time",
+                    subtitle = stringResource(R.string.settings_simultaneous_downloads_subtitle, state.maxSimultaneousDownloads),
                     onClick = { dialog = SettingsDialog.Downloads }
                 )
 
                 SwitchSettingsItem(
                     icon = Icons.Default.Wifi,
                     title = stringResource(R.string.settings_wifi_only),
-                    subtitle = "Pause transfers when the network changes",
+                    subtitle = stringResource(R.string.settings_wifi_only_subtitle),
                     isChecked = state.isWifiOnly,
                     onCheckedChange = { viewModel.updateWifiOnly(it) }
                 )
@@ -208,7 +208,7 @@ fun SettingsScreen(
                 SwitchSettingsItem(
                     icon = Icons.Default.Nightlight,
                     title = stringResource(R.string.settings_dark_theme),
-                    subtitle = "SalviaBrowxer ships a dark identity only",
+                    subtitle = stringResource(R.string.settings_dark_theme_subtitle),
                     isChecked = state.isDarkTheme,
                     onCheckedChange = { viewModel.updateDarkTheme(it) }
                 )
@@ -216,14 +216,14 @@ fun SettingsScreen(
                 SettingsItem(
                     icon = Icons.Default.Settings,
                     title = stringResource(R.string.settings_floating_button_size),
-                    subtitle = "${state.floatingButtonSize} dp",
+                    subtitle = stringResource(R.string.settings_floating_button_size_subtitle, state.floatingButtonSize),
                     onClick = { dialog = SettingsDialog.ButtonSize }
                 )
 
                 SettingsItem(
                     icon = Icons.Default.Settings,
                     title = stringResource(R.string.settings_floating_button_position),
-                    subtitle = "Drag the floating button anywhere on the page",
+                    subtitle = stringResource(R.string.settings_floating_button_position_subtitle),
                     onClick = { }
                 )
 
@@ -299,12 +299,22 @@ fun SettingsScreen(
             }
         )
 
+        SettingsDialog.DownloadDirectory -> TextEditDialog(
+            title = stringResource(R.string.settings_download_directory),
+            initial = state.downloadDirectory,
+            onDismiss = { dialog = SettingsDialog.None },
+            onConfirm = { directory ->
+                viewModel.updateDownloadDirectory(directory)
+                dialog = SettingsDialog.None
+            }
+        )
+
         SettingsDialog.Downloads -> SliderDialog(
             title = stringResource(R.string.settings_simultaneous_downloads),
             value = state.maxSimultaneousDownloads.toFloat(),
             valueRange = 1f..5f,
             steps = 3,
-            label = "${state.maxSimultaneousDownloads} at a time",
+            label = stringResource(R.string.settings_simultaneous_downloads_subtitle, state.maxSimultaneousDownloads),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { value ->
                 viewModel.updateMaxSimultaneousDownloads(value.toInt())
@@ -317,7 +327,7 @@ fun SettingsScreen(
             value = state.floatingButtonSize.toFloat(),
             valueRange = 40f..72f,
             steps = 0,
-            label = "${state.floatingButtonSize} dp",
+            label = stringResource(R.string.settings_floating_button_size_subtitle, state.floatingButtonSize),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { value ->
                 viewModel.updateFloatingButtonSize(value.toInt())
@@ -327,7 +337,7 @@ fun SettingsScreen(
 
         SettingsDialog.ClearData -> ConfirmationDialog(
             title = stringResource(R.string.settings_clear_browsing_data),
-            message = "History, cookies and cached session data will be removed.",
+            message = stringResource(R.string.settings_clear_browsing_data_message),
             confirmLabel = stringResource(R.string.action_clear),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = {

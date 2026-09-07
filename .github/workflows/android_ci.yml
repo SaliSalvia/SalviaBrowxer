@@ -48,6 +48,34 @@ jobs:
       - name: Print Gradle version
         run: ./gradlew --version --no-daemon
 
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-test.log
+
+      - name: Publish test failure
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          log = Path("gradle-test.log")
+          text = log.read_text(errors="replace") if log.exists() else "gradle-test.log missing"
+          errors = [ln for ln in text.splitlines() if "FAILED" in ln or "> Task" in ln and "FAILED" in ln]
+          fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
+          chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
+          Path("gradle-test-failure.txt").write_text(chunk)
+          print("----- GRADLE TEST FAILURE -----")
+          print(chunk)
+          for line in chunk.splitlines()[:80]:
+              safe = line.replace("%", "%25").replace("\r", "")
+              print(f"::error title=Gradle-test::{safe}")
+          PY
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" --body "$(printf 'Gradle unit tests failed:\n\n```\n%s\n```\n' "$(cat gradle-test-failure.txt)")" || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build Debug APK
         run: |
           set -o pipefail

@@ -22,7 +22,6 @@ class HistoryRepositoryImpl @Inject constructor(
 
     override suspend fun deleteAllHistory() = historyDao.deleteAll()
 
-    override suspend fun deleteHistoryOlderThan(timestamp: Long) {
-        // Implement logic to delete old history
-    }
+    override suspend fun deleteHistoryOlderThan(timestamp: Long) =
+        historyDao.deleteOlderThan(timestamp)
 }

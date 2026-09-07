@@ -24,33 +24,16 @@ A fast, modern, and premium native Android browser with intelligent media detect
 - **Coroutines**: Asynchronous programming with Kotlin Coroutines
 - **Room**: Persistence with SQLite
 - **DataStore**: Preferences storage
-- **WorkManager**: Background tasks
 - **OkHttp**: Network requests
 
 ## Modules
 
-- **app**: Main application module
-- **core**: Core functionality
-  - common: Shared utilities
-  - model: Data models
-  - network: Network operations
-  - database: Database access
-  - storage: File storage
-  - testing: Test utilities
-- **feature**: Feature modules
-  - browser: Browser functionality
-  - downloads: Download management
-  - bookmarks: Bookmark management
-  - history: Browsing history
-  - settings: Application settings
-  - player: Media player
-  - home: Home screen
-- **media**: Media handling
-  - detector: Media detection
-  - resolver: Media resolution
-  - extractor: Media extraction
-  - downloader: Download engine
-  - processor: Media processing
+- **app**: Main application module (Compose UI, ViewModels, DI, download service)
+- **core:model**: Shared data models and the single source of truth for media extension/MIME lists
+- **core:database**: Room database and DAOs
+- **media:detector**: DOM/WebView media detection
+- **media:resolver**: Direct media resolution
+- **media:downloader**: OkHttp download engine
 
 ## Getting Started
 

@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
 /** One-shot commands the browser UI has to execute against the [android.webkit.WebView]. */
@@ -69,6 +70,7 @@ data class BrowserUiState(
     val activeDownloadCount: Int = 0,
     val detectedMedia: List<MediaCandidate> = emptyList(),
     val fabPosition: FabPosition = FabPosition(),
+    val floatingButtonSize: Int = 56,
     val qualitySheet: QualitySheetState? = null
 ) {
     val isMediaDetected: Boolean get() = detectedMedia.isNotEmpty()
@@ -100,36 +102,66 @@ class BrowserViewModel @Inject constructor(
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
+    private val initialHomepageHandled = AtomicBoolean(false)
+
     init {
         openTab(url = Constants.DEFAULT_HOMEPAGE, isPrivate = false, navigate = false)
         _uiState.update { it.copy(url = Constants.DEFAULT_HOMEPAGE, addressBarInput = Constants.DEFAULT_HOMEPAGE) }
+        observeSettings()
+        observeDownloadQueue()
+    }
+
+    /**
+     * Live settings stream. The WebView applies these in its Compose `update` block, so a change in
+     * SettingsScreen is reflected without recreating the browser destination.
+     */
+    private fun observeSettings() {
         viewModelScope.launch(Dispatchers.IO) {
-            val homepage = runCatching { settingsDataStore.homepage.first() }
-                .getOrNull()
-                ?.takeIf { it.isNotBlank() }
-                ?: Constants.DEFAULT_HOMEPAGE
-            val engine = runCatching { settingsDataStore.searchEngine.first() }.getOrNull()
-                ?: Constants.DEFAULT_SEARCH_ENGINE
-            val jsEnabled = runCatching { settingsDataStore.isJavaScriptEnabled.first() }.getOrNull() ?: true
-            val cookiesEnabled = runCatching { settingsDataStore.areCookiesEnabled.first() }.getOrNull() ?: true
-            val desktop = runCatching { settingsDataStore.isDesktopSite.first() }.getOrNull() ?: false
-            val fabX = runCatching { settingsDataStore.floatingButtonX.first() }.getOrNull() ?: 0f
-            val fabY = runCatching { settingsDataStore.floatingButtonY.first() }.getOrNull() ?: 0f
-            _uiState.update {
-                it.copy(
-                    homepage = homepage,
-                    searchEngine = engine,
-                    isJavaScriptEnabled = jsEnabled,
-                    areCookiesEnabled = cookiesEnabled,
-                    isDesktopSite = desktop,
-                    fabPosition = FabPosition(fabX, fabY)
-                )
+            launch {
+                settingsDataStore.homepage.collectLatest { value ->
+                    val safe = value.ifBlank { Constants.DEFAULT_HOMEPAGE }
+                    _uiState.update { it.copy(homepage = safe) }
+                    if (initialHomepageHandled.compareAndSet(false, true)) {
+                        if (safe != _uiState.value.url) navigate(safe)
+                    }
+                }
             }
-            if (homepage != _uiState.value.url) {
-                navigate(homepage)
+            launch {
+                settingsDataStore.searchEngine.collectLatest { value ->
+                    _uiState.update { it.copy(searchEngine = value.ifBlank { Constants.DEFAULT_SEARCH_ENGINE }) }
+                }
+            }
+            launch {
+                settingsDataStore.isJavaScriptEnabled.collectLatest { value ->
+                    _uiState.update { it.copy(isJavaScriptEnabled = value) }
+                }
+            }
+            launch {
+                settingsDataStore.areCookiesEnabled.collectLatest { value ->
+                    _uiState.update { it.copy(areCookiesEnabled = value) }
+                }
+            }
+            launch {
+                settingsDataStore.isDesktopSite.collectLatest { value ->
+                    _uiState.update { it.copy(isDesktopSite = value) }
+                }
+            }
+            launch {
+                settingsDataStore.floatingButtonX.collectLatest { value ->
+                    _uiState.update { it.copy(fabPosition = FabPosition(value, it.fabPosition.y)) }
+                }
+            }
+            launch {
+                settingsDataStore.floatingButtonY.collectLatest { value ->
+                    _uiState.update { it.copy(fabPosition = FabPosition(it.fabPosition.x, value)) }
+                }
+            }
+            launch {
+                settingsDataStore.floatingButtonSize.collectLatest { value ->
+                    _uiState.update { it.copy(floatingButtonSize = value.coerceIn(MIN_FLOATING_BUTTON_SIZE, MAX_FLOATING_BUTTON_SIZE)) }
+                }
             }
         }
-        observeDownloadQueue()
     }
 
     /** Keeps the bottom-bar badge in sync with the real download queue. */
@@ -348,7 +380,10 @@ class BrowserViewModel @Inject constructor(
     private fun mergeCandidates(candidates: List<MediaCandidate>) {
         if (candidates.isEmpty()) return
         _uiState.update { state ->
-            val merged = (state.detectedMedia + candidates).distinctBy { it.mediaUrl }
+            val merged = (state.detectedMedia + candidates)
+                .distinctBy { it.mediaUrl }
+                .sortedByDescending { it.confidence }
+                .take(MAX_DETECTED_MEDIA)
             state.copy(detectedMedia = merged)
         }
     }
@@ -563,5 +598,8 @@ class BrowserViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "BrowserViewModel"
+        private const val MIN_FLOATING_BUTTON_SIZE = 40
+        private const val MAX_FLOATING_BUTTON_SIZE = 72
+        private const val MAX_DETECTED_MEDIA = 40
     }
 }

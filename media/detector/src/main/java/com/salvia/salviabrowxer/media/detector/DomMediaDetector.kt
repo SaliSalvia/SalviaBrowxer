@@ -2,6 +2,7 @@ package com.salvia.salviabrowxer.media.detector
 
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
+import com.salvia.salviabrowxer.core.model.MediaFileTypes
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -9,20 +10,13 @@ import org.jsoup.select.Elements
 
 class DomMediaDetector : MediaDetector {
 
-    private val mediaExtensions = listOf(
-        "mp4", "webm", "mov", "avi", "3gp", "m4v", "mkv", "flv",
-        "m3u8", "mpd", "ts",
-        "mp3", "m4a", "aac", "wav"
-    )
+    private val mediaExtensions = MediaFileTypes.PLAYLIST_EXTENSIONS +
+        MediaFileTypes.VIDEO_EXTENSIONS + MediaFileTypes.AUDIO_EXTENSIONS
 
-    private val videoMimeTypes = listOf(
-        "video/mp4", "video/webm", "video/quicktime", "video/3gpp",
-        "application/vnd.apple.mpegurl", "application/x-mpegURL", "application/dash+xml"
-    )
+    private val videoMimeTypes = MediaFileTypes.VIDEO_MIME_TYPES +
+        MediaFileTypes.PLAYLIST_MIME_TYPES
 
-    private val audioMimeTypes = listOf(
-        "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav"
-    )
+    private val audioMimeTypes = MediaFileTypes.AUDIO_MIME_TYPES
 
     override suspend fun detect(pageUrl: String, html: String?): List<MediaCandidate> {
         if (html.isNullOrBlank()) return emptyList()
@@ -163,9 +157,7 @@ class DomMediaDetector : MediaDetector {
         }
     }
 
-    private fun isMediaUrl(url: String): Boolean {
-        return mediaExtensions.any { ext -> url.endsWith(ext, ignoreCase = true) }
-    }
+    private fun isMediaUrl(url: String): Boolean = MediaFileTypes.isMediaUrl(url)
 
     private fun getExtension(url: String): String? {
         val lastDotIndex = url.lastIndexOf('.')

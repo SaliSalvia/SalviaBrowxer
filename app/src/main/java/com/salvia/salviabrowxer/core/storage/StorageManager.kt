@@ -2,6 +2,8 @@ package com.salvia.salviabrowxer.core.storage
 
 import android.content.Context
 import android.os.Environment
+import com.salvia.salviabrowxer.core.model.FileNameSanitizer
+import com.salvia.salviabrowxer.core.model.MediaFileTypes
 import java.io.File
 
 class StorageManager(private val context: Context) {
@@ -41,23 +43,8 @@ class StorageManager(private val context: Context) {
         VIDEO, AUDIO, IMAGE, DOCUMENT
     }
 
-    fun sanitizeFilename(filename: String): String {
-        return filename
-            .replace("[^a-zA-Z0-9._-]".toRegex(), "_")
-            .replace("__+".toRegex(), "_")
-            .replace("^_+".toRegex(), "")
-            .replace("_+$".toRegex(), "")
-    }
+    fun sanitizeFilename(filename: String): String = FileNameSanitizer.sanitize(filename)
 
-    fun getMimeType(filePath: String): String {
-        val extension = filePath.substringAfterLast('.', "").lowercase()
-        return when (extension) {
-            "mp4", "webm", "mov", "avi", "3gp", "m4v" -> "video/*"
-            "mp3", "m4a", "aac", "wav", "flac" -> "audio/*"
-            "jpg", "jpeg", "png", "gif", "webp", "bmp" -> "image/*"
-            "pdf" -> "application/pdf"
-            "apk" -> "application/vnd.android.package-archive"
-            else -> "application/octet-stream"
-        }
-    }
+    fun getMimeType(filePath: String): String =
+        MediaFileTypes.mimeTypeForExtension(filePath.substringAfterLast('.', ""))
 }

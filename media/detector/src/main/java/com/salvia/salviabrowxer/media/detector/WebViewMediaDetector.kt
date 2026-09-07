@@ -4,19 +4,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
+import com.salvia.salviabrowxer.core.model.MediaFileTypes
 
 class WebViewMediaDetector : MediaDetector {
-
-    private val mediaMimeTypes = listOf(
-        "video/mp4", "video/webm", "video/quicktime", "video/3gpp",
-        "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav",
-        "application/vnd.apple.mpegurl", "application/x-mpegURL", "application/dash+xml"
-    )
-
-    private val mediaExtensions = listOf(
-        "mp4", "webm", "mov", "avi", "3gp", "m4v", "m3u8", "mpd",
-        "mp3", "m4a", "aac", "wav"
-    )
 
     override suspend fun detect(pageUrl: String, html: String?): List<MediaCandidate> {
         return emptyList()
@@ -35,8 +25,8 @@ class WebViewMediaDetector : MediaDetector {
                         val candidate = MediaCandidate(
                             pageUrl = view?.url ?: "",
                             mediaUrl = url,
-                            mimeType = mimeType,
-                            extension = getExtension(url),
+                            mimeType = mimeType?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() },
+                            extension = MediaFileTypes.extensionFromUrl(url),
                             source = MediaSource.WEBVIEW,
                             confidence = 0.8f
                         )
@@ -48,18 +38,6 @@ class WebViewMediaDetector : MediaDetector {
         }
     }
 
-    private fun isMediaRequest(url: String, mimeType: String?): Boolean {
-        return (mimeType != null && mediaMimeTypes.any { mimeType.contains(it) }) ||
-                mediaExtensions.any { ext -> url.endsWith(ext, ignoreCase = true) }
-    }
-
-    private fun getExtension(url: String): String? {
-        val lastDotIndex = url.lastIndexOf('.')
-        val lastSlashIndex = url.lastIndexOf('/')
-        return if (lastDotIndex > lastSlashIndex && lastDotIndex < url.length - 1) {
-            url.substring(lastDotIndex + 1).lowercase()
-        } else {
-            null
-        }
-    }
+    private fun isMediaRequest(url: String, mimeType: String?): Boolean =
+        MediaFileTypes.isMediaRequest(url, mimeType)
 }

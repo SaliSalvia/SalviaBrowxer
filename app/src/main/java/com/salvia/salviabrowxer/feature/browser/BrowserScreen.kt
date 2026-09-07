@@ -1,5 +1,6 @@
 package com.salvia.salviabrowxer.feature.browser
 
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -184,7 +185,6 @@ fun BrowserScreen(
                 )
             }
 
-            // Only the 56.dp circle occupies this Box, so page touches keep reaching the WebView.
             FloatingDownloadButton(
                 isMediaDetected = state.isMediaDetected,
                 mediaCount = state.detectedMedia.size,
@@ -198,6 +198,7 @@ fun BrowserScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
+                buttonSize = state.floatingButtonSize.dp,
                 containerSize = pageAreaSize,
                 initialOffset = Offset(state.fabPosition.x, state.fabPosition.y),
                 onOffsetChanged = { offset -> viewModel.saveFabPosition(offset.x, offset.y) }
@@ -240,8 +241,16 @@ fun BrowserScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            webView?.destroy()
+            val view = webView ?: return@onDispose
             webView = null
+            // destroy() must be called on the main thread and never while the WebView is still in
+            // the view hierarchy; detach first so composition removal cannot trigger a crash.
+            runCatching { view.stopLoading() }
+            runCatching {
+                (view.parent as? ViewGroup)?.removeView(view)
+            }
+            runCatching { view.removeAllViews() }
+            runCatching { view.destroy() }
         }
     }
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,10 +27,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +58,7 @@ fun DownloadsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var showClearConfirmation by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collectLatest { message ->
@@ -93,15 +97,11 @@ fun DownloadsScreen(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                IconButton(
-                    onClick = {
-                        when (selectedTabIndex) {
-                            0 -> viewModel.clearAllDownloads()
-                            2 -> viewModel.clearCompletedDownloads()
-                            3 -> viewModel.clearFailedDownloads()
-                        }
+                IconButton(onClick = {
+                    if (itemsForTab(selectedTabIndex, state).isNotEmpty()) {
+                        showClearConfirmation = true
                     }
-                ) {
+                }) {
                     Icon(
                         imageVector = Icons.Default.ClearAll,
                         contentDescription = stringResource(R.string.action_clear),
@@ -137,18 +137,13 @@ fun DownloadsScreen(
                 )
             }
 
-            val items = when (selectedTabIndex) {
-                0 -> state.active
-                1 -> state.queued
-                2 -> state.completed
-                else -> state.failed
-            }
             val emptyMessage = when (selectedTabIndex) {
                 0 -> stringResource(R.string.no_active_downloads)
                 1 -> stringResource(R.string.no_queued_downloads)
                 2 -> stringResource(R.string.no_completed_downloads)
                 else -> stringResource(R.string.no_failed_downloads)
             }
+            val items = itemsForTab(selectedTabIndex, state)
 
             if (items.isEmpty()) {
                 EmptyDownloadsState(
@@ -171,6 +166,59 @@ fun DownloadsScreen(
                 .padding(12.dp)
         )
     }
+
+    if (showClearConfirmation) {
+        val scopeLabel = when (selectedTabIndex) {
+            1 -> stringResource(R.string.download_queue)
+            2 -> stringResource(R.string.download_completed)
+            3 -> stringResource(R.string.download_failed)
+            else -> stringResource(R.string.downloads_title)
+        }
+        val hasItems = itemsForTab(selectedTabIndex, state).isNotEmpty()
+        if (hasItems) {
+            AlertDialog(
+                onDismissRequest = { showClearConfirmation = false },
+                title = { Text(text = stringResource(R.string.settings_clear_browsing_data), color = Gold) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.clear_download_confirmation,
+                            scopeLabel
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        when (selectedTabIndex) {
+                            1 -> viewModel.clearAllDownloads()
+                            2 -> viewModel.clearCompletedDownloads()
+                            3 -> viewModel.clearFailedDownloads()
+                            else -> viewModel.clearAllDownloads()
+                        }
+                        showClearConfirmation = false
+                    }) {
+                        Text(stringResource(R.string.action_clear), color = Gold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearConfirmation = false }) {
+                        Text(stringResource(R.string.action_cancel), color = Gold)
+                    }
+                },
+                containerColor = Surface
+            )
+        }
+    }
+}
+
+private fun itemsForTab(
+    tabIndex: Int,
+    state: DownloadsUiState
+): List<DownloadEntity> = when (tabIndex) {
+    0 -> state.active
+    1 -> state.queued
+    2 -> state.completed
+    else -> state.failed
 }
 
 @Composable

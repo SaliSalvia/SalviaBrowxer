@@ -1,10 +1,11 @@
 package com.salvia.salviabrowxer.core.database.entities
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
-@Entity(tableName = "bookmarks")
+@Entity(tableName = "bookmarks", indices = [Index(value = ["url"], unique = true)])
 data class BookmarkEntity(
     @PrimaryKey
     val id: String = UUID.randomUUID().toString(),

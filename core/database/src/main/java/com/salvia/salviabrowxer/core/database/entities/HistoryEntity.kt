@@ -1,10 +1,11 @@
 package com.salvia.salviabrowxer.core.database.entities
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
-@Entity(tableName = "history")
+@Entity(tableName = "history", indices = [Index(value = ["url"], unique = true)])
 data class HistoryEntity(
     @PrimaryKey
     val id: String = UUID.randomUUID().toString(),

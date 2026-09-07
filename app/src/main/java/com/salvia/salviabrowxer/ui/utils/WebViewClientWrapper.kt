@@ -6,6 +6,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
+import com.salvia.salviabrowxer.core.model.MediaFileTypes
 
 class WebViewClientWrapper(
     private val onPageStarted: (WebView, String?, android.graphics.Bitmap?) -> Unit = { _, _, _ -> },
@@ -29,11 +30,13 @@ class WebViewClientWrapper(
     ): WebResourceResponse? {
         request?.let { req ->
             val url = req.url.toString()
-            if (isMediaUrl(url)) {
+            val mimeType = req.requestHeaders["Accept"]
+            if (isMediaRequest(url, mimeType)) {
                 val candidate = MediaCandidate(
                     pageUrl = view?.url ?: "",
                     mediaUrl = url,
-                    mimeType = req.requestHeaders["Accept"],
+                    mimeType = mimeType?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() },
+                    extension = MediaFileTypes.extensionFromUrl(url),
                     source = MediaSource.WEBVIEW,
                     confidence = 0.8f
                 )
@@ -43,13 +46,6 @@ class WebViewClientWrapper(
         return super.shouldInterceptRequest(view, request)
     }
 
-    private fun isMediaUrl(url: String): Boolean {
-        val mediaExtensions = listOf(
-            "mp4", "webm", "mov", "avi", "3gp", "m4v", "mkv", "flv",
-            "m3u8", "mpd", "ts",
-            "mp3", "m4a", "aac", "wav", "flac", "ogg", "wma",
-            "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"
-        )
-        return mediaExtensions.any { ext -> url.endsWith(".$ext", ignoreCase = true) }
-    }
+    private fun isMediaRequest(url: String, mimeType: String?): Boolean =
+        MediaFileTypes.isMediaRequest(url, mimeType)
 }

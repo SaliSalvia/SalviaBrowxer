@@ -29,6 +29,9 @@ interface HistoryDao {
     @Query("DELETE FROM history WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("DELETE FROM history WHERE visitedAt < :timestamp")
+    suspend fun deleteOlderThan(timestamp: Long)
+
     @Query("DELETE FROM history")
     suspend fun deleteAll()
 }

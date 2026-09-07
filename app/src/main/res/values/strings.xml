@@ -34,6 +34,7 @@
     <string name="download_open">Open</string>
     <string name="download_share">Share</string>
     <string name="download_delete">Delete</string>
+    <string name="clear_download_confirmation">Clear all %1$s from the download queue?</string>
     <string name="no_active_downloads">No active downloads</string>
     <string name="no_queued_downloads">No queued downloads</string>
     <string name="no_completed_downloads">No completed downloads</string>
@@ -69,6 +70,17 @@
     <string name="settings_clear_history">Clear History</string>
     <string name="settings_clear_cookies">Clear Cookies</string>
     <string name="settings_clear_cache">Clear Cache</string>
+
+    <string name="settings_desktop_site_subtitle">Use the desktop user agent</string>
+    <string name="settings_javascript_subtitle">Pages can run scripts and media can be detected</string>
+    <string name="settings_cookies_subtitle">Sites can store cookies on this device</string>
+    <string name="settings_clear_browsing_data_subtitle">Remove history, cookies and cached session data</string>
+    <string name="settings_simultaneous_downloads_subtitle">%1$d at a time</string>
+    <string name="settings_wifi_only_subtitle">Pause transfers when the network changes</string>
+    <string name="settings_dark_theme_subtitle">SalviaBrowxer ships a dark identity only</string>
+    <string name="settings_floating_button_size_subtitle">%1$d dp</string>
+    <string name="settings_floating_button_position_subtitle">Drag the floating button anywhere on the page</string>
+    <string name="settings_clear_browsing_data_message">History, cookies and cached session data will be removed.</string>
 
     <!-- Errors -->
     <string name="error_connection_unavailable">Connection unavailable</string>

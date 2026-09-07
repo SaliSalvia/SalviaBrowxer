@@ -1,8 +1,6 @@
 package com.salvia.salviabrowxer.core.database
 
-import android.content.Context
 import androidx.room.Database
-import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.salvia.salviabrowxer.core.database.dao.BookmarkDao
@@ -13,13 +11,17 @@ import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 
+/**
+ * Room database. A single [com.salvia.salviabrowxer.di.AppModule] provider is responsible for
+ * creating it so there is exactly one instance in the process.
+ */
 @Database(
     entities = [
         DownloadEntity::class,
         BookmarkEntity::class,
         HistoryEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,23 +30,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun historyDao(): HistoryDao
-
-    companion object {
-        @Volatile
-        private var INSTANCE: AppDatabase? = null
-
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "salviabrowxer_db"
-                ).fallbackToDestructiveMigration().build()
-                INSTANCE = instance
-                instance
-            }
-        }
-    }
 }
 
 class Converters {

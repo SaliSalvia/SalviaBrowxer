@@ -74,16 +74,11 @@ kapt {
 }
 
 dependencies {
-    implementation(project(":core:common"))
     implementation(project(":core:model"))
-    implementation(project(":core:network"))
     implementation(project(":core:database"))
-    implementation(project(":core:storage"))
     implementation(project(":media:detector"))
     implementation(project(":media:resolver"))
-    implementation(project(":media:extractor"))
     implementation(project(":media:downloader"))
-    implementation(project(":media:processor"))
 
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
@@ -100,14 +95,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    implementation("androidx.webkit:webkit:1.10.0")
-
     implementation("androidx.room:room-runtime:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
 
     implementation("androidx.datastore:datastore-preferences:1.0.0")
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("io.coil-kt:coil-compose:2.5.0")
@@ -117,8 +109,6 @@ dependencies {
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
     implementation("org.jsoup:jsoup:1.17.2")
-    implementation("androidx.media3:media3-exoplayer:1.2.1")
-    implementation("androidx.media3:media3-ui:1.2.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.arch.core:core-testing:2.2.0")

@@ -18,8 +18,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -60,6 +62,7 @@ class BrowserViewModelTest {
         every { settingsDataStore.floatingButtonY } returns flowOf(0f)
         every { downloadRepository.getDownloadsByStates(any()) } returns
             flowOf(emptyList<DownloadEntity>())
+        every { settingsDataStore.floatingButtonSize } returns flowOf(56)
 
         viewModel = BrowserViewModel(
             historyRepository = historyRepository,
@@ -70,6 +73,11 @@ class BrowserViewModelTest {
             mediaResolver = mediaResolver,
             context = context
         )
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
     }
 
     @Test

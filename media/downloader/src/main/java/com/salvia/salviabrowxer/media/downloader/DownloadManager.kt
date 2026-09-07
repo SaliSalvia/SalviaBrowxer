@@ -1,6 +1,8 @@
 package com.salvia.salviabrowxer.media.downloader
 
 import android.content.Context
+import com.salvia.salviabrowxer.core.model.FileNameSanitizer
+import com.salvia.salviabrowxer.core.model.MediaFileTypes
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -259,46 +261,12 @@ class DownloadManager(
         const val BUFFER_SIZE = 8 * 1024
         const val PROGRESS_THROTTLE_MILLIS = 300L
 
-        fun sanitizeFilename(filename: String): String {
-            val cleaned = filename
-                .replace("\\", "_")
-                .replace("/", "_")
-                .replace(":", "_")
-                .replace("*", "_")
-                .replace("?", "_")
-                .replace("\"", "'")
-                .replace("<", "_")
-                .replace(">", "_")
-                .replace("|", "_")
-                .trim()
-                .take(180)
-            return cleaned.ifBlank { "download" }
-        }
+        fun sanitizeFilename(filename: String): String = FileNameSanitizer.sanitize(filename)
 
-        fun generateFilename(title: String?, extension: String?): String {
-            val baseName = title?.takeIf { it.isNotBlank() } ?: "download"
-            val sanitized = sanitizeFilename(baseName)
-                .replace(Regex("[^A-Za-z0-9 ._()-]"), "_")
-                .replace(Regex("\\s+"), "_")
-                .replace(Regex("_+"), "_")
-                .trim('_')
-                .ifBlank { "download" }
-            val ext = extension?.takeIf { it.isNotBlank() }?.lowercase()?.trim('.')
-            return if (ext != null) "$sanitized.$ext" else sanitized
-        }
+        fun generateFilename(title: String?, extension: String?): String =
+            FileNameSanitizer.generateFilename(title, extension)
 
-        fun extensionFromUrl(url: String): String? {
-            val path = url.substringBefore('?').substringBefore('#')
-            val lastDotIndex = path.lastIndexOf('.')
-            val lastSlashIndex = path.lastIndexOf('/')
-            return if (lastDotIndex > lastSlashIndex && lastDotIndex in 0 until path.length - 1) {
-                path.substring(lastDotIndex + 1)
-                    .lowercase()
-                    .takeIf { it.length <= 5 && it.all { char -> char.isLetterOrDigit() } }
-            } else {
-                null
-            }
-        }
+        fun extensionFromUrl(url: String): String? = MediaFileTypes.extensionFromUrl(url)
 
         fun nameFromUrl(url: String): String {
             val tail = url.substringBefore('?').substringBefore('#').trimEnd('/')

@@ -25,7 +25,7 @@ class DirectMediaResolverTest {
     @Test
     fun `resolve returns MediaInfo with correct values`() = runTest {
         val url = "https://example.com/video.mp4"
-        val mockResponse = mockk<Response>()
+        val mockResponse = mockk<Response>(relaxed = true)
         val mockRequest = Request.Builder().url(url).build()
 
         coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
@@ -56,7 +56,7 @@ class DirectMediaResolverTest {
     @Test
     fun `resolve extracts filename from Content-Disposition`() = runTest {
         val url = "https://example.com/download"
-        val mockResponse = mockk<Response>()
+        val mockResponse = mockk<Response>(relaxed = true)
         val mockRequest = Request.Builder().url(url).build()
 
         coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
@@ -75,9 +75,30 @@ class DirectMediaResolverTest {
     }
 
     @Test
+    fun `resolve extracts RFC 5987 utf-8 filename`() = runTest {
+        val url = "https://example.com/download"
+        val mockResponse = mockk<Response>(relaxed = true)
+        val mockRequest = Request.Builder().url(url).build()
+
+        coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
+        coEvery { mockOkHttpClient.newCall(any()).execute() } returns mockResponse
+        coEvery { mockResponse.isSuccessful } returns true
+        coEvery { mockResponse.body } returns mockk()
+        coEvery { mockResponse.header("Content-Type") } returns "video/mp4"
+        coEvery {
+            mockResponse.header("Content-Disposition")
+        } returns "attachment; filename*=UTF-8''%D9%88%DB%8C%D8%AF%DB%8C%D9%88.mp4"
+
+        val result = resolver.resolve(url)
+
+        assertEquals("ویدیو.mp4", result.title)
+        assertEquals("mp4", result.formats[0].extension)
+    }
+
+    @Test
     fun `resolve handles audio files`() = runTest {
         val url = "https://example.com/audio.mp3"
-        val mockResponse = mockk<Response>()
+        val mockResponse = mockk<Response>(relaxed = true)
         val mockRequest = Request.Builder().url(url).build()
 
         coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
