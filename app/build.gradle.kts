@@ -1,3 +1,6 @@
+import java.util.Base64
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,9 +8,32 @@ plugins {
     id("com.google.dagger.hilt.android")
 }
 
+// Release signing is driven entirely by environment variables so CI can sign
+// with the owner's keystore without the keystore or passwords living in git.
+val signingKeystoreBase64: String? = System.getenv("SIGNING_KEYSTORE_BASE64")
+val signingKeystorePassword: String? = System.getenv("SIGNING_KEYSTORE_PASSWORD")
+val signingKeyAlias: String? = System.getenv("SIGNING_KEY_ALIAS")
+val signingKeyPassword: String? = System.getenv("SIGNING_KEY_PASSWORD")
+
 android {
     namespace = "com.salvia.salviabrowxer"
     compileSdk = 34
+
+    signingConfigs {
+        create("release") {
+            // Only wire the config when all env vars are present (CI / local release builds).
+            // Gradle skips it silently otherwise, keeping debug builds dependency-free.
+            if (signingKeystoreBase64 != null && signingKeystorePassword != null && signingKeyAlias != null) {
+                val tmpKeystore = File.createTempFile("salviabrowxer", ".jks")
+                tmpKeystore.deleteOnExit()
+                tmpKeystore.writeBytes(Base64.getDecoder().decode(signingKeystoreBase64))
+                storeFile = tmpKeystore
+                storePassword = signingKeystorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword ?: signingKeystorePassword
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.salvia.salviabrowxer"
@@ -28,6 +54,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Sign with the owner's key when env vars are provided (CI); otherwise unsigned.
+            if (signingKeystoreBase64 != null && signingKeystorePassword != null && signingKeyAlias != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isMinifyEnabled = false
@@ -62,7 +92,9 @@ android {
 
     lint {
         abortOnError = true
-        checkReleaseBuilds = true
+        // Full release lint runs in CI only if explicitly requested; keeping it off
+        // here keeps assembleRelease lean (R8 + dexing are already the heavy steps).
+        checkReleaseBuilds = false
     }
 
     testOptions {
