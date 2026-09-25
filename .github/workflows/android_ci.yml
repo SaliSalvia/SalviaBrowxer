@@ -58,6 +58,29 @@ jobs:
           set -o pipefail
           ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
 
+      - name: Diagnose signing secrets (prints no secret values)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          echo "keystore secret length : ${#SIGNING_KEYSTORE_BASE64} chars"
+          echo "configured alias       : ${SIGNING_KEY_ALIAS:-<empty>}"
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | tr -d ' \t\r' | base64 -d > /tmp/ks.bin || echo "base64 -d FAILED (payload is not valid base64)"
+          echo "decoded size           : $(stat -c%s /tmp/ks.bin 2>/dev/null || echo 0) bytes"
+          echo "decoded magic bytes    : $(head -c 8 /tmp/ks.bin | xxd -p 2>/dev/null)"
+          file /tmp/ks.bin || true
+          echo "--- keytool -list (store password) ---"
+          keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" 2>&1 | head -20 || true
+          echo "--- keystore entries ---"
+          keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" -v 2>&1 \
+            | grep -Ei 'Alias name|Entry type|Owner:|error|Exception' | head -20 || true
+          echo "NOTE: a keystore must be the base64 of the BINARY .jks/.p12 file itself,
+          not of an already-base64 text file, and not of a .cer/.pem certificate."
+
       - name: Build Release APK (R8 + shrink; signed only when owner secrets exist)
         # Always runs: even unsigned it exercises the R8/proguard path, so a
         # release-only breakage shows up on ordinary pushes instead of on the
@@ -76,8 +99,11 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          log = Path("gradle-build.log")
-          text = log.read_text(errors="replace") if log.exists() else "gradle-build.log missing"
+          # Report whichever Gradle invocation actually failed (release is built
+          # after debug now, so its log is the more likely culprit).
+          candidates = [Path("gradle-release.log"), Path("gradle-build.log")]
+          log = next((p for p in candidates if p.exists() and "FAILURE:" in p.read_text(errors="replace")), candidates[-1])
+          text = log.read_text(errors="replace") if log.exists() else "no gradle log found"
           errors = [ln for ln in text.splitlines() if ln.startswith("e:") or "Unresolved reference" in ln or "error: " in ln]
           fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
           chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
