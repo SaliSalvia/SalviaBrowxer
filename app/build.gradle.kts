@@ -15,6 +15,15 @@ val signingKeystorePassword: String? = System.getenv("SIGNING_KEYSTORE_PASSWORD"
 val signingKeyAlias: String? = System.getenv("SIGNING_KEY_ALIAS")
 val signingKeyPassword: String? = System.getenv("SIGNING_KEY_PASSWORD")
 
+// The keystore secret is pasted as base64 and is very often line-wrapped (termux
+// `base64` wraps at 76 columns), so decode leniently: strip whitespace and ignore
+// any character outside the base64 alphabet instead of failing the whole build.
+val decodedSigningKeystore: ByteArray? = signingKeystoreBase64
+    ?.filterNot { it.isWhitespace() }
+    ?.takeIf { it.isNotEmpty() }
+    ?.let { raw -> runCatching { Base64.getMimeDecoder().decode(raw) }.getOrNull() }
+    ?.takeIf { it.size > 512 }
+
 android {
     namespace = "com.salvia.salviabrowxer"
     compileSdk = 34
@@ -23,10 +32,10 @@ android {
         create("release") {
             // Only wire the config when all env vars are present (CI / local release builds).
             // Gradle skips it silently otherwise, keeping debug builds dependency-free.
-            if (signingKeystoreBase64 != null && signingKeystorePassword != null && signingKeyAlias != null) {
+            if (decodedSigningKeystore != null && signingKeystorePassword != null && signingKeyAlias != null) {
                 val tmpKeystore = File.createTempFile("salviabrowxer", ".jks")
                 tmpKeystore.deleteOnExit()
-                tmpKeystore.writeBytes(Base64.getDecoder().decode(signingKeystoreBase64))
+                tmpKeystore.writeBytes(decodedSigningKeystore)
                 storeFile = tmpKeystore
                 storePassword = signingKeystorePassword
                 keyAlias = signingKeyAlias
@@ -55,7 +64,7 @@ android {
                 "proguard-rules.pro"
             )
             // Sign with the owner's key when env vars are provided (CI); otherwise unsigned.
-            if (signingKeystoreBase64 != null && signingKeystorePassword != null && signingKeyAlias != null) {
+            if (decodedSigningKeystore != null && signingKeystorePassword != null && signingKeyAlias != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }

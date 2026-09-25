@@ -58,8 +58,33 @@ jobs:
           set -o pipefail
           ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
 
-      - name: Build Signed Release APK (owner keystore via secrets)
+      - name: Diagnose signing secrets (prints no secret values)
         if: env.HAS_SIGNING == 'true'
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          echo "keystore secret length : ${#SIGNING_KEYSTORE_BASE64} chars"
+          echo "configured alias       : ${SIGNING_KEY_ALIAS:-<empty>}"
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | tr -d ' \t\r' | base64 -d > /tmp/ks.bin || echo "base64 -d FAILED (payload is not valid base64)"
+          echo "decoded size           : $(stat -c%s /tmp/ks.bin 2>/dev/null || echo 0) bytes"
+          echo "decoded magic bytes    : $(head -c 8 /tmp/ks.bin | xxd -p 2>/dev/null)"
+          file /tmp/ks.bin || true
+          echo "--- keytool -list (store password) ---"
+          keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" 2>&1 | head -20 || true
+          echo "--- keystore entries ---"
+          keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" -v 2>&1 \
+            | grep -Ei 'Alias name|Entry type|Owner:|error|Exception' | head -20 || true
+          echo "NOTE: a keystore must be the base64 of the BINARY .jks/.p12 file itself,
+          not of an already-base64 text file, and not of a .cer/.pem certificate."
+
+      - name: Build Release APK (R8 + shrink; signed only when owner secrets exist)
+        # Always runs: even unsigned it exercises the R8/proguard path, so a
+        # release-only breakage shows up on ordinary pushes instead of on the
+        # owner's first signed build.
         env:
           SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
@@ -74,8 +99,11 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          log = Path("gradle-build.log")
-          text = log.read_text(errors="replace") if log.exists() else "gradle-build.log missing"
+          # Report whichever Gradle invocation actually failed (release is built
+          # after debug now, so its log is the more likely culprit).
+          candidates = [Path("gradle-release.log"), Path("gradle-build.log")]
+          log = next((p for p in candidates if p.exists() and "FAILURE:" in p.read_text(errors="replace")), candidates[-1])
+          text = log.read_text(errors="replace") if log.exists() else "no gradle log found"
           errors = [ln for ln in text.splitlines() if ln.startswith("e:") or "Unresolved reference" in ln or "error: " in ln]
           fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
           chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
@@ -107,12 +135,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload Signed Release APK artifact
-        if: success() && env.HAS_SIGNING == 'true'
+      - name: Verify release APK output
+        if: success()
+        run: |
+          ls -l app/build/outputs/apk/release/
+          # Signed builds produce app-release.apk, unsigned ones app-release-unsigned.apk.
+          ls app/build/outputs/apk/release/*.apk > /dev/null || { echo "release APK was not produced"; exit 1; }
+          if [ "$HAS_SIGNING" = "true" ]; then
+            "$ANDROID_HOME"/build-tools/34.0.0/apksigner verify --print-certs \
+              app/build/outputs/apk/release/app-release.apk | head -20
+          fi
+
+      - name: Upload Release APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: salviabrowxer-signed-release-apk
-          path: app/build/outputs/apk/release/*-release.apk
+          name: salviabrowxer-${{ env.HAS_SIGNING == 'true' && 'signed-release-apk' || 'unsigned-release-apk' }}
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -123,8 +162,12 @@ jobs:
           VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
           echo "version=${VERSION_NAME:-1.0}" >> "$GITHUB_OUTPUT"
 
-      - name: Publish APK to GitHub Release (auto-cleanup old pre-releases)
+      - name: Publish APK to GitHub Release (best effort)
         if: success()
+        # This repository restricts tag/ref creation and keeps published releases
+        # immutable, so publishing can legitimately fail. The run artifacts are
+        # the primary delivery, so a publishing problem must not fail the build.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
@@ -148,7 +191,7 @@ jobs:
           # Delete previous release with the same tag (keeps only the latest APK available)
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
 
-          gh release create "$TAG" "$APK_PATH" \
+          if gh release create "$TAG" "$APK_PATH" \
             --title "$TITLE" \
             --notes "Automated build from commit ${{ github.sha }}.
 
@@ -158,4 +201,10 @@ jobs:
           - 🔖 **Commit**: ${{ github.sha }}
 
           > Automated build. See commit history for source changes." \
-            $PRERELEASE_FLAG
+            $PRERELEASE_FLAG; then
+            echo "Published release $TAG"
+          else
+            echo "::warning::Could not create release $TAG (tag creation may be restricted). Trying to replace the asset on the existing release."
+            gh release upload "$TAG" "$APK_PATH" --clobber \
+              || echo "::warning::Release publishing unavailable. Download the APK from the run artifacts instead: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
