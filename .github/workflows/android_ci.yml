@@ -58,8 +58,10 @@ jobs:
           set -o pipefail
           ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
 
-      - name: Build Signed Release APK (owner keystore via secrets)
-        if: env.HAS_SIGNING == 'true'
+      - name: Build Release APK (R8 + shrink; signed only when owner secrets exist)
+        # Always runs: even unsigned it exercises the R8/proguard path, so a
+        # release-only breakage shows up on ordinary pushes instead of on the
+        # owner's first signed build.
         env:
           SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
@@ -107,12 +109,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload Signed Release APK artifact
-        if: success() && env.HAS_SIGNING == 'true'
+      - name: Verify release APK output
+        if: success()
+        run: |
+          ls -l app/build/outputs/apk/release/
+          # Signed builds produce app-release.apk, unsigned ones app-release-unsigned.apk.
+          ls app/build/outputs/apk/release/*.apk > /dev/null || { echo "release APK was not produced"; exit 1; }
+          if [ "$HAS_SIGNING" = "true" ]; then
+            "$ANDROID_HOME"/build-tools/34.0.0/apksigner verify --print-certs \
+              app/build/outputs/apk/release/app-release.apk | head -20
+          fi
+
+      - name: Upload Release APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: salviabrowxer-signed-release-apk
-          path: app/build/outputs/apk/release/*-release.apk
+          name: salviabrowxer-${{ env.HAS_SIGNING == 'true' && 'signed-release-apk' || 'unsigned-release-apk' }}
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
 
