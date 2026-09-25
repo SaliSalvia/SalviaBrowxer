@@ -162,8 +162,12 @@ jobs:
           VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
           echo "version=${VERSION_NAME:-1.0}" >> "$GITHUB_OUTPUT"
 
-      - name: Publish APK to GitHub Release (auto-cleanup old pre-releases)
+      - name: Publish APK to GitHub Release (best effort)
         if: success()
+        # This repository restricts tag/ref creation and keeps published releases
+        # immutable, so publishing can legitimately fail. The run artifacts are
+        # the primary delivery, so a publishing problem must not fail the build.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
@@ -187,7 +191,7 @@ jobs:
           # Delete previous release with the same tag (keeps only the latest APK available)
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
 
-          gh release create "$TAG" "$APK_PATH" \
+          if gh release create "$TAG" "$APK_PATH" \
             --title "$TITLE" \
             --notes "Automated build from commit ${{ github.sha }}.
 
@@ -197,4 +201,10 @@ jobs:
           - 🔖 **Commit**: ${{ github.sha }}
 
           > Automated build. See commit history for source changes." \
-            $PRERELEASE_FLAG
+            $PRERELEASE_FLAG; then
+            echo "Published release $TAG"
+          else
+            echo "::warning::Could not create release $TAG (tag creation may be restricted). Trying to replace the asset on the existing release."
+            gh release upload "$TAG" "$APK_PATH" --clobber \
+              || echo "::warning::Release publishing unavailable. Download the APK from the run artifacts instead: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
