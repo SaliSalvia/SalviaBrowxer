@@ -7,30 +7,34 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
+
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,8 +50,12 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.ui.theme.Gold
-import com.salvia.salviabrowxer.ui.theme.Surface
+import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
+import com.salvia.salviabrowxer.ui.theme.PearlWhite
+import com.salvia.salviabrowxer.ui.theme.SilverMid
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @Composable
 fun MediaPlayerScreen(
@@ -56,214 +64,171 @@ fun MediaPlayerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var exoPlayer: ExoPlayer? by remember { mutableStateOf(null) }
+    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var isFullscreen by remember { mutableStateOf(false) }
-    var volume by remember { mutableStateOf(1f) }
-    var currentPosition by remember { mutableStateOf(0L) }
-    var duration by remember { mutableStateOf(0L) }
+    var volume by remember { mutableFloatStateOf(1f) }
+    var currentPosition by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var isUserSeeking by remember { mutableStateOf(false) }
+    var seekPreview by remember { mutableLongStateOf(0L) }
 
-    DisposableEffect(Unit) {
-        exoPlayer = ExoPlayer.Builder(context).build().apply {
-            val mediaItem = MediaItem.fromUri(Uri.parse(mediaUrl))
-            setMediaItem(mediaItem)
+    DisposableEffect(mediaUrl) {
+        val player = ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(Uri.parse(mediaUrl)))
             prepare()
             playWhenReady = true
-
             addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(playing: Boolean) {
-                    isPlaying = playing
-                }
-
+                override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
                 override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_READY) {
-                        duration = this@apply.duration
-                    }
+                    if (state == Player.STATE_READY) duration = this@apply.duration.coerceAtLeast(0L)
+                    if (state == Player.STATE_ENDED) isPlaying = false
                 }
             })
         }
-
+        exoPlayer = player
         onDispose {
-            exoPlayer?.release()
+            player.release()
             exoPlayer = null
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Surface)
-    ) {
+    // Poll position at 5 Hz (200 ms) — cheap, no DB, only compose state. Throttled to avoid 60fps churn.
+    LaunchedEffect(exoPlayer, isPlaying, isUserSeeking) {
+        while (isActive) {
+            if (!isUserSeeking) {
+                exoPlayer?.let { p ->
+                    currentPosition = p.currentPosition.coerceAtLeast(0L)
+                    if (duration <= 0L) duration = p.duration.coerceAtLeast(0L)
+                }
+            }
+            delay(if (isPlaying) 200 else 500)
+        }
+    }
+
+    val sliderPosition = if (isUserSeeking) seekPreview.toFloat() else currentPosition.toFloat()
+    val sliderRange = 0f..(duration.coerceAtLeast(1L).toFloat())
+
+    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = stringResource(R.string.go_back),
-                    tint = Gold
-                )
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
             }
-
-            Spacer(modifier = Modifier.padding(8.dp))
-
+            Spacer(Modifier.size(8.dp))
             Text(
-                text = mediaTitle,
+                text = mediaTitle.ifBlank { mediaUrl.substringAfterLast('/').substringBefore('?').ifBlank { "Media" } },
                 style = MaterialTheme.typography.titleMedium,
-                color = Gold,
-                maxLines = 1
+                color = PearlWhite,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
             )
-
-            Spacer(modifier = Modifier.weight(1f))
-
             IconButton(onClick = { isFullscreen = !isFullscreen }) {
                 Icon(
-                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen",
-                    tint = Gold
+                    if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                    if (isFullscreen) "Exit fullscreen" else "Fullscreen",
+                    tint = PearlWhite
                 )
             }
         }
 
         Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .background(Color.Black),
+            modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
             exoPlayer?.let { player ->
+                // Key on player instance so recompositions don't recreate the view unnecessarily
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             this.player = player
                             useController = false
+                            setBackgroundColor(android.graphics.Color.BLACK)
                         }
                     },
+                    update = { view -> if (view.player !== player) view.player = player },
                     modifier = Modifier.fillMaxSize()
                 )
             }
-
             if (!isPlaying) {
                 IconButton(
-                    onClick = {
-                        exoPlayer?.play()
-                        isPlaying = true
-                    },
-                    modifier = Modifier.size(64.dp)
+                    onClick = { exoPlayer?.play(); isPlaying = true },
+                    modifier = Modifier.size(72.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(48.dp)
-                    )
+                    Icon(Icons.Default.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(56.dp))
                 }
             }
         }
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().background(MatteCharcoal).padding(16.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
             Slider(
-                value = currentPosition.toFloat(),
-                onValueChange = { newValue ->
-                    currentPosition = newValue.toLong()
-                    exoPlayer?.seekTo(newValue.toLong())
+                value = sliderPosition.coerceIn(sliderRange),
+                onValueChange = { v ->
+                    isUserSeeking = true
+                    seekPreview = v.toLong()
                 },
-                valueRange = 0f..duration.toFloat(),
-                colors = androidx.compose.material3.SliderDefaults.colors(
-                    thumbColor = Gold,
-                    activeTrackColor = Gold,
-                    inactiveTrackColor = Gold.copy(alpha = 0.3f)
+                onValueChangeFinished = {
+                    exoPlayer?.seekTo(seekPreview)
+                    currentPosition = seekPreview
+                    isUserSeeking = false
+                },
+                valueRange = sliderRange,
+                colors = SliderDefaults.colors(
+                    thumbColor = AuroraTeal,
+                    activeTrackColor = AuroraTeal,
+                    inactiveTrackColor = SilverMid.copy(alpha = 0.22f),
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent
                 )
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = formatDuration(currentPosition),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gold
-                )
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { /* Previous */ }) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous",
-                            tint = Gold
-                        )
-                    }
-
-                    IconButton(onClick = {
-                        if (isPlaying) {
-                            exoPlayer?.pause()
-                        } else {
-                            exoPlayer?.play()
-                        }
-                        isPlaying = !isPlaying
-                    }) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Gold,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-
-                    IconButton(onClick = { /* Next */ }) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next",
-                            tint = Gold
-                        )
-                    }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(formatDuration(if (isUserSeeking) seekPreview else currentPosition), style = MaterialTheme.typography.bodySmall, color = SilverMid)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { exoPlayer?.seekTo((currentPosition - 10_000).coerceAtLeast(0L)) }) {
+                    Icon(Icons.Default.SkipPrevious, "Back 10s", tint = PearlWhite)
                 }
-
-                Spacer(modifier = Modifier.weight(1f))
-
+                IconButton(onClick = {
+                    if (isPlaying) exoPlayer?.pause() else exoPlayer?.play()
+                }) {
+                    Icon(
+                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        if (isPlaying) "Pause" else "Play",
+                        tint = PearlWhite,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                IconButton(onClick = { exoPlayer?.seekTo(currentPosition + 10_000) }) {
+                    Icon(Icons.Default.SkipNext, "Forward 10s", tint = PearlWhite)
+                }
+                Spacer(Modifier.weight(1f))
                 IconButton(onClick = {
                     volume = if (volume > 0f) 0f else 1f
                     exoPlayer?.volume = volume
                 }) {
                     Icon(
-                        imageVector = if (volume > 0f) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                        contentDescription = if (volume > 0f) "Mute" else "Unmute",
-                        tint = Gold
+                        if (volume > 0f) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                        if (volume > 0f) "Mute" else "Unmute",
+                        tint = SilverMid
                     )
                 }
-
-                Text(
-                    text = formatDuration(duration),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gold
-                )
+                Text(formatDuration(duration), style = MaterialTheme.typography.bodySmall, color = SilverMid, modifier = Modifier.padding(start = 4.dp))
             }
         }
     }
 }
 
 private fun formatDuration(milliseconds: Long): String {
-    val seconds = milliseconds / 1000
-    val minutes = seconds / 60
-    val hours = minutes / 60
+    val s = (milliseconds.coerceAtLeast(0L) / 1000)
+    val m = s / 60; val h = m / 60
     return when {
-        hours > 0 -> String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60)
-        minutes > 0 -> String.format("%02d:%02d", minutes, seconds % 60)
-        else -> String.format("00:%02d", seconds)
+        h > 0 -> String.format("%02d:%02d:%02d", h, m % 60, s % 60)
+        m > 0 -> String.format("%02d:%02d", m, s % 60)
+        else -> String.format("00:%02d", s)
     }
 }

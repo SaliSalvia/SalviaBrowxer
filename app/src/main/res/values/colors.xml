@@ -1,39 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Primary Palette -->
-    <color name="matte_charcoal">#121214</color>
-    <color name="deep_charcoal">#1B1B1F</color>
-    <color name="gold">#D4AF37</color>
-    <color name="violet">#8B5CF6</color>
-    <color name="electric_indigo">#4F46E5</color>
+    <!-- Charcoal -->
+    <color name="matte_charcoal">#0A0A0C</color>
+    <color name="deep_charcoal">#141418</color>
+    <color name="charcoal_surface">#1C1C20</color>
+    <color name="charcoal_elevated">#26262C</color>
+    <color name="charcoal_border">#2E2E34</color>
 
-    <!-- Material 3 Theme Colors -->
-    <color name="primary">@color/gold</color>
-    <color name="primary_container">@color/deep_charcoal</color>
+    <!-- Pearl White (7-color iridescent) -->
+    <color name="pearl_white">#F8F7F4</color>
+    <color name="pearl_warm">#F1EFE9</color>
+    <color name="pearl_pink">#FFE4EC</color>
+    <color name="pearl_teal">#D6FFF8</color>
+    <color name="pearl_lavender">#EDE9FF</color>
+    <color name="pearl_blue">#E0F2FF</color>
+
+    <!-- Silver Metallic -->
+    <color name="silver_light">#E8EAED</color>
+    <color name="silver_mid">#C0C5CE</color>
+    <color name="silver_deep">#9AA0AE</color>
+    <color name="silver_shine">#F5F7FA</color>
+
+    <!-- Aurora Teal -->
+    <color name="aurora_teal">#00DAC6</color>
+    <color name="aurora_teal_light">#5EF0DD</color>
+    <color name="aurora_teal_deep">#009688</color>
+    <color name="aurora_container">#00332E</color>
+
+    <!-- Nebula Violet -->
+    <color name="nebula_violet">#8B5CF6</color>
+    <color name="nebula_violet_light">#B794FF</color>
+    <color name="nebula_deep">#5B21B6</color>
+    <color name="nebula_container">#1E1042</color>
+
+    <!-- Legacy aliases -->
+    <color name="gold">@color/aurora_teal</color>
+    <color name="violet">@color/nebula_violet</color>
+    <color name="electric_indigo">@color/nebula_deep</color>
+
+    <!-- Material 3 bindings -->
+    <color name="primary">@color/aurora_teal</color>
+    <color name="primary_container">@color/aurora_container</color>
     <color name="on_primary">@color/matte_charcoal</color>
-    <color name="on_primary_container">@color/gold</color>
+    <color name="on_primary_container">@color/aurora_teal_light</color>
 
-    <color name="secondary">@color/violet</color>
-    <color name="secondary_container">@color/electric_indigo</color>
-    <color name="on_secondary">@color/matte_charcoal</color>
-    <color name="on_secondary_container">@color/violet</color>
+    <color name="secondary">@color/nebula_violet</color>
+    <color name="secondary_container">@color/nebula_container</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="on_secondary_container">@color/nebula_violet_light</color>
 
     <color name="background">@color/matte_charcoal</color>
-    <color name="on_background">@color/gold</color>
+    <color name="on_background">@color/pearl_white</color>
     <color name="surface">@color/deep_charcoal</color>
-    <color name="on_surface">@color/gold</color>
-    <color name="surface_variant">@color/electric_indigo</color>
-    <color name="on_surface_variant">@color/violet</color>
+    <color name="on_surface">@color/pearl_white</color>
+    <color name="surface_variant">@color/charcoal_surface</color>
+    <color name="on_surface_variant">@color/silver_mid</color>
 
-    <color name="error">#FF5722</color>
+    <color name="error">#FF5252</color>
     <color name="on_error">#FFFFFF</color>
 
-    <!-- Semantic Colors -->
-    <color name="media_detected_indicator">@color/violet</color>
-    <color name="download_button_active">@color/gold</color>
-    <color name="download_button_inactive">#4A4A4A</color>
-    <color name="floating_button_background">@color/deep_charcoal</color>
-    <color name="floating_button_foreground">@color/gold</color>
+    <!-- Semantic -->
+    <color name="media_detected_indicator">@color/aurora_teal</color>
+    <color name="download_button_active">@color/aurora_teal</color>
+    <color name="download_button_inactive">#3A3A42</color>
+    <color name="floating_button_background">@color/charcoal_elevated</color>
+    <color name="floating_button_foreground">@color/pearl_white</color>
 
     <!-- System UI -->
     <color name="status_bar">@color/matte_charcoal</color>

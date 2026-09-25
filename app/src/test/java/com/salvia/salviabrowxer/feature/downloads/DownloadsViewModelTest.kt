@@ -85,7 +85,8 @@ class DownloadsViewModelTest {
 
         viewModel.deleteDownload(downloadId)
 
-        coVerify { mockDownloadRepository.deleteDownload(downloadId) }
+        // ViewModel work runs on Dispatchers.IO (real thread) — wait for it instead of verifying immediately
+        coVerify(timeout = 5000) { mockDownloadRepository.deleteDownload(downloadId) }
     }
 
     @Test

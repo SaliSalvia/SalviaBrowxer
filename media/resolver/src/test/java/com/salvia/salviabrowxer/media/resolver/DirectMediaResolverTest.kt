@@ -1,6 +1,5 @@
 package com.salvia.salviabrowxer.media.resolver
 
-import io.mockk.any
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -25,7 +24,7 @@ class DirectMediaResolverTest {
     @Test
     fun `resolve returns MediaInfo with correct values`() = runTest {
         val url = "https://example.com/video.mp4"
-        val mockResponse = mockk<Response>()
+        val mockResponse = mockk<Response>(relaxed = true)
         val mockRequest = Request.Builder().url(url).build()
 
         coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
@@ -39,8 +38,8 @@ class DirectMediaResolverTest {
 
         val result = resolver.resolve(url)
 
-        assertNotNull(result)
-        assertEquals("video.mp4", result.title)
+        // Title carries no extension (the extension is applied separately when composing the filename)
+        assertEquals("video", result.title)
         assertEquals(url, result.source)
         assertEquals("direct", result.extractor)
         assertEquals(url, result.webpageUrl)
@@ -56,7 +55,7 @@ class DirectMediaResolverTest {
     @Test
     fun `resolve extracts filename from Content-Disposition`() = runTest {
         val url = "https://example.com/download"
-        val mockResponse = mockk<Response>()
+        val mockResponse = mockk<Response>(relaxed = true)
         val mockRequest = Request.Builder().url(url).build()
 
         coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
@@ -70,6 +69,7 @@ class DirectMediaResolverTest {
 
         val result = resolver.resolve(url)
 
+        // Content-Disposition filename is used as-is; the extension is stripped for the title
         assertEquals("my-file", result.title)
         assertEquals("mp4", result.formats[0].extension)
     }
@@ -77,7 +77,7 @@ class DirectMediaResolverTest {
     @Test
     fun `resolve handles audio files`() = runTest {
         val url = "https://example.com/audio.mp3"
-        val mockResponse = mockk<Response>()
+        val mockResponse = mockk<Response>(relaxed = true)
         val mockRequest = Request.Builder().url(url).build()
 
         coEvery { mockOkHttpClient.newCall(any()) } returns mockk()
@@ -91,7 +91,7 @@ class DirectMediaResolverTest {
 
         val result = resolver.resolve(url)
 
-        assertEquals("audio.mp3", result.title)
+        assertEquals("audio", result.title)
         assertEquals(true, result.formats[0].isAudio)
         assertEquals(false, result.formats[0].isVideo)
     }

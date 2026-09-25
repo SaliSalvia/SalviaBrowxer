@@ -4,7 +4,7 @@ object AppConstants {
     const val APP_NAME = "SalviaBrowxer"
     const val PACKAGE_NAME = "com.salvia.salviabrowxer"
     const val DATABASE_NAME = "salviabrowxer_db"
-    const val DATABASE_VERSION = 1
+    const val DATABASE_VERSION = 2
     const val DEFAULT_HOMEPAGE = "https://www.google.com"
     const val MAX_SIMULTANEOUS_DOWNLOADS = 3
     const val DOWNLOAD_TIMEOUT_SECONDS = 30L

@@ -2,14 +2,11 @@ package com.salvia.salviabrowxer.data.repository
 
 import com.salvia.salviabrowxer.core.database.dao.DownloadDao
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
-import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.storage.StorageManager
-import io.mockk.any
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
-import io.mockk.withArg
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -94,15 +91,12 @@ class DownloadRepositoryTest {
     }
 
     @Test
-    fun `updateDownloadState calls DAO`() = runTest {
-        val download = DownloadEntity(id = "1", url = "https://example.com/file.mp4", filename = "file.mp4", destination = "/tmp")
-        coEvery { mockDownloadDao.getById("1") } returns download
-        coEvery { mockDownloadDao.update(any()) } returns Unit
+    fun `updateDownloadState calls DAO updateStatus`() = runTest {
+        coEvery { mockDownloadDao.updateStatus(any(), any(), any()) } returns Unit
 
         repository.updateDownloadState("1", DownloadState.PAUSED)
 
-        coVerify { mockDownloadDao.getById("1") }
-        coVerify { mockDownloadDao.update(withArg { it.status == DownloadState.PAUSED }) }
+        coVerify { mockDownloadDao.updateStatus("1", DownloadState.PAUSED, any()) }
     }
 
     @Test

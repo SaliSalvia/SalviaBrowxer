@@ -2,6 +2,9 @@ package com.salvia.salviabrowxer.di
 
 import android.content.Context
 import androidx.room.Room
+import coil.ImageLoader
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.salvia.salviabrowxer.core.database.AppDatabase
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
@@ -13,17 +16,18 @@ import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepositoryImpl
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepositoryImpl
-import com.salvia.salviabrowxer.media.downloader.DownloadManager
 import com.salvia.salviabrowxer.media.detector.DefaultMediaDetector
 import com.salvia.salviabrowxer.media.detector.MediaDetector
+import com.salvia.salviabrowxer.media.downloader.DownloadManager
+import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.ui.utils.Constants
-import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -37,79 +41,69 @@ object AppModule {
     fun provideOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
             .connectTimeout(Constants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            // Downloads stream large bodies: no read/write timeout, the caller cancels instead.
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .writeTimeout(0, TimeUnit.MILLISECONDS)
-            .callTimeout(0, TimeUnit.MILLISECONDS)
+            .readTimeout(Constants.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(Constants.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(90, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .followRedirects(true)
             .followSslRedirects(true)
+            .connectionPool(ConnectionPool(8, 5, TimeUnit.MINUTES))
             .build()
     }
 
     @Provides
     @Singleton
+    fun provideHlsDownloader(okHttpClient: OkHttpClient): com.salvia.salviabrowxer.media.downloader.HlsDownloader =
+        com.salvia.salviabrowxer.media.downloader.HlsDownloader(okHttpClient)
+
+    @Provides
+    @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(
-            context,
-            AppDatabase::class.java,
-            "salviabrowxer_db"
-        ).fallbackToDestructiveMigration().build()
+        return Room.databaseBuilder(context, AppDatabase::class.java, "salviabrowxer_db")
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides
     @Singleton
-    fun provideStorageManager(@ApplicationContext context: Context): StorageManager {
-        return StorageManager(context)
-    }
+    fun provideStorageManager(@ApplicationContext context: Context): StorageManager = StorageManager(context)
 
     @Provides
     @Singleton
-    fun provideSettingsDataStore(
-        @ApplicationContext context: Context
-    ): SettingsDataStore {
-        return SettingsDataStoreImpl(context.dataStore)
-    }
+    fun provideSettingsDataStore(@ApplicationContext context: Context): SettingsDataStore = SettingsDataStoreImpl(context.dataStore)
 
     @Provides
     @Singleton
-    fun provideDownloadRepository(
-        database: AppDatabase,
-        storageManager: StorageManager
-    ): DownloadRepository {
-        return DownloadRepositoryImpl(database.downloadDao(), storageManager)
-    }
+    fun provideDownloadRepository(database: AppDatabase, storageManager: StorageManager): DownloadRepository = DownloadRepositoryImpl(database.downloadDao(), storageManager)
 
     @Provides
     @Singleton
-    fun provideBookmarkRepository(database: AppDatabase): BookmarkRepository {
-        return BookmarkRepositoryImpl(database.bookmarkDao())
-    }
+    fun provideBookmarkRepository(database: AppDatabase): BookmarkRepository = BookmarkRepositoryImpl(database.bookmarkDao())
 
     @Provides
     @Singleton
-    fun provideHistoryRepository(database: AppDatabase): HistoryRepository {
-        return HistoryRepositoryImpl(database.historyDao())
-    }
+    fun provideHistoryRepository(database: AppDatabase): HistoryRepository = HistoryRepositoryImpl(database.historyDao())
 
     @Provides
     @Singleton
-    fun provideDownloadManager(
-        @ApplicationContext context: Context,
-        okHttpClient: OkHttpClient
-    ): DownloadManager {
-        return DownloadManager(context, okHttpClient)
-    }
+    fun provideDownloadManager(@ApplicationContext context: Context, okHttpClient: OkHttpClient): DownloadManager = DownloadManager(context, okHttpClient)
 
     @Provides
     @Singleton
-    fun provideMediaDetector(): MediaDetector {
-        return DefaultMediaDetector()
-    }
+    fun provideMediaDetector(): MediaDetector = DefaultMediaDetector()
 
     @Provides
     @Singleton
-    fun provideMediaResolver(okHttpClient: OkHttpClient): MediaResolver {
-        return DirectMediaResolver(okHttpClient)
+    fun provideMediaResolver(okHttpClient: OkHttpClient): MediaResolver = DirectMediaResolver(okHttpClient)
+
+    @Provides
+    @Singleton
+    fun provideImageLoader(@ApplicationContext context: Context): ImageLoader {
+        return ImageLoader.Builder(context)
+            .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.22).build() }
+            .diskCache { DiskCache.Builder().directory(context.cacheDir.resolve("coil")).maxSizeBytes(64L * 1024 * 1024).build() }
+            .respectCacheHeaders(false)
+            .crossfade(true)
+            .build()
     }
 }

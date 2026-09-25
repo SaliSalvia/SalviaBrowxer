@@ -1,6 +1,9 @@
 package com.salvia.salviabrowxer.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -24,7 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -32,21 +37,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.salvia.salviabrowxer.ui.theme.DownloadButtonActive
-import com.salvia.salviabrowxer.ui.theme.DownloadButtonInactive
-import com.salvia.salviabrowxer.ui.theme.FloatingButtonBackground
-import com.salvia.salviabrowxer.ui.theme.FloatingButtonForeground
-import com.salvia.salviabrowxer.ui.theme.MediaDetectedIndicator
+import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.AuroraTealDeep
+import com.salvia.salviabrowxer.ui.theme.AuroraTealLight
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
+import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
+import com.salvia.salviabrowxer.ui.theme.NebulaViolet
+import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import kotlin.math.roundToInt
 
-/**
- * Draggable floating download button.
- *
- * The composable occupies **only** the 56.dp circle - there is no transparent full-screen layer on
- * top of the WebView anymore, so page touches keep reaching the web content while the button stays
- * tappable and draggable. [containerSize] (the size of the parent area in pixels) is used to clamp
- * the drag so the button can never be dragged off screen.
- */
 @Composable
 fun FloatingDownloadButton(
     isMediaDetected: Boolean,
@@ -64,10 +63,19 @@ fun FloatingDownloadButton(
     var offsetX by remember { mutableFloatStateOf(initialOffset.x) }
     var offsetY by remember { mutableFloatStateOf(initialOffset.y) }
 
-    val buttonColor by animateColorAsState(
-        targetValue = if (isMediaDetected) DownloadButtonActive else DownloadButtonInactive,
-        animationSpec = tween(durationMillis = 300),
-        label = "downloadButtonColor"
+    // Allocate gradients once — recreating brushes on every recomposition causes GC churn
+    // and dropped frames while dragging the button.
+    val activeBrush = remember {
+        Brush.radialGradient(colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep))
+    }
+    val inactiveBrush = remember {
+        Brush.radialGradient(colors = listOf(Color(0xFF3E3E46), Color(0xFF2B2B32), Color(0xFF1E1E24)))
+    }
+
+    val scale by animateFloatAsState(
+        targetValue = if (isMediaDetected) 1.06f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "fabScale"
     )
 
     fun clamp(x: Float, y: Float): Offset {
@@ -77,58 +85,48 @@ fun FloatingDownloadButton(
         return Offset(x.coerceIn(minX, 0f), y.coerceIn(minY, 0f))
     }
 
+
     Box(
         modifier = modifier
             .size(buttonSize)
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+            .shadow(elevation = if (isMediaDetected) 12.dp else 6.dp, shape = CircleShape, clip = false)
             .clip(CircleShape)
-            .background(FloatingButtonBackground)
+            .background(CharcoalElevated)
             .pointerInput(containerSize) {
-                detectDragGestures(
-                    onDragEnd = { onOffsetChanged(Offset(offsetX, offsetY)) }
-                ) { change, dragAmount ->
+                detectDragGestures(onDragEnd = { onOffsetChanged(Offset(offsetX, offsetY)) }) { change, dragAmount ->
                     change.consume()
                     val next = clamp(offsetX + dragAmount.x, offsetY + dragAmount.y)
-                    offsetX = next.x
-                    offsetY = next.y
+                    offsetX = next.x; offsetY = next.y
                 }
             }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = size.minDimension / 2f
-            drawCircle(color = buttonColor, radius = radius)
-            drawCircle(
-                color = Color.Black.copy(alpha = 0.18f),
-                radius = radius,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
-            )
+            val r = size.minDimension / 2f
+            drawCircle(brush = if (isMediaDetected) activeBrush else inactiveBrush, radius = r * scale)
+            // Subtle pearl rim
+            drawCircle(color = Color.White.copy(alpha = 0.12f), radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx()))
+            // Specular highlight
+            drawCircle(color = Color.White.copy(alpha = if (isMediaDetected) 0.18f else 0.08f), radius = r * 0.45f, center = center.copy(x = center.x - r * 0.18f, y = center.y - r * 0.22f))
         }
 
         Icon(
             imageVector = Icons.Default.Download,
             contentDescription = "Download",
-            tint = if (isMediaDetected) FloatingButtonForeground else Color.White.copy(alpha = 0.85f),
-            modifier = Modifier.size(24.dp)
+            tint = if (isMediaDetected) Color.White else PearlWhite.copy(alpha = 0.88f),
+            modifier = Modifier.size(25.dp)
         )
 
         if (isMediaDetected && mediaCount > 0) {
             Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 4.dp, y = (-4).dp)
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .background(MediaDetectedIndicator),
+                modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).size(19.dp).clip(CircleShape)
+                    .background(Brush.radialGradient(colors = listOf(NebulaViolet, NebulaViolet.copy(alpha = 0.85f))))
+                    .shadow(4.dp, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (mediaCount > 9) "9+" else mediaCount.toString(),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.offset(y = 1.dp)
-                )
+                Text(text = if (mediaCount > 9) "9+" else mediaCount.toString(), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = 0.5.dp))
             }
         }
     }

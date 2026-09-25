@@ -1,11 +1,18 @@
 package com.salvia.salviabrowxer.core.database.entities
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.salvia.salviabrowxer.core.model.DownloadState
 import java.util.UUID
 
-@Entity(tableName = "downloads")
+@Entity(
+    tableName = "downloads",
+    indices = [
+        Index(value = ["status"]),
+        Index(value = ["createdAt"])
+    ]
+)
 data class DownloadEntity(
     @PrimaryKey
     val id: String = UUID.randomUUID().toString(),

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -82,7 +82,7 @@ jobs:
           ls -l app/build/outputs/apk/debug/
           test -f app/build/outputs/apk/debug/app-debug.apk || { echo "app-debug.apk was not produced"; exit 1; }
 
-      - name: Upload APK
+      - name: Upload APK artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -90,3 +90,34 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Read app version for release name
+        if: success()
+        id: appversion
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          echo "version=${VERSION_NAME:-1.0}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish APK to GitHub Release (auto-cleanup old pre-releases)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="debug-v${{ steps.appversion.outputs.version }}"
+          echo "Publishing to release tag: $TAG"
+
+          # Delete previous pre-release with the same tag (keeps only the latest debug APK available)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create "$TAG" \
+            app/build/outputs/apk/debug/app-debug.apk \
+            --title "SalviaBrowxer Debug APK v${{ steps.appversion.outputs.version }}" \
+            --notes "Automated debug build from commit ${{ github.sha }}.
+
+          - 📦 **APK**: attached below (direct download)
+          - 📲 **Install**: Enable \"Install from unknown sources\" then open the APK
+          - 🕐 **Built**: $(date -u +'%Y-%m-%d %H:%M UTC')
+          - 🔖 **Commit**: ${{ github.sha }}
+
+          > This is an automated pre-release build. See commit history for source changes." \
+            --prerelease

@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Button
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -46,16 +48,15 @@ import coil.compose.AsyncImage
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
-import com.salvia.salviabrowxer.ui.theme.DownloadButtonActive
-import com.salvia.salviabrowxer.ui.theme.Gold
-import com.salvia.salviabrowxer.ui.theme.Surface as SurfaceColor
-import java.text.DecimalFormat
+import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
+import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
+import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
+import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
+import com.salvia.salviabrowxer.ui.theme.PearlWhite
+import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.utils.formatFileSize
 
-/**
- * Quality picker for a detected media item. Picking a row and confirming enqueues a real download
- * (the callback hands the selected [MediaFormat] to the ViewModel, which writes the queue entry and
- * starts DownloadService).
- */
 @Composable
 fun MediaQualitySelectionSheet(
     mediaInfo: MediaInfo,
@@ -64,223 +65,88 @@ fun MediaQualitySelectionSheet(
     onQualitySelected: (MediaFormat) -> Unit
 ) {
     val formats = mediaInfo.combinedFormats.ifEmpty { mediaInfo.formats }
-    var selectedFormat by remember(mediaInfo.title, formats.size) {
-        mutableStateOf<MediaFormat?>(formats.firstOrNull())
-    }
+    var selectedFormat by remember(mediaInfo.title, formats.size) { mutableStateOf<MediaFormat?>(formats.firstOrNull()) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = SurfaceColor,
-            tonalElevation = 6.dp
+            modifier = Modifier.fillMaxWidth(0.96f).padding(10.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = CharcoalElevated,
+            tonalElevation = 8.dp,
+            shadowElevation = 16.dp
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.select_quality),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Gold
-                    )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.action_cancel),
-                            tint = Gold
-                        )
-                    }
+            Column(modifier = Modifier.padding(18.dp)) {
+                // Drag handle
+                Box(modifier = Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(SilverMid.copy(alpha = 0.35f)))
+                Spacer(Modifier.height(14.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = stringResource(R.string.select_quality), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) { Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel), tint = SilverMid) }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
+                Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(CharcoalSurface).border(1.dp, CharcoalBorder, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                         val thumbnail = mediaInfo.thumbnail
-                        if (thumbnail != null) {
-                            AsyncImage(
-                                model = thumbnail,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Download,
-                                contentDescription = null,
-                                tint = Gold,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
+                        if (thumbnail != null) AsyncImage(model = thumbnail, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)))
+                        else Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(28.dp))
                     }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
+                    Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = mediaInfo.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Gold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        mediaInfo.duration?.let { duration ->
-                            Text(
-                                text = formatDuration(duration),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                        }
+                        Text(text = mediaInfo.title, style = MaterialTheme.typography.titleMedium, color = PearlWhite, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        mediaInfo.duration?.let { Text(text = formatDuration(it), style = MaterialTheme.typography.bodySmall, color = SilverMid) }
+                        if (!isResolving && formats.isNotEmpty()) Text(text = "${formats.size} quality option${if (formats.size > 1) "s" else ""}", style = MaterialTheme.typography.labelSmall, color = AuroraTeal)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-                Spacer(modifier = Modifier.height(8.dp))
-
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.7f))
+                Spacer(Modifier.height(8.dp))
                 if (isResolving && formats.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp),
-                            color = Gold,
-                            strokeWidth = 2.dp
-                        )
-                    }
+                    Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(modifier = Modifier.size(28.dp), color = AuroraTeal, strokeWidth = 2.dp) }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(196.dp)
-                    ) {
-                        items(formats.size) { index ->
+                    LazyColumn(modifier = Modifier.fillMaxWidth().height(204.dp)) {
+                        items(formats.size, key = { formats[it].id }) { index ->
                             val format = formats[index]
-                            QualityOptionItem(
-                                format = format,
-                                isSelected = selectedFormat?.id == format.id,
-                                onClick = { selectedFormat = format }
-                            )
-                            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                            QualityOptionItem(format = format, isSelected = selectedFormat?.id == format.id, onClick = { selectedFormat = format })
+                            if (index < formats.lastIndex) HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.5f))
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
+                Spacer(Modifier.height(14.dp))
                 Button(
                     onClick = { selectedFormat?.let { onQualitySelected(it) } },
                     enabled = selectedFormat != null && !isResolving,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = DownloadButtonActive,
-                        contentColor = MaterialTheme.colorScheme.background
-                    )
-                ) {
-                    Text(
-                        text = stringResource(R.string.download_start),
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                }
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AuroraTeal, contentColor = Color(0xFF0A0A0C), disabledContainerColor = CharcoalSurface, disabledContentColor = SilverMid.copy(alpha = 0.5f))
+                ) { Text(text = stringResource(R.string.download_start), style = MaterialTheme.typography.titleSmall) }
             }
         }
     }
 }
 
 @Composable
-fun QualityOptionItem(
-    format: MediaFormat,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Close,
-            contentDescription = null,
-            tint = if (isSelected) Gold else Color.Transparent,
-            modifier = Modifier.size(20.dp)
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
+fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isSelected) AuroraTeal.copy(alpha = 0.10f) else Color.Transparent).border(if (isSelected) 1.dp else 0.dp, if (isSelected) AuroraTeal.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(vertical = 11.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(if (isSelected) AuroraTeal else CharcoalSurface).border(1.dp, if (isSelected) AuroraTeal else CharcoalBorder, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+            if (isSelected) Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+        }
+        Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = format.format,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Gold
-            )
+            Text(text = format.format, style = MaterialTheme.typography.bodyLarge, color = if (isSelected) PearlWhite else SilverMid)
             Row {
-                format.size?.let { size ->
-                    Text(
-                        text = formatFileSize(size),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-                if (format.width != null && format.height != null) {
-                    Text(
-                        text = " · ${format.width}x${format.height}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                }
-                if (format.mimeType.isNotBlank()) {
-                    Text(
-                        text = " · ${format.mimeType}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                format.size?.let { Text(text = formatFileSize(it), style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.85f)) }
+                if (format.width != null && format.height != null) Text(text = " · ${format.width}x${format.height}", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.7f))
+                if (format.mimeType.isNotBlank()) Text(text = " · ${format.mimeType}", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        if (format.isHls) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(AuroraTeal.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("HLS", style = MaterialTheme.typography.labelSmall, color = AuroraTeal) }
+        if (format.isDash) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFF8B5CF6).copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("DASH", style = MaterialTheme.typography.labelSmall, color = Color(0xFFB794FF)) }
     }
 }
 
 private fun formatDuration(milliseconds: Long): String {
-    val seconds = milliseconds / 1000
-    val minutes = seconds / 60
-    val hours = minutes / 60
-    return when {
-        hours > 0 -> String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60)
-        minutes > 0 -> String.format("%02d:%02d", minutes, seconds % 60)
-        else -> String.format("00:%02d", seconds)
-    }
+    val seconds = milliseconds / 1000; val minutes = seconds / 60; val hours = minutes / 60
+    return when { hours > 0 -> String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60); minutes > 0 -> String.format("%02d:%02d", minutes, seconds % 60); else -> String.format("00:%02d", seconds) }
 }
 
-private fun formatFileSize(bytes: Long): String {
-    if (bytes <= 0) return "?"
-    val units = arrayOf("B", "KB", "MB", "GB")
-    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, 3)
-    return DecimalFormat("#,##0.#")
-        .format(bytes / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups]
-}
+

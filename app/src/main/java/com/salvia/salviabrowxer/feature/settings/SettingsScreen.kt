@@ -18,7 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
@@ -31,16 +31,19 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,8 +53,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -59,246 +62,89 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.ui.theme.Gold
-import com.salvia.salviabrowxer.ui.theme.Surface
+import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
+import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
+import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
+import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
+import com.salvia.salviabrowxer.ui.theme.PearlWhite
+import com.salvia.salviabrowxer.ui.theme.SilverMid
 import kotlinx.coroutines.flow.collectLatest
 
 private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, ClearData }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(
-    onBack: () -> Unit,
-    viewModel: SettingsViewModel = hiltViewModel()
-) {
+fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf(SettingsDialog.None) }
 
     LaunchedEffect(Unit) {
-        viewModel.messages.collectLatest { message ->
-            if (message.isNotBlank()) snackbarHostState.showSnackbar(message)
+        viewModel.messages.collectLatest { m ->
+            if (m.isNotBlank()) snackbarHostState.showSnackbar(m)
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Surface)
-        ) {
+        Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .padding(horizontal = 8.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = stringResource(R.string.go_back),
-                        tint = Gold
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = stringResource(R.string.settings),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Gold
-                )
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
-            ) {
-                SettingsSectionTitle(
-                    icon = Icons.Default.Search,
-                    title = stringResource(R.string.settings_browser)
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Search,
-                    title = stringResource(R.string.settings_search_engine),
-                    subtitle = state.searchEngine,
-                    onClick = { dialog = SettingsDialog.SearchEngine }
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Settings,
-                    title = stringResource(R.string.settings_homepage),
-                    subtitle = state.homepage,
-                    onClick = { dialog = SettingsDialog.Homepage }
-                )
-
-                SwitchSettingsItem(
-                    icon = Icons.Default.Sync,
-                    title = stringResource(R.string.settings_desktop_site),
-                    subtitle = "Use the desktop user agent",
-                    isChecked = state.isDesktopSite,
-                    onCheckedChange = { viewModel.updateDesktopSite(it) }
-                )
-
-                SwitchSettingsItem(
-                    icon = Icons.Default.Security,
-                    title = stringResource(R.string.settings_javascript),
-                    subtitle = "Pages can run scripts and media can be detected",
-                    isChecked = state.isJavaScriptEnabled,
-                    onCheckedChange = { viewModel.updateJavaScriptEnabled(it) }
-                )
-
-                SwitchSettingsItem(
-                    icon = Icons.Default.Storage,
-                    title = stringResource(R.string.settings_cookies),
-                    subtitle = "Sites can store cookies on this device",
-                    isChecked = state.areCookiesEnabled,
-                    onCheckedChange = { viewModel.updateCookiesEnabled(it) }
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Clear,
-                    title = stringResource(R.string.settings_clear_browsing_data),
-                    subtitle = "History, cookies and session data",
-                    onClick = { dialog = SettingsDialog.ClearData }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                SettingsSectionTitle(
-                    icon = Icons.Default.Download,
-                    title = stringResource(R.string.settings_downloads)
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Folder,
-                    title = stringResource(R.string.settings_download_directory),
-                    subtitle = state.downloadDirectoryLabel,
-                    onClick = { }
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Download,
-                    title = stringResource(R.string.settings_simultaneous_downloads),
-                    subtitle = "${state.maxSimultaneousDownloads} at a time",
-                    onClick = { dialog = SettingsDialog.Downloads }
-                )
-
-                SwitchSettingsItem(
-                    icon = Icons.Default.Wifi,
-                    title = stringResource(R.string.settings_wifi_only),
-                    subtitle = "Pause transfers when the network changes",
-                    isChecked = state.isWifiOnly,
-                    onCheckedChange = { viewModel.updateWifiOnly(it) }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                SettingsSectionTitle(
-                    icon = Icons.Default.Nightlight,
-                    title = stringResource(R.string.settings_appearance)
-                )
-
-                SwitchSettingsItem(
-                    icon = Icons.Default.Nightlight,
-                    title = stringResource(R.string.settings_dark_theme),
-                    subtitle = "SalviaBrowxer ships a dark identity only",
-                    isChecked = state.isDarkTheme,
-                    onCheckedChange = { viewModel.updateDarkTheme(it) }
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Settings,
-                    title = stringResource(R.string.settings_floating_button_size),
-                    subtitle = "${state.floatingButtonSize} dp",
-                    onClick = { dialog = SettingsDialog.ButtonSize }
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Settings,
-                    title = stringResource(R.string.settings_floating_button_position),
-                    subtitle = "Drag the floating button anywhere on the page",
-                    onClick = { }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                SettingsSectionTitle(
-                    icon = Icons.Default.Security,
-                    title = stringResource(R.string.settings_privacy)
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Clear,
-                    title = stringResource(R.string.settings_clear_history),
-                    onClick = { viewModel.clearHistory() }
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Clear,
-                    title = stringResource(R.string.settings_clear_cookies),
-                    onClick = { viewModel.clearCookies() }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                SettingsSectionTitle(
-                    icon = Icons.Default.Info,
-                    title = stringResource(R.string.settings_about)
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Info,
-                    title = stringResource(R.string.about_title),
-                    subtitle = String.format(
-                        stringResource(R.string.about_description),
-                        stringResource(R.string.app_name)
-                    ),
-                    onClick = { }
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.6f))
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                SettingsSectionTitle(Icons.Default.Search, stringResource(R.string.settings_browser))
+                SettingsItem(Icons.Default.Search, stringResource(R.string.settings_search_engine), state.searchEngine) { dialog = SettingsDialog.SearchEngine }
+                SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_homepage), state.homepage) { dialog = SettingsDialog.Homepage }
+                SwitchSettingsItem(Icons.Default.Sync, stringResource(R.string.settings_desktop_site), "Use the desktop user agent", state.isDesktopSite) { viewModel.updateDesktopSite(it) }
+                SwitchSettingsItem(Icons.Default.Security, stringResource(R.string.settings_javascript), "Pages can run scripts and media can be detected", state.isJavaScriptEnabled) { viewModel.updateJavaScriptEnabled(it) }
+                SwitchSettingsItem(Icons.Default.Storage, stringResource(R.string.settings_cookies), "Sites can store cookies on this device", state.areCookiesEnabled) { viewModel.updateCookiesEnabled(it) }
+                SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_browsing_data), "History, cookies and session data") { dialog = SettingsDialog.ClearData }
+                Spacer(Modifier.height(16.dp))
+                SettingsSectionTitle(Icons.Default.Download, stringResource(R.string.settings_downloads))
+                SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryLabel) {}
+                SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), "${state.maxSimultaneousDownloads} at a time") { dialog = SettingsDialog.Downloads }
+                SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), "Pause transfers when the network changes", state.isWifiOnly) { viewModel.updateWifiOnly(it) }
+                Spacer(Modifier.height(16.dp))
+                SettingsSectionTitle(Icons.Default.Nightlight, stringResource(R.string.settings_appearance))
+                SwitchSettingsItem(Icons.Default.Nightlight, stringResource(R.string.settings_dark_theme), "SalviaBrowxer ships a dark identity only", state.isDarkTheme) { viewModel.updateDarkTheme(it) }
+                SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_size), "${state.floatingButtonSize} dp") { dialog = SettingsDialog.ButtonSize }
+                SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_position), "Drag the floating button anywhere on the page") {}
+                Spacer(Modifier.height(16.dp))
+                SettingsSectionTitle(Icons.Default.Security, stringResource(R.string.settings_privacy))
+                SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_history)) { viewModel.clearHistory() }
+                SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_cookies)) { viewModel.clearCookies() }
+                Spacer(Modifier.height(16.dp))
+                SettingsSectionTitle(Icons.Default.Info, stringResource(R.string.settings_about))
+                SettingsItem(Icons.Default.Info, stringResource(R.string.about_title), String.format(stringResource(R.string.about_description), stringResource(R.string.app_name))) {}
+                Spacer(Modifier.height(32.dp))
             }
         }
-
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(12.dp)
-        )
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
     }
 
     when (dialog) {
         SettingsDialog.None -> Unit
-
         SettingsDialog.SearchEngine -> SelectionDialog(
             title = stringResource(R.string.settings_search_engine),
             options = state.searchEngineOptions,
             selected = state.searchEngine,
             onDismiss = { dialog = SettingsDialog.None },
-            onSelect = { engine ->
-                viewModel.updateSearchEngine(engine)
-                dialog = SettingsDialog.None
-            }
+            onSelect = { e -> viewModel.updateSearchEngine(e); dialog = SettingsDialog.None }
         )
-
         SettingsDialog.Homepage -> TextEditDialog(
             title = stringResource(R.string.settings_homepage),
             initial = state.homepage,
             onDismiss = { dialog = SettingsDialog.None },
-            onConfirm = { url ->
-                viewModel.updateHomepage(url)
-                dialog = SettingsDialog.None
-            }
+            onConfirm = { url -> viewModel.updateHomepage(url); dialog = SettingsDialog.None }
         )
-
         SettingsDialog.Downloads -> SliderDialog(
             title = stringResource(R.string.settings_simultaneous_downloads),
             value = state.maxSimultaneousDownloads.toFloat(),
@@ -306,12 +152,8 @@ fun SettingsScreen(
             steps = 3,
             label = "${state.maxSimultaneousDownloads} at a time",
             onDismiss = { dialog = SettingsDialog.None },
-            onConfirm = { value ->
-                viewModel.updateMaxSimultaneousDownloads(value.toInt())
-                dialog = SettingsDialog.None
-            }
+            onConfirm = { v -> viewModel.updateMaxSimultaneousDownloads(v.toInt()); dialog = SettingsDialog.None }
         )
-
         SettingsDialog.ButtonSize -> SliderDialog(
             title = stringResource(R.string.settings_floating_button_size),
             value = state.floatingButtonSize.toFloat(),
@@ -319,135 +161,64 @@ fun SettingsScreen(
             steps = 0,
             label = "${state.floatingButtonSize} dp",
             onDismiss = { dialog = SettingsDialog.None },
-            onConfirm = { value ->
-                viewModel.updateFloatingButtonSize(value.toInt())
-                dialog = SettingsDialog.None
-            }
+            onConfirm = { v -> viewModel.updateFloatingButtonSize(v.toInt()); dialog = SettingsDialog.None }
         )
-
         SettingsDialog.ClearData -> ConfirmationDialog(
             title = stringResource(R.string.settings_clear_browsing_data),
             message = "History, cookies and cached session data will be removed.",
             confirmLabel = stringResource(R.string.action_clear),
             onDismiss = { dialog = SettingsDialog.None },
-            onConfirm = {
-                viewModel.clearBrowsingData()
-                dialog = SettingsDialog.None
-            }
+            onConfirm = { viewModel.clearBrowsingData(); dialog = SettingsDialog.None }
         )
     }
 }
 
 @Composable
-fun SettingsSectionTitle(
-    icon: ImageVector,
-    title: String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Gold,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = Gold
-        )
+fun SettingsSectionTitle(icon: ImageVector, title: String) {
+    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = AuroraTeal, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, color = PearlWhite)
     }
 }
 
 @Composable
-fun SettingsItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String? = null,
-    onClick: () -> Unit
-) {
+fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Gold,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
+        Icon(icon, null, tint = SilverMid, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Gold
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
+            if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = SilverMid)
         }
     }
 }
 
 @Composable
-fun SwitchSettingsItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String? = null,
-    isChecked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
+fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = null, isChecked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onCheckedChange(!isChecked) }
-            .padding(vertical = 8.dp, horizontal = 4.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onCheckedChange(!isChecked) }.padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Gold,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
+        Icon(icon, null, tint = SilverMid, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Gold
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
+            if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = SilverMid)
         }
         Switch(
             checked = isChecked,
             onCheckedChange = onCheckedChange,
-            colors = androidx.compose.material3.SwitchDefaults.colors(
-                checkedThumbColor = Gold,
-                checkedTrackColor = Gold.copy(alpha = 0.5f),
-                uncheckedThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = PearlWhite,
+                checkedTrackColor = AuroraTeal,
+                checkedBorderColor = AuroraTeal,
+                uncheckedThumbColor = SilverMid,
+                uncheckedTrackColor = CharcoalSurface,
+                uncheckedBorderColor = CharcoalBorder
             )
         )
     }
@@ -464,30 +235,31 @@ private fun SelectionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = title, color = Gold) },
+        title = { Text(title, color = PearlWhite) },
         text = {
             Column {
                 options.forEach { option ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(option) }
-                            .padding(vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(option) }.padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(selected = option == selected, onClick = { onSelect(option) })
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = option, style = MaterialTheme.typography.bodyLarge)
+                        RadioButton(
+                            selected = option == selected,
+                            onClick = { onSelect(option) },
+                            colors = RadioButtonDefaults.colors(selectedColor = AuroraTeal, unselectedColor = SilverMid)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(option, style = MaterialTheme.typography.bodyLarge, color = PearlWhite)
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel), color = Gold)
-            }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = AuroraTeal) }
         },
-        containerColor = Surface
+        containerColor = CharcoalElevated,
+        titleContentColor = PearlWhite,
+        textContentColor = PearlWhite
     )
 }
 
@@ -502,34 +274,24 @@ private fun TextEditDialog(
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = title, color = Gold) },
+        title = { Text(title, color = PearlWhite) },
         text = {
             BasicTextField(
                 value = text,
                 onValueChange = { text = it },
                 singleLine = true,
-                textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(Gold),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        RoundedCornerShape(8.dp)
-                    )
-                    .padding(12.dp)
+                textStyle = TextStyle(color = PearlWhite),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(AuroraTeal),
+                modifier = Modifier.fillMaxWidth().background(CharcoalSurface, RoundedCornerShape(10.dp)).padding(12.dp)
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) {
-                Text(stringResource(R.string.action_ok), color = Gold)
-            }
+            TextButton(onClick = { onConfirm(text) }) { Text(stringResource(R.string.action_ok), color = AuroraTeal) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel), color = Gold)
-            }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
         },
-        containerColor = Surface
+        containerColor = CharcoalElevated
     )
 }
 
@@ -547,33 +309,30 @@ private fun SliderDialog(
     var current by remember { mutableStateOf(value) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = title, color = Gold) },
+        title = { Text(title, color = PearlWhite) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = label, style = MaterialTheme.typography.bodyMedium, color = Gold)
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
                 Slider(
                     value = current,
                     onValueChange = { current = it },
                     valueRange = valueRange,
                     steps = steps,
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = Gold,
-                        activeTrackColor = Gold
+                    colors = SliderDefaults.colors(
+                        thumbColor = AuroraTeal,
+                        activeTrackColor = AuroraTeal,
+                        inactiveTrackColor = CharcoalSurface
                     )
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(current) }) {
-                Text(stringResource(R.string.action_ok), color = Gold)
-            }
+            TextButton(onClick = { onConfirm(current) }) { Text(stringResource(R.string.action_ok), color = AuroraTeal) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel), color = Gold)
-            }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
         },
-        containerColor = Surface
+        containerColor = CharcoalElevated
     )
 }
 
@@ -588,18 +347,14 @@ private fun ConfirmationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = title, color = Gold) },
-        text = { Text(text = message) },
+        title = { Text(title, color = PearlWhite) },
+        text = { Text(message, color = SilverMid) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(confirmLabel, color = Gold)
-            }
+            TextButton(onClick = onConfirm) { Text(confirmLabel, color = AuroraTeal) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel), color = Gold)
-            }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
         },
-        containerColor = Surface
+        containerColor = CharcoalElevated
     )
 }

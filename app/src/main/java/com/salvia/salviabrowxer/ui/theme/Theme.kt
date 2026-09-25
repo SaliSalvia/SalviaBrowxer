@@ -1,10 +1,12 @@
 package com.salvia.salviabrowxer.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -24,8 +26,18 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = OnSurface,
     surfaceVariant = SurfaceVariant,
     onSurfaceVariant = OnSurfaceVariant,
+    surfaceDim = MatteCharcoal,
+    surfaceBright = CharcoalElevated,
+    surfaceContainer = DeepCharcoal,
+    surfaceContainerHigh = CharcoalSurface,
+    surfaceContainerHighest = CharcoalElevated,
+    outline = CharcoalBorder,
+    outlineVariant = CharcoalBorder.copy(alpha = 0.5f),
+    scrim = MatteCharcoal.copy(alpha = 0.6f),
     error = Error,
-    onError = OnError
+    onError = OnError,
+    errorContainer = Color(0xFF4A0D0D),
+    onErrorContainer = Color(0xFFFFDAD6)
 )
 
 @Composable
@@ -40,8 +52,12 @@ fun SalviaBrowxerTheme(
             val window = (view.context as Activity).window
             window.statusBarColor = Background.toArgb()
             window.navigationBarColor = Background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.navigationBarDividerColor = android.graphics.Color.TRANSPARENT
+            }
         }
     }
 

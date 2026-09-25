@@ -6,95 +6,103 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 
+/**
+ * Shared WebView helpers — kept aligned with [BrowserScreen]'s inline configuration
+ * so there is a single source of truth for performance & security flags.
+ * The canonical media detection path is [WebViewClientWrapper] + [DomMediaDetector];
+ * this file is retained only for legacy callers (e.g. tabs/history previews) and
+ * delegates detection to the same [Constants.SUPPORTED_*] sets to avoid drift.
+ */
 fun configureWebView(
     webView: WebView,
     isJavaScriptEnabled: Boolean = true,
     isDesktopMode: Boolean = false,
     onMediaDetected: (MediaCandidate) -> Unit = {}
 ) {
+    webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
+    webView.isVerticalScrollBarEnabled = false
+    webView.isHorizontalScrollBarEnabled = false
+    webView.overScrollMode = WebView.OVER_SCROLL_NEVER
+
     with(webView.settings) {
         javaScriptEnabled = isJavaScriptEnabled
         domStorageEnabled = true
         databaseEnabled = true
-        setSupportZoom(false)
+        // Zoom: enabled but without on-screen controls (mirrors BrowserScreen)
+        setSupportZoom(true)
+        builtInZoomControls = true
         displayZoomControls = false
         loadWithOverviewMode = true
         useWideViewPort = true
-        builtInZoomControls = true
-        // Remote pages must not gain access to local app or content-provider data.
+        // Media must autoplay inline — required for sniffing via HTMLMediaElement.src
+        mediaPlaybackRequiresUserGesture = false
+        // Keep http media reachable on http pages — BrowserScreen uses COMPATIBILITY_MODE for this reason
+        mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         allowFileAccess = false
         allowContentAccess = false
-        mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            safeBrowsingEnabled = true
+        allowFileAccessFromFileURLs = false
+        allowUniversalAccessFromFileURLs = false
+        javaScriptCanOpenWindowsAutomatically = false
+        @Suppress("DEPRECATION")
+        setGeolocationEnabled(false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
+        // Perf: high priority raster
+        setRenderPriority(WebSettings.RenderPriority.HIGH)
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        } else {
+            cacheMode = WebSettings.LOAD_DEFAULT
         }
-
-        if (isDesktopMode) {
-            userAgentString = getDesktopUserAgent(this)
-        }
+        if (isDesktopMode) userAgentString = getDesktopUserAgent(this)
     }
 
     webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-    webView.isVerticalScrollBarEnabled = false
-    webView.isHorizontalScrollBarEnabled = false
-
     webView.webViewClient = createWebViewClient(onMediaDetected)
 }
 
-private fun getDesktopUserAgent(settings: WebSettings): String {
-    val defaultUserAgent = settings.userAgentString
-    return defaultUserAgent.replace("Mobile", "").replace("Android", "Linux")
-}
+private fun getDesktopUserAgent(settings: WebSettings): String =
+    settings.userAgentString.replace("Mobile", "").replace("Android", "Linux")
 
 fun createWebViewClient(
     onMediaDetected: (MediaCandidate) -> Unit = {}
-): WebViewClient {
-    return object : WebViewClient() {
-        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-            super.onPageStarted(view, url, favicon)
-        }
-
-        override fun onPageFinished(view: WebView?, url: String?) {
-            super.onPageFinished(view, url)
-            view?.evaluateJavascript(
-                "(function() { return document.documentElement.outerHTML; })();"
-            ) { html ->
-                // onMediaDetected will be called from the detector
+): WebViewClient = object : WebViewClient() {
+    override fun shouldInterceptRequest(
+        view: WebView?,
+        request: android.webkit.WebResourceRequest?
+    ): android.webkit.WebResourceResponse? {
+        request?.let { req ->
+            val url = req.url.toString()
+            if (url.length >= 8 && !url.startsWith("data:image/") && isMediaUrl(url)) {
+                val candidate = MediaCandidate(
+                    pageUrl = view?.url ?: "",
+                    mediaUrl = url,
+                    source = MediaCandidate.MediaSource.WEBVIEW,
+                    confidence = when {
+                        ".m3u8" in url || ".mpd" in url -> 0.95f
+                        url.substringAfterLast('.', "").lowercase() in setOf("mp4", "webm", "mkv", "mov") -> 0.9f
+                        else -> 0.78f
+                    }
+                )
+                onMediaDetected(candidate)
             }
         }
-
-        override fun shouldInterceptRequest(
-            view: WebView?,
-            request: android.webkit.WebResourceRequest?
-        ): android.webkit.WebResourceResponse? {
-            request?.let { req ->
-                val url = req.url.toString()
-                if (isMediaUrl(url)) {
-                    val candidate = MediaCandidate(
-                        pageUrl = view?.url ?: "",
-                        mediaUrl = url,
-                        source = com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource.WEBVIEW,
-                        confidence = 0.7f
-                    )
-                    onMediaDetected(candidate)
-                }
-            }
-            return super.shouldInterceptRequest(view, request)
-        }
+        return super.shouldInterceptRequest(view, request)
     }
 }
 
+/** Single source of truth — derived from [Constants] so detection never drifts between modules. */
 private fun isMediaUrl(url: String): Boolean {
-    val mediaExtensions = listOf(
-        "mp4", "webm", "mov", "avi", "3gp", "m4v", "m3u8", "mpd",
-        "mp3", "m4a", "aac", "wav"
-    )
-    val mediaMimeTypes = listOf(
-        "video/mp4", "video/webm", "video/quicktime", "video/3gpp",
-        "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav",
-        "application/vnd.apple.mpegurl", "application/x-mpegURL", "application/dash+xml"
-    )
-
-    return mediaExtensions.any { ext -> url.endsWith(ext, ignoreCase = true) } ||
-            mediaMimeTypes.any { mime -> url.contains(mime, ignoreCase = true) }
+    val path = url.substringBefore('#').substringBefore('?')
+    val lastDot = path.lastIndexOf('.')
+    val lastSlash = path.lastIndexOf('/')
+    if (lastDot > lastSlash && lastDot < path.length - 1) {
+        val ext = path.substring(lastDot + 1).lowercase()
+        if (ext in Constants.SUPPORTED_VIDEO_EXTENSIONS || ext in Constants.SUPPORTED_AUDIO_EXTENSIONS || ext in Constants.SUPPORTED_PLAYLIST_EXTENSIONS) return true
+    }
+    // HLS/DASH may appear without extension via query e.g. .../manifest?format=m3u8
+    if (url.contains(".m3u8", true) || url.contains(".mpd", true) || url.contains("manifest", true)) return true
+    if (url.startsWith("blob:")) return true
+    return false
 }

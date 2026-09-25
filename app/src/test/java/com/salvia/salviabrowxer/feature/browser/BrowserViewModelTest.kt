@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
@@ -204,11 +205,13 @@ class BrowserViewModelTest {
     }
 
     @Test
-    fun `dragging the floating button persists its position`() {
+    fun `dragging the floating button persists its position`() = runTest {
         viewModel.saveFabPosition(-120f, -340f)
 
         assertEquals(-120f, viewModel.uiState.value.fabPosition.x)
         assertEquals(-340f, viewModel.uiState.value.fabPosition.y)
+        // saveFabPosition debounces the DataStore write by 400ms — advance virtual time so it fires
+        advanceTimeBy(500)
         coVerify(exactly = 1) { settingsDataStore.setFloatingButtonPosition(-120f, -340f) }
     }
 }
