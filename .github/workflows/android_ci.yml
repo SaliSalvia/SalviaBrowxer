@@ -23,14 +23,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
+      - name: Verify Android SDK packages
         run: |
-          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          # ubuntu-latest ships a preinstalled Android SDK with licenses accepted.
+          # (android-actions/setup-android@v3 downloads cmdline-tools 16.0 whose
+          #  license step is currently broken, so we use the preinstalled tooling.)
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
           java -version
 
       - name: Verify Gradle wrapper
