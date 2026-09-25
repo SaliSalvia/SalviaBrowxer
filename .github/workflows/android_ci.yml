@@ -29,8 +29,10 @@ jobs:
           # (android-actions/setup-android@v3 downloads cmdline-tools 16.0 whose
           #  license step is currently broken, so we use the preinstalled tooling.)
           echo "ANDROID_HOME=$ANDROID_HOME"
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
           java -version
 
       - name: Verify Gradle wrapper
