@@ -47,39 +47,55 @@ import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.theme.TopBarBrush
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
 
 @Composable
-fun DownloadsScreen(onBack: () -> Unit, viewModel: DownloadsViewModel = hiltViewModel()) {
+fun DownloadsScreen(
+    onBack: () -> Unit,
+    onPlayInApp: (String, String) -> Unit = { _, _ -> },
+    viewModel: DownloadsViewModel = hiltViewModel()
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) { viewModel.messages.collectLatest { message -> if (message.isNotBlank()) snackbarHostState.showSnackbar(message) } }
+    LaunchedEffect(Unit) {
+        viewModel.playRequest.receiveAsFlow().collectLatest { (path, title) -> onPlayInApp(path, title) }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite) }
-                Spacer(Modifier.width(8.dp))
-                Text(text = stringResource(R.string.downloads_title), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = {
-                    when (selectedTabIndex) { 0 -> viewModel.clearAllDownloads(); 2 -> viewModel.clearCompletedDownloads(); 3 -> viewModel.clearFailedDownloads() }
-                }) { Icon(Icons.Default.ClearAll, stringResource(R.string.action_clear), tint = SilverMid) }
+            // Nebula header with iridescent hairline underneath
+            Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
+                Row(modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite) }
+                    Spacer(Modifier.width(8.dp))
+                    Text(text = stringResource(R.string.downloads_title), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = {
+                        when (selectedTabIndex) { 0 -> viewModel.clearAllDownloads(); 2 -> viewModel.clearCompletedDownloads(); 3 -> viewModel.clearFailedDownloads() }
+                    }) { Icon(Icons.Default.ClearAll, stringResource(R.string.action_clear), tint = SilverMid) }
+                }
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
             }
 
             TabRow(
                 selectedTabIndex = selectedTabIndex, containerColor = DeepCharcoal, contentColor = PearlWhite,
-                indicator = { tabPositions -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = AuroraTeal, height = 2.dp) },
+                indicator = { tabPositions -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = NebulaVioletLight, height = 2.dp) },
                 divider = { androidx.compose.material3.HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.6f), thickness = 1.dp) }
             ) {
-                Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_active)} (${state.active.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_queue)} (${state.queued.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_completed)} (${state.completed.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_failed)} (${state.failed.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_active)} (${state.active.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_queue)} (${state.queued.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_completed)} (${state.completed.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_failed)} (${state.failed.size})", style = MaterialTheme.typography.labelMedium) })
             }
 
             val items = when (selectedTabIndex) { 0 -> state.active; 1 -> state.queued; 2 -> state.completed; else -> state.failed }
@@ -101,7 +117,14 @@ private fun DownloadList(items: List<DownloadEntity>, viewModel: DownloadsViewMo
         items(items, key = { it.id }, contentType = { it.status }) { download ->
             DownloadItem(
                 download = download,
-                onOpenClick = { viewModel.openDownload(download.id) },
+                onOpenClick = {
+                    val mime = download.mimeType ?: ""
+                    if (mime.startsWith("video/") || mime.startsWith("audio/") || mime == "application/octet-stream") {
+                        viewModel.playInApp(download.id)
+                    } else {
+                        viewModel.openDownload(download.id)
+                    }
+                },
                 onPauseClick = { viewModel.pauseDownload(download.id) },
                 onResumeClick = { viewModel.resumeDownload(download.id) },
                 onCancelClick = { viewModel.cancelDownload(download.id) },

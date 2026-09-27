@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -32,24 +34,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
-import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
+import com.salvia.salviabrowxer.ui.theme.BlushPink
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
+import com.salvia.salviabrowxer.ui.theme.NebulaEdge
+import com.salvia.salviabrowxer.ui.theme.NebulaMist
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 
 @Composable
 fun BrowserTopBar(
@@ -84,7 +88,7 @@ fun BrowserTopBar(
         keyboardController?.hide()
     }
 
-    Column(modifier = modifier.fillMaxWidth().background(CharcoalSurface)) {
+    Column(modifier = modifier.fillMaxWidth().background(TopBarBrush)) {
         Row(modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBackClick, enabled = canGoBack, modifier = Modifier.size(40.dp)) {
                 Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.go_back), tint = if (canGoBack) PearlWhite else SilverMid.copy(alpha = 0.35f))
@@ -95,30 +99,47 @@ fun BrowserTopBar(
             IconButton(onClick = if (isLoading) onStopClick else onRefreshClick, modifier = Modifier.size(40.dp)) {
                 Icon(imageVector = Icons.Default.Refresh, contentDescription = if (isLoading) stringResource(R.string.stop) else stringResource(R.string.reload), tint = PearlWhite)
             }
-            Box(modifier = Modifier.weight(1f).padding(horizontal = 4.dp).clip(RoundedCornerShape(22.dp)).background(CharcoalElevated).padding(horizontal = 12.dp, vertical = 9.dp), contentAlignment = Alignment.CenterStart) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isSecure) {
-                        Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = AuroraTeal, modifier = Modifier.padding(end = 6.dp).size(13.dp))
-                    }
-                    Box(modifier = Modifier.weight(1f)) {
-                        BasicTextField(
-                            value = input,
-                            onValueChange = { newValue -> input = newValue; onUrlChange(newValue.text) },
-                            modifier = Modifier.fillMaxWidth().onFocusChanged { isEditing = it.hasFocus }.onPreviewKeyEvent { event ->
-                                if (event.key == Key.Enter && event.type == KeyEventType.KeyUp) { submit(); true } else false
-                            },
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
-                            cursorBrush = SolidColor(AuroraTeal),
-                            decorationBox = { inner ->
-                                if (input.text.isEmpty()) Text(text = stringResource(R.string.search_or_type_url), style = MaterialTheme.typography.bodyMedium, color = SilverMid.copy(alpha = 0.65f))
-                                inner()
+            // Nebula address capsule with pearl-iridescent focus rim
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(if (isEditing) PearlEdgeBrush else SolidColor(CharcoalBorder.copy(alpha = 0.65f)))
+                    .padding(1.2.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(23.dp))
+                        .background(SolidColor(if (isEditing) NebulaMist else CharcoalSurface))
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isSecure) {
+                            Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = AuroraTeal, modifier = Modifier.padding(end = 6.dp).size(13.dp))
+                        }
+                        Box(modifier = Modifier.weight(1f)) {
+                            BasicTextField(
+                                value = input,
+                                onValueChange = { newValue -> input = newValue; onUrlChange(newValue.text) },
+                                modifier = Modifier.fillMaxWidth().onFocusChanged { isEditing = it.hasFocus },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { submit() }),
+                                cursorBrush = Brush.horizontalGradient(colors = listOf(BlushPink, NebulaVioletLight, AuroraTeal)),
+                                decorationBox = { inner ->
+                                    if (input.text.isEmpty()) Text(text = stringResource(R.string.search_or_type_url), style = MaterialTheme.typography.bodyMedium, color = SilverMid.copy(alpha = 0.65f))
+                                    inner()
+                                }
+                            )
+                        }
+                        if (input.text.isNotEmpty()) {
+                            IconButton(onClick = { input = TextFieldValue(""); onUrlChange("") }, modifier = Modifier.size(24.dp)) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(R.string.action_clear), tint = SilverMid, modifier = Modifier.size(15.dp))
                             }
-                        )
-                    }
-                    if (input.text.isNotEmpty()) {
-                        IconButton(onClick = { input = TextFieldValue(""); onUrlChange("") }, modifier = Modifier.size(24.dp)) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(R.string.action_clear), tint = SilverMid, modifier = Modifier.size(15.dp))
                         }
                     }
                 }
@@ -127,8 +148,14 @@ fun BrowserTopBar(
                 Icon(imageVector = Icons.Default.Search, contentDescription = stringResource(R.string.settings_search_engine), tint = PearlWhite)
             }
         }
+        // Iridescent progress line — the pearl 7-color sweep
         if (isLoading) {
-            LinearProgressIndicator(progress = { (progress.coerceIn(0, 100)) / 100f }, modifier = Modifier.fillMaxWidth().height(2.dp), color = AuroraTeal, trackColor = CharcoalElevated)
+            LinearProgressIndicator(
+                progress = { (progress.coerceIn(0, 100)) / 100f },
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color = NebulaVioletLight,
+                trackColor = NebulaEdge
+            )
         }
     }
 }

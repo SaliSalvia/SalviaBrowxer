@@ -1,5 +1,6 @@
 package com.salvia.salviabrowxer.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +54,10 @@ import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
+import com.salvia.salviabrowxer.ui.theme.DownloadCtaBrush
+import com.salvia.salviabrowxer.ui.theme.NebulaViolet
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletContainer
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.utils.formatFileSize
@@ -70,10 +75,11 @@ fun MediaQualitySelectionSheet(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = Modifier.fillMaxWidth(0.96f).padding(10.dp),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(24.dp),
             color = CharcoalElevated,
             tonalElevation = 8.dp,
-            shadowElevation = 16.dp
+            shadowElevation = 16.dp,
+            border = BorderStroke(1.dp, CharcoalBorder.copy(alpha = 0.8f))
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 // Drag handle
@@ -115,9 +121,9 @@ fun MediaQualitySelectionSheet(
                 Button(
                     onClick = { selectedFormat?.let { onQualitySelected(it) } },
                     enabled = selectedFormat != null && !isResolving,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AuroraTeal, contentColor = Color(0xFF0A0A0C), disabledContainerColor = CharcoalSurface, disabledContentColor = SilverMid.copy(alpha = 0.5f))
+                    modifier = Modifier.fillMaxWidth().height(48.dp).background(DownloadCtaBrush, RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White, disabledContainerColor = CharcoalSurface, disabledContentColor = SilverMid.copy(alpha = 0.5f))
                 ) { Text(text = stringResource(R.string.download_start), style = MaterialTheme.typography.titleSmall) }
             }
         }
@@ -140,7 +146,7 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
             }
         }
         if (format.isHls) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(AuroraTeal.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("HLS", style = MaterialTheme.typography.labelSmall, color = AuroraTeal) }
-        if (format.isDash) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFF8B5CF6).copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("DASH", style = MaterialTheme.typography.labelSmall, color = Color(0xFFB794FF)) }
+        if (format.isDash) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(NebulaViolet.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("DASH", style = MaterialTheme.typography.labelSmall, color = NebulaVioletLight) }
     }
 }
 

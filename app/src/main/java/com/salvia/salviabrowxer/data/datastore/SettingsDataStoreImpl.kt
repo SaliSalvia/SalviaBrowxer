@@ -43,6 +43,9 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
     override val isDarkTheme: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[IS_DARK_THEME] ?: true }
 
+    override val isFloatingButtonAlwaysVisible: Flow<Boolean> = dataStore.data
+        .map { preferences -> preferences[FLOATING_BUTTON_ALWAYS_VISIBLE] ?: true }
+
     override val floatingButtonSize: Flow<Int> = dataStore.data
         .map { preferences -> preferences[FLOATING_BUTTON_SIZE] ?: 56 }
 
@@ -88,6 +91,10 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         dataStore.edit { preferences -> preferences[IS_DARK_THEME] = enabled }
     }
 
+    override suspend fun setFloatingButtonAlwaysVisible(enabled: Boolean) {
+        dataStore.edit { preferences -> preferences[FLOATING_BUTTON_ALWAYS_VISIBLE] = enabled }
+    }
+
     override suspend fun setFloatingButtonSize(size: Int) {
         dataStore.edit { preferences -> preferences[FLOATING_BUTTON_SIZE] = size }
     }
@@ -109,6 +116,7 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         private val MAX_SIMULTANEOUS_DOWNLOADS = intPreferencesKey("max_simultaneous_downloads")
         private val IS_WIFI_ONLY = booleanPreferencesKey("is_wifi_only")
         private val IS_DARK_THEME = booleanPreferencesKey("is_dark_theme")
+        private val FLOATING_BUTTON_ALWAYS_VISIBLE = booleanPreferencesKey("floating_button_always_visible")
         private val FLOATING_BUTTON_SIZE = intPreferencesKey("floating_button_size")
         private val FLOATING_BUTTON_X = floatPreferencesKey("floating_button_x")
         private val FLOATING_BUTTON_Y = floatPreferencesKey("floating_button_y")

@@ -46,6 +46,16 @@
     <string name="download_start">Start Download</string>
 
     <!-- Settings -->
+    <string name="settings_floating_button_always">Always show download button</string>
+    <string name="player_speed">Speed</string>
+    <string name="player_order">Playback order</string>
+    <string name="player_order_sequential">In order</string>
+    <string name="player_order_loop">Repeat all</string>
+    <string name="player_order_reverse">Reverse</string>
+    <string name="player_order_shuffle">Shuffle</string>
+    <string name="player_previous">Previous</string>
+    <string name="player_next">Next</string>
+    <string name="player_playlist">Playlist %1$d / %2$d</string>
     <string name="settings_browser">Browser</string>
     <string name="settings_downloads">Downloads</string>
     <string name="settings_appearance">Appearance</string>

@@ -20,6 +20,7 @@ import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.service.DownloadService
+import com.salvia.salviabrowxer.ui.utils.AddressBarResolver
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.sanitizeFilename
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,7 +42,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
-import java.net.URLEncoder
 import javax.inject.Inject
 
 sealed interface BrowserCommand {
@@ -76,6 +76,7 @@ data class BrowserUiState(
     val detectedMedia: List<MediaCandidate> = emptyList(),
     val fabPosition: FabPosition = FabPosition(),
     val floatingButtonSize: Int = 56,
+    val isFabAlwaysVisible: Boolean = true,
     val qualitySheet: QualitySheetState? = null
 ) {
     val isMediaDetected: Boolean get() = detectedMedia.isNotEmpty()
@@ -122,10 +123,12 @@ class BrowserViewModel @Inject constructor(
             val fabX = runCatching { settingsDataStore.floatingButtonX.first() }.getOrNull() ?: 0f
             val fabY = runCatching { settingsDataStore.floatingButtonY.first() }.getOrNull() ?: 0f
             val fabSize = runCatching { settingsDataStore.floatingButtonSize.first() }.getOrNull() ?: 56
+            val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: true
             _uiState.update {
                 it.copy(
                     homepage = homepage, searchEngine = engine, isJavaScriptEnabled = jsEnabled,
-                    areCookiesEnabled = cookiesEnabled, isDesktopSite = desktop, fabPosition = FabPosition(fabX, fabY), floatingButtonSize = fabSize.coerceIn(40, 72)
+                    areCookiesEnabled = cookiesEnabled, isDesktopSite = desktop, fabPosition = FabPosition(fabX, fabY), floatingButtonSize = fabSize.coerceIn(40, 72),
+                    isFabAlwaysVisible = fabAlways
                 )
             }
             if (homepage != _uiState.value.url) navigate(homepage)
@@ -137,6 +140,11 @@ class BrowserViewModel @Inject constructor(
     private fun observeSettingsLive() {
         viewModelScope.launch(Dispatchers.IO) {
             settingsDataStore.floatingButtonSize.collectLatest { size -> _uiState.update { it.copy(floatingButtonSize = size.coerceIn(40, 72)) } }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { enabled ->
+                _uiState.update { it.copy(isFabAlwaysVisible = enabled) }
+            }
         }
     }
 
@@ -387,22 +395,14 @@ class BrowserViewModel @Inject constructor(
     private fun normalizeUrl(raw: String): String? {
         val input = raw.trim()
         if (input.isEmpty()) return null
-        return when { input.startsWith("http://") || input.startsWith("https://") || input.startsWith("file://") || input.startsWith("about:") -> input else -> resolveTargetUrl(input) }
+        return AddressBarResolver.resolve(input, _uiState.value.searchEngine)
     }
 
-    private fun resolveTargetUrl(input: String): String? {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) return null
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("file://") || trimmed.startsWith("about:")) return trimmed
-        val looksLikeHost = !trimmed.contains(' ') && (trimmed.contains('.') || trimmed.startsWith("localhost") || trimmed.contains(':'))
-        return if (looksLikeHost) "https://$trimmed" else buildSearchUrl(trimmed)
-    }
+    private fun resolveTargetUrl(input: String): String? =
+        AddressBarResolver.resolve(input, _uiState.value.searchEngine)
 
-    private fun buildSearchUrl(query: String): String {
-        val template = Constants.SEARCH_ENGINES[_uiState.value.searchEngine] ?: Constants.SEARCH_ENGINES.getValue(Constants.DEFAULT_SEARCH_ENGINE)
-        val encoded = URLEncoder.encode(query, "UTF-8")
-        return template.replace("%s", encoded)
-    }
+    private fun buildSearchUrl(query: String): String =
+        AddressBarResolver.buildSearchUrl(query, _uiState.value.searchEngine)
 
     companion object { private const val TAG = "BrowserViewModel" }
 }

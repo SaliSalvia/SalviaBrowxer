@@ -8,8 +8,11 @@ import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,7 +49,14 @@ import com.salvia.salviabrowxer.ui.components.BrowserBottomBar
 import com.salvia.salviabrowxer.ui.components.BrowserTopBar
 import com.salvia.salviabrowxer.ui.components.FloatingDownloadButton
 import com.salvia.salviabrowxer.ui.components.MediaQualitySelectionSheet
+import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
+import com.salvia.salviabrowxer.ui.components.SignatureWordmark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
+import com.salvia.salviabrowxer.ui.theme.PearlWhite
+import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.theme.SplashNebulaBrush
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.WebViewClientWrapper
 import kotlinx.coroutines.flow.collectLatest
@@ -146,6 +157,25 @@ fun BrowserScreen(
                 .fillMaxWidth()
                 .onSizeChanged { size -> pageAreaSize = size }
         ) {
+            // Brand splash while the first page loads — nebula glow backdrop
+            if (state.url.isBlank() || (state.url == Constants.DEFAULT_HOMEPAGE && state.progress < 25)) {
+                Column(
+                    modifier = Modifier.fillMaxSize().background(SplashNebulaBrush).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    OrbitalBrandMark(size = 108.dp)
+                    Spacer(Modifier.height(18.dp))
+                    SignatureWordmark(width = 240.dp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = PearlWhite,
+                        letterSpacing = 3.sp
+                    )
+                }
+            }
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
@@ -162,6 +192,7 @@ fun BrowserScreen(
                             displayZoomControls = false
                             loadWithOverviewMode = true
                             useWideViewPort = true
+                            // Max-speed browsing: aggressive caching + preload
                             cacheMode = WebSettings.LOAD_DEFAULT
                             mediaPlaybackRequiresUserGesture = false
                             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
@@ -173,10 +204,14 @@ fun BrowserScreen(
                             setGeolocationEnabled(false)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 safeBrowsingEnabled = true
+                                // Instant render of loaded content while scrolling
+                                offscreenPreRaster = true
                             }
                             @Suppress("DEPRECATION")
                             setRenderPriority(WebSettings.RenderPriority.HIGH)
                         }
+                        // Pre-warm the renderer so the first paint is instant
+                        setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
                         defaultUserAgent = settings.userAgentString
 
                         // InShot-style: expose blob bridge before any page loads
@@ -249,30 +284,35 @@ fun BrowserScreen(
                 Text(
                     text = stringResource(R.string.media_detected, mediaCount),
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White,
+                    color = PearlWhite,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(12.dp)
                         .clip(RoundedCornerShape(20.dp))
                         .background(Color.Black.copy(alpha = 0.52f))
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .padding(1.dp)
+                        .background(PearlEdgeBrush)
+                        .padding(horizontal = 11.dp, vertical = 5.dp)
                 )
             }
 
-            FloatingDownloadButton(
-                isMediaDetected = isMediaDetected,
-                mediaCount = mediaCount,
-                onClick = onFabClick,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp),
-                buttonSize = state.floatingButtonSize.dp,
-                containerSize = pageAreaSize,
-                initialOffset = Offset(state.fabPosition.x, state.fabPosition.y),
-                onOffsetChanged = remember(viewModel) {
-                    { offset: Offset -> viewModel.saveFabPosition(offset.x, offset.y) }
-                }
-            )
+    val fabVisible = state.isFabAlwaysVisible || isMediaDetected
+    if (fabVisible) {
+        FloatingDownloadButton(
+            isMediaDetected = isMediaDetected,
+            mediaCount = mediaCount,
+            onClick = onFabClick,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            buttonSize = state.floatingButtonSize.dp,
+            containerSize = pageAreaSize,
+            initialOffset = Offset(state.fabPosition.x, state.fabPosition.y),
+            onOffsetChanged = remember(viewModel) {
+                { offset: Offset -> viewModel.saveFabPosition(offset.x, offset.y) }
+            }
+        )
+    }
 
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -286,7 +326,7 @@ fun BrowserScreen(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .size(26.dp),
-                    color = AuroraTeal,
+                    color = NebulaVioletLight,
                     strokeWidth = 2.dp
                 )
             }

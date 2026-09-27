@@ -45,6 +45,9 @@ class DownloadsViewModel @Inject constructor(
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
+    private val _playRequest = Channel<Pair<String, String>>(Channel.BUFFERED)
+    val playRequest: Channel<Pair<String, String>> = _playRequest
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             downloadRepository.getAllDownloads().distinctUntilChanged().collectLatest { downloads ->
@@ -83,6 +86,17 @@ class DownloadsViewModel @Inject constructor(
                 context.startActivity(intent)
             }
             if (launched.isFailure) _messages.trySend("No app can open this file")
+        }
+    }
+
+    /** Opens a completed file with the in-app SalviaBrowxer player. */
+    fun playInApp(downloadId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val download = downloadRepository.getDownloadById(downloadId)
+            val path = download?.finalPath
+            if (download == null || path.isNullOrBlank()) { _messages.trySend("File is not ready yet"); return@launch }
+            if (!File(path).exists()) { _messages.trySend("File is missing on disk"); return@launch }
+            playRequest.trySend(path to (download.mediaTitle?.ifBlank { null } ?: download.filename))
         }
     }
     fun clearCompletedDownloads() { viewModelScope.launch(Dispatchers.IO) { downloadRepository.deleteDownloadsByState(DownloadState.COMPLETED) } }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,8 +28,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
-import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
+import com.salvia.salviabrowxer.ui.theme.AccentIndicatorBrush
+import com.salvia.salviabrowxer.ui.theme.BlushPink
+import com.salvia.salviabrowxer.ui.theme.BottomBarBrush
+import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 
@@ -41,10 +45,11 @@ fun BrowserBottomBar(
     modifier: Modifier = Modifier,
     activeDownloadCount: Int = 0
 ) {
-    Column(modifier = modifier.fillMaxWidth().background(CharcoalSurface)) {
-        HorizontalDivider(thickness = 1.dp, color = SilverMid.copy(alpha = 0.12f))
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Iridescent hairline on top of the bar
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
         Row(
-            modifier = Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().height(62.dp).background(BottomBarBrush).padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
         ) {
             BottomBarAction(icon = Icons.Default.Home, label = stringResource(R.string.home), onClick = onHomeClick, badge = 0, modifier = Modifier.weight(1f))
@@ -56,13 +61,20 @@ fun BrowserBottomBar(
 
 @Composable
 private fun BottomBarAction(icon: ImageVector, label: String, badge: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.height(52.dp).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.height(54.dp).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Box(contentAlignment = Alignment.TopEnd) {
                 Icon(imageVector = icon, contentDescription = label, tint = PearlWhite, modifier = Modifier.size(22.dp))
                 if (badge > 0) {
-                    Box(modifier = Modifier.size(17.dp).clip(RoundedCornerShape(9.dp)).background(AuroraTeal), contentAlignment = Alignment.Center) {
-                        Text(text = if (badge > 9) "9+" else badge.toString(), style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color(0xFF0A0A0C), textAlign = TextAlign.Center, modifier = Modifier.padding(1.dp))
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 4.dp, y = (-2).dp)
+                            .size(17.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(AccentIndicatorBrush),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = if (badge > 9) "9+" else badge.toString(), style = MaterialTheme.typography.labelSmall, color = MatteCharcoal, textAlign = TextAlign.Center, modifier = Modifier.padding(1.dp))
                     }
                 }
             }
