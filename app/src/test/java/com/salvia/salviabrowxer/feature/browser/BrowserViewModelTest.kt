@@ -169,6 +169,141 @@ class BrowserViewModelTest {
     }
 
     @Test
+    fun `a background tab finishing does not hijack the address bar`() {
+        viewModel.createNewTab("https://example.com/second")
+        val firstTabId = viewModel.uiState.value.tabs.first().id
+        val secondTabId = viewModel.uiState.value.tabs.last().id
+
+        viewModel.onPageStarted(firstTabId, "https://example.com/first")
+        viewModel.onPageFinished(firstTabId, "https://example.com/first", "First page")
+
+        val state = viewModel.uiState.value
+        assertEquals(secondTabId, state.currentTabId)
+        assertEquals("https://example.com/second", state.url)
+        val firstTab = state.tabs.first { it.id == firstTabId }
+        assertEquals("https://example.com/first", firstTab.url)
+        assertEquals("First page", firstTab.title)
+        // The background visit is still real history, exactly once.
+        coVerify(exactly = 1) { historyRepository.addHistory(any()) }
+    }
+
+    @Test
+    fun `progress from a background tab never moves the visible progress bar`() {
+        viewModel.createNewTab("https://example.com/second")
+        val firstTabId = viewModel.uiState.value.tabs.first().id
+
+        viewModel.onProgressChanged(firstTabId, 42)
+
+        assertFalse(viewModel.uiState.value.progress == 42)
+    }
+
+    @Test
+    fun `a hibernated tab keeps its url and title and is restored on activation`() {
+        viewModel.createNewTab("https://example.com/article")
+        val tabId = viewModel.uiState.value.currentTabId!!
+        viewModel.onPageFinished(tabId, "https://example.com/article", "Article")
+
+        viewModel.onTabHibernated(tabId, "https://example.com/article", "Article")
+
+        val state = viewModel.uiState.value
+        assertTrue(state.hibernatedTabIds.contains(tabId))
+        assertEquals("https://example.com/article", state.tabs.first { it.id == tabId }.url)
+        assertEquals("Article", state.tabs.first { it.id == tabId }.title)
+
+        viewModel.onTabActivated(tabId)
+        assertFalse(viewModel.uiState.value.hibernatedTabIds.contains(tabId))
+    }
+
+    @Test
+    fun `closing the last tab opens a fresh one instead of a dead browser`() {
+        val onlyTab = viewModel.uiState.value.currentTabId!!
+
+        viewModel.closeTab(onlyTab)
+
+        val state = viewModel.uiState.value
+        assertEquals(1, state.tabs.size)
+        assertNotNull(state.currentTabId)
+    }
+
+    @Test
+    fun `closing a tab drops its hibernation flag`() {
+        viewModel.createNewTab("https://example.com/gone")
+        val tabId = viewModel.uiState.value.currentTabId!!
+        viewModel.onTabHibernated(tabId, "https://example.com/gone", "Gone")
+
+        viewModel.closeTab(tabId)
+
+        assertFalse(viewModel.uiState.value.hibernatedTabIds.contains(tabId))
+    }
+
+    @Test
+    fun `the tab switcher opens and selecting a tab closes it`() {
+        viewModel.createNewTab("https://example.com/second")
+        val firstTabId = viewModel.uiState.value.tabs.first().id
+
+        viewModel.openTabSwitcher()
+        assertTrue(viewModel.uiState.value.isTabSwitcherVisible)
+
+        viewModel.switchTab(firstTabId)
+        assertFalse(viewModel.uiState.value.isTabSwitcherVisible)
+        assertEquals(firstTabId, viewModel.uiState.value.currentTabId)
+    }
+
+    @Test
+    fun `a bookmark or history entry loads in the current tab`() {
+        val tabsBefore = viewModel.uiState.value.tabs.size
+        val currentTabId = viewModel.uiState.value.currentTabId
+
+        viewModel.openInCurrentTab("https://example.com/bookmarked")
+
+        val state = viewModel.uiState.value
+        assertEquals(tabsBefore, state.tabs.size)
+        assertEquals(currentTabId, state.currentTabId)
+        assertEquals("https://example.com/bookmarked", state.url)
+    }
+
+    @Test
+    fun `a shared link opens in a new tab`() {
+        val tabsBefore = viewModel.uiState.value.tabs.size
+
+        viewModel.openExternalUrl("https://example.com/shared")
+
+        val state = viewModel.uiState.value
+        assertEquals(tabsBefore + 1, state.tabs.size)
+        assertEquals("https://example.com/shared", state.url)
+    }
+
+    @Test
+    fun `find in page keeps its query and reports matches for the current tab`() {
+        assertNull(viewModel.uiState.value.findInPage)
+
+        viewModel.openFindInPage()
+        viewModel.updateFindQuery("salvia")
+        assertEquals("salvia", viewModel.uiState.value.findInPage?.query)
+
+        viewModel.onFindResult(viewModel.uiState.value.currentTabId, 4, 2)
+        assertEquals(4, viewModel.uiState.value.findInPage?.matches)
+        assertEquals(2, viewModel.uiState.value.findInPage?.activeMatch)
+
+        viewModel.closeFindInPage()
+        assertNull(viewModel.uiState.value.findInPage)
+    }
+
+    @Test
+    fun `desktop site is a real persisted toggle`() {
+        assertFalse(viewModel.uiState.value.isDesktopSite)
+
+        viewModel.toggleDesktopSite()
+
+        assertTrue(viewModel.uiState.value.isDesktopSite)
+        coVerify(exactly = 1) { settingsDataStore.setDesktopSite(true) }
+
+        viewModel.toggleDesktopSite()
+        assertFalse(viewModel.uiState.value.isDesktopSite)
+        coVerify(exactly = 1) { settingsDataStore.setDesktopSite(false) }
+    }
+
+    @Test
     fun `detected media is merged without duplicates`() {
         val candidate = MediaCandidate(
             pageUrl = "https://example.com",

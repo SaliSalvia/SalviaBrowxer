@@ -20,12 +20,29 @@ import java.util.concurrent.ConcurrentHashMap
 class WebViewClientWrapper(
     private val onPageStartedHook: (WebView, String?, android.graphics.Bitmap?) -> Unit = { _, _, _ -> },
     private val onPageFinishedHook: (WebView, String?) -> Unit = { _, _ -> },
-    private val onMediaDetectedHook: (MediaCandidate) -> Unit = {}
+    private val onMediaDetectedHook: (MediaCandidate) -> Unit = {},
+    /** Return true when a non-web scheme (tel:, mailto:, intent:, market:) was handed to the system. */
+    private val onExternalSchemeHook: (String) -> Boolean = { false }
 ) : WebViewClient() {
 
     // URL -> last emit timestamp (ms)
     private val lastEmit = ConcurrentHashMap<String, Long>()
     private val seenUrls = ConcurrentHashMap<String, Boolean>()
+
+    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+        val url = request?.url?.toString() ?: return false
+        if (isWebUrl(url)) return false
+        return safe("onExternalScheme") { onExternalSchemeHook(url) } ?: false
+    }
+
+    private fun isWebUrl(url: String): Boolean =
+        url.startsWith("http://", true) ||
+            url.startsWith("https://", true) ||
+            url.startsWith("about:", true) ||
+            url.startsWith("data:", true) ||
+            url.startsWith("blob:", true) ||
+            url.startsWith("file:", true) ||
+            url.startsWith("javascript:", true)
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         super.onPageStarted(view, url, favicon)
@@ -122,12 +139,13 @@ class WebViewClientWrapper(
         else -> null
     }
 
-    private inline fun safe(where: String, block: () -> Unit) {
-        try {
+    private inline fun <T> safe(where: String, block: () -> T): T? {
+        return try {
             block()
         } catch (error: Throwable) {
             if (error is Error && error !is StackOverflowError) throw error
             Log.w(TAG, "WebViewClientWrapper.$where failed", error)
+            null
         }
     }
 
