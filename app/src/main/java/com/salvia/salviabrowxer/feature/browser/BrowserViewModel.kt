@@ -21,6 +21,7 @@ import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.service.DownloadService
 import com.salvia.salviabrowxer.ui.utils.AddressBarResolver
+import com.salvia.salviabrowxer.ui.utils.CleartextPolicy
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.sanitizeFilename
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -72,6 +73,9 @@ data class BrowserUiState(
     val isJavaScriptEnabled: Boolean = true,
     val areCookiesEnabled: Boolean = true,
     val isDesktopSite: Boolean = false,
+    val isCleartextAllowed: Boolean = false,
+    /** Set when http:// navigation was refused, so the chrome can explain it and offer to allow. */
+    val blockedCleartextUrl: String? = null,
     val activeDownloadCount: Int = 0,
     val detectedMedia: List<MediaCandidate> = emptyList(),
     val fabPosition: FabPosition = FabPosition(),
@@ -124,11 +128,12 @@ class BrowserViewModel @Inject constructor(
             val fabY = runCatching { settingsDataStore.floatingButtonY.first() }.getOrNull() ?: 0f
             val fabSize = runCatching { settingsDataStore.floatingButtonSize.first() }.getOrNull() ?: 56
             val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: true
+            val cleartextAllowed = runCatching { settingsDataStore.isCleartextAllowed.first() }.getOrNull() ?: false
             _uiState.update {
                 it.copy(
                     homepage = homepage, searchEngine = engine, isJavaScriptEnabled = jsEnabled,
                     areCookiesEnabled = cookiesEnabled, isDesktopSite = desktop, fabPosition = FabPosition(fabX, fabY), floatingButtonSize = fabSize.coerceIn(40, 72),
-                    isFabAlwaysVisible = fabAlways
+                    isFabAlwaysVisible = fabAlways, isCleartextAllowed = cleartextAllowed
                 )
             }
             if (homepage != _uiState.value.url) navigate(homepage)
@@ -144,6 +149,11 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { enabled ->
                 _uiState.update { it.copy(isFabAlwaysVisible = enabled) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.isCleartextAllowed.collectLatest { allowed ->
+                _uiState.update { it.copy(isCleartextAllowed = allowed) }
             }
         }
     }
@@ -200,6 +210,11 @@ class BrowserViewModel @Inject constructor(
 
     fun navigate(url: String) {
         val target = normalizeUrl(url) ?: return
+        if (CleartextPolicy.isBlocked(target, _uiState.value.isCleartextAllowed)) {
+            _uiState.update { it.copy(blockedCleartextUrl = target, addressBarInput = target, isLoading = false, progress = 0) }
+            _messages.trySend(context.getString(R.string.error_cleartext_blocked))
+            return
+        }
         _uiState.update { state -> state.copy(url = target, addressBarInput = target, isLoading = true, progress = 0, isSecure = target.startsWith("https://"), detectedMedia = emptyList(), tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = target, lastVisited = System.currentTimeMillis()) else tab }) }
         _commands.trySend(BrowserCommand.Load(target))
     }
@@ -213,7 +228,24 @@ class BrowserViewModel @Inject constructor(
 
     fun onPageStarted(url: String?) {
         val safeUrl = url ?: return
+        // A form or link can still reach http:// even when the address bar refused it.
+        if (CleartextPolicy.isBlocked(safeUrl, _uiState.value.isCleartextAllowed)) {
+            _commands.trySend(BrowserCommand.Stop)
+            _uiState.update { it.copy(blockedCleartextUrl = safeUrl, isLoading = false) }
+            _messages.trySend(context.getString(R.string.error_cleartext_blocked))
+            return
+        }
         _uiState.update { state -> state.copy(url = safeUrl, addressBarInput = safeUrl, isLoading = true, isSecure = safeUrl.startsWith("https://"), tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = safeUrl) else tab }) }
+    }
+
+    fun dismissCleartextBlock() { _uiState.update { it.copy(blockedCleartextUrl = null) } }
+
+    /** Turns the setting on and loads the URL the user already asked for. */
+    fun allowCleartextAndRetry() {
+        val target = _uiState.value.blockedCleartextUrl ?: return
+        viewModelScope.launch(Dispatchers.IO) { runCatching { settingsDataStore.setCleartextAllowed(true) } }
+        _uiState.update { it.copy(isCleartextAllowed = true, blockedCleartextUrl = null) }
+        navigate(target)
     }
 
     fun onPageFinished(url: String?, title: String?) {
@@ -378,7 +410,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun addBookmark(title: String, url: String) {
-        viewModelScope.launch { bookmarkRepository.addBookmark(BookmarkEntity(title = title.ifBlank { url }, url = url)); _messages.trySend("Bookmark added") }
+        viewModelScope.launch { bookmarkRepository.addBookmark(BookmarkEntity(title = title.ifBlank { url }, url = url)); _messages.trySend(context.getString(R.string.bookmark_added)) }
     }
 
     fun removeBookmark(url: String) {

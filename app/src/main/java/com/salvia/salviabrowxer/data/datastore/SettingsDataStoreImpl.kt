@@ -31,17 +31,14 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
     override val areCookiesEnabled: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[ARE_COOKIES_ENABLED] ?: true }
 
-    override val downloadDirectory: Flow<String> = dataStore.data
-        .map { preferences -> preferences[DOWNLOAD_DIRECTORY] ?: "" }
-
     override val maxSimultaneousDownloads: Flow<Int> = dataStore.data
         .map { preferences -> preferences[MAX_SIMULTANEOUS_DOWNLOADS] ?: 3 }
 
     override val isWifiOnly: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[IS_WIFI_ONLY] ?: false }
 
-    override val isDarkTheme: Flow<Boolean> = dataStore.data
-        .map { preferences -> preferences[IS_DARK_THEME] ?: true }
+    override val isCleartextAllowed: Flow<Boolean> = dataStore.data
+        .map { preferences -> preferences[ALLOW_CLEARTEXT] ?: false }
 
     override val isFloatingButtonAlwaysVisible: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[FLOATING_BUTTON_ALWAYS_VISIBLE] ?: true }
@@ -75,10 +72,6 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         dataStore.edit { preferences -> preferences[ARE_COOKIES_ENABLED] = enabled }
     }
 
-    override suspend fun setDownloadDirectory(directory: String) {
-        dataStore.edit { preferences -> preferences[DOWNLOAD_DIRECTORY] = directory }
-    }
-
     override suspend fun setMaxSimultaneousDownloads(count: Int) {
         dataStore.edit { preferences -> preferences[MAX_SIMULTANEOUS_DOWNLOADS] = count }
     }
@@ -87,8 +80,8 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         dataStore.edit { preferences -> preferences[IS_WIFI_ONLY] = enabled }
     }
 
-    override suspend fun setDarkTheme(enabled: Boolean) {
-        dataStore.edit { preferences -> preferences[IS_DARK_THEME] = enabled }
+    override suspend fun setCleartextAllowed(enabled: Boolean) {
+        dataStore.edit { preferences -> preferences[ALLOW_CLEARTEXT] = enabled }
     }
 
     override suspend fun setFloatingButtonAlwaysVisible(enabled: Boolean) {
@@ -112,10 +105,9 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         private val IS_DESKTOP_SITE = booleanPreferencesKey("is_desktop_site")
         private val IS_JAVASCRIPT_ENABLED = booleanPreferencesKey("is_javascript_enabled")
         private val ARE_COOKIES_ENABLED = booleanPreferencesKey("are_cookies_enabled")
-        private val DOWNLOAD_DIRECTORY = stringPreferencesKey("download_directory")
         private val MAX_SIMULTANEOUS_DOWNLOADS = intPreferencesKey("max_simultaneous_downloads")
         private val IS_WIFI_ONLY = booleanPreferencesKey("is_wifi_only")
-        private val IS_DARK_THEME = booleanPreferencesKey("is_dark_theme")
+        private val ALLOW_CLEARTEXT = booleanPreferencesKey("allow_cleartext")
         private val FLOATING_BUTTON_ALWAYS_VISIBLE = booleanPreferencesKey("floating_button_always_visible")
         private val FLOATING_BUTTON_SIZE = intPreferencesKey("floating_button_size")
         private val FLOATING_BUTTON_X = floatPreferencesKey("floating_button_x")

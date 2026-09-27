@@ -54,16 +54,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.salvia.salviabrowxer.BuildConfig
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.SignatureWordmark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
@@ -91,6 +96,16 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf(SettingsDialog.None) }
+    val context = LocalContext.current
+    // About rows open real destinations; nothing here is a placeholder link.
+    val openUrl: (String) -> Unit = remember(context) {
+        { url ->
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }
+            Unit
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collectLatest { m ->
@@ -125,31 +140,34 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_browsing_data), "History, cookies and session data") { dialog = SettingsDialog.ClearData }
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Download, stringResource(R.string.settings_downloads))
-                SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryLabel) {}
-                SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), "${state.maxSimultaneousDownloads} at a time") { dialog = SettingsDialog.Downloads }
-                SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), "Pause transfers when the network changes", state.isWifiOnly) { viewModel.updateWifiOnly(it) }
+                SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryPath.ifBlank { stringResource(R.string.settings_download_directory_hint) })
+                SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), stringResource(R.string.settings_downloads_at_a_time, state.maxSimultaneousDownloads)) { dialog = SettingsDialog.Downloads }
+                SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint), state.isWifiOnly) { viewModel.updateWifiOnly(it) }
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Nightlight, stringResource(R.string.settings_appearance))
-                SwitchSettingsItem(Icons.Default.Nightlight, stringResource(R.string.settings_dark_theme), "SalviaBrowxer ships a dark identity only", state.isDarkTheme) { viewModel.updateDarkTheme(it) }
                 SwitchSettingsItem(
                     Icons.Default.TouchApp,
                     stringResource(R.string.settings_floating_button_always),
                     "The download button stays pinned on every page",
                     state.isFloatingButtonAlwaysVisible
                 ) { viewModel.updateFloatingButtonAlwaysVisible(it) }
-                SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_size), "${state.floatingButtonSize} dp") { dialog = SettingsDialog.ButtonSize }
-                SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_position), "Drag the floating button anywhere on the page") {}
+                SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_size), stringResource(R.string.settings_dp_value, state.floatingButtonSize)) { dialog = SettingsDialog.ButtonSize }
+                SettingsItem(Icons.Default.TouchApp, stringResource(R.string.settings_floating_button_position), stringResource(R.string.settings_floating_button_position_hint))
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Security, stringResource(R.string.settings_privacy))
                 SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_history)) { viewModel.clearHistory() }
                 SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_cookies)) { viewModel.clearCookies() }
+                SwitchSettingsItem(Icons.Default.Security, stringResource(R.string.settings_allow_cleartext), stringResource(R.string.settings_allow_cleartext_hint), state.isCleartextAllowed) { viewModel.updateCleartextAllowed(it) }
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Info, stringResource(R.string.settings_about))
                 Box(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                     OrbitalBrandMark(size = 84.dp, animate = true)
                 }
                 SignatureWordmark(width = 210.dp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp))
-                SettingsItem(Icons.Default.Info, stringResource(R.string.about_title), String.format(stringResource(R.string.about_description), stringResource(R.string.app_name))) {}
+                SettingsItem(Icons.Default.Info, stringResource(R.string.about_title), stringResource(R.string.about_version, BuildConfig.VERSION_NAME))
+                SettingsItem(Icons.Default.Info, stringResource(R.string.about_license), "GPL-3.0") { openUrl(Constants.LICENSE_URL) }
+                SettingsItem(Icons.Default.Security, stringResource(R.string.about_privacy_policy)) { openUrl(Constants.PRIVACY_POLICY_URL) }
+                SettingsItem(Icons.Default.Search, stringResource(R.string.about_source_code)) { openUrl(Constants.SOURCE_CODE_URL) }
                 Spacer(Modifier.height(32.dp))
             }
         }
@@ -176,7 +194,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             value = state.maxSimultaneousDownloads.toFloat(),
             valueRange = 1f..5f,
             steps = 3,
-            label = "${state.maxSimultaneousDownloads} at a time",
+            label = stringResource(R.string.settings_downloads_at_a_time, state.maxSimultaneousDownloads),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { v -> viewModel.updateMaxSimultaneousDownloads(v.toInt()); dialog = SettingsDialog.None }
         )
@@ -185,13 +203,13 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             value = state.floatingButtonSize.toFloat(),
             valueRange = 40f..72f,
             steps = 0,
-            label = "${state.floatingButtonSize} dp",
+            label = stringResource(R.string.settings_dp_value, state.floatingButtonSize),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { v -> viewModel.updateFloatingButtonSize(v.toInt()); dialog = SettingsDialog.None }
         )
         SettingsDialog.ClearData -> ConfirmationDialog(
             title = stringResource(R.string.settings_clear_browsing_data),
-            message = "History, cookies and cached session data will be removed.",
+            message = stringResource(R.string.settings_clear_browsing_data_hint),
             confirmLabel = stringResource(R.string.action_clear),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { viewModel.clearBrowsingData(); dialog = SettingsDialog.None }
@@ -209,14 +227,14 @@ fun SettingsSectionTitle(icon: ImageVector, title: String) {
 }
 
 @Composable
-fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onClick: () -> Unit) {
+fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onClick: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(NebulaMist.copy(alpha = 0.45f))
             .border(0.8.dp, NebulaEdge.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = 11.dp, horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

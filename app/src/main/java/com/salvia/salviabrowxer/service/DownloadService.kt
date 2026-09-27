@@ -17,6 +17,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.salvia.salviabrowxer.MainActivity
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.core.concurrent.SlotLimiter
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
@@ -44,8 +45,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 
 @AndroidEntryPoint
 class DownloadService : Service() {
@@ -64,7 +63,14 @@ class DownloadService : Service() {
     private var pendingSummaryRefresh = false
     private var lastPersistTime = 0L
     private var lastPersistJob: Job? = null
-    private var semaphore: Semaphore = Semaphore(3)
+    // One limiter for the service lifetime: retuning it never strands in-flight permits.
+    private val limiter = SlotLimiter(3)
+    private lateinit var connectivityGate: ConnectivityGate
+    private var wifiOnly = false
+
+    /** True while the Wi-Fi-only setting is holding work, so the service stays alive to resume it. */
+    @Volatile private var wifiHoldActive = false
+    private val wifiHoldMarker: String get() = getString(R.string.download_waiting_for_wifi)
 
     private val notificationManager: NotificationManager get() = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -72,13 +78,58 @@ class DownloadService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        connectivityGate = ConnectivityGate(this)
         createNotificationChannel()
         promoteToForeground(buildSummaryNotification(getString(R.string.downloads_title), 0L, 0L))
         scope.launch {
-            settingsDataStore.maxSimultaneousDownloads.collect { count ->
-                semaphore = Semaphore(count.coerceIn(1, 5))
+            settingsDataStore.maxSimultaneousDownloads.collect { count -> limiter.setLimit(count) }
+        }
+        observeNetworkPolicy()
+    }
+
+    /**
+     * Wi-Fi only: transfers never start on a non-Wi-Fi network, running ones are paused with an
+     * explanatory error, and everything that was held is requeued when Wi-Fi returns.
+     */
+    private fun observeNetworkPolicy() {
+        scope.launch {
+            settingsDataStore.isWifiOnly.collect { enabled ->
+                wifiOnly = enabled
+                if (!enabled) releaseWifiHolds()
+                else if (connectivityGate.isOnWifi()) releaseWifiHolds() else holdEverythingForWifi()
             }
         }
+        scope.launch {
+            connectivityGate.observeWifi().collect { onWifi ->
+                if (!wifiOnly) return@collect
+                if (onWifi) releaseWifiHolds() else holdEverythingForWifi()
+            }
+        }
+    }
+
+    private suspend fun holdEverythingForWifi() {
+        val active = runCatching {
+            downloadRepository.getDownloadsByStates(listOf(DownloadState.QUEUED, DownloadState.RETRYING, DownloadState.PREPARING, DownloadState.DOWNLOADING)).first()
+        }.getOrNull().orEmpty()
+        if (active.isEmpty()) return
+        wifiHoldActive = true
+        active.forEach { download ->
+            downloadManager.cancel(download.id)
+            downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.PAUSED, error = wifiHoldMarker)
+        }
+        refreshSummaryThrottled(force = true)
+    }
+
+    private suspend fun releaseWifiHolds() {
+        wifiHoldActive = false
+        val held = runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.PAUSED)).first() }
+            .getOrNull().orEmpty().filter { it.error == wifiHoldMarker }
+        if (held.isEmpty()) return
+        held.forEach { download ->
+            downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.QUEUED, error = null)
+            queue.trySend(download.id)
+        }
+        startQueueProcessor()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -96,7 +147,9 @@ class DownloadService : Service() {
 
     private fun recoverQueue() {
         scope.launch {
-            val pending = runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.QUEUED, DownloadState.RETRYING, DownloadState.PREPARING)).first() }.getOrNull().orEmpty()
+            // DOWNLOADING is included so a process death mid-transfer resumes from the .part file
+            // over a Range request. PAUSED is *not* requeued: only the user resumes it.
+            val pending = runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.QUEUED, DownloadState.RETRYING, DownloadState.PREPARING, DownloadState.DOWNLOADING)).first() }.getOrNull().orEmpty()
             if (pending.isEmpty()) { if (inFlight.get() == 0 && queue.isEmpty) stopWhenIdle(); return@launch }
             pending.forEach { download -> queue.trySend(download.id) }
         }
@@ -121,9 +174,16 @@ class DownloadService : Service() {
     }
 
     private suspend fun processDownload(downloadId: String) {
-        semaphore.withPermit {
-            val stored = downloadRepository.getDownloadById(downloadId) ?: return@withPermit
-            if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED) return@withPermit
+        limiter.acquire()
+        try {
+            val stored = downloadRepository.getDownloadById(downloadId) ?: return
+            if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED) return
+            if (WifiOnlyPolicy.shouldHold(wifiOnly, connectivityGate.isOnWifi())) {
+                wifiHoldActive = true
+                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.PAUSED, error = wifiHoldMarker)
+                refreshSummaryThrottled(force = true)
+                return
+            }
             inFlight.incrementAndGet()
             try {
                 downloadRepository.updateDownloadState(downloadId, DownloadState.PREPARING)
@@ -165,6 +225,8 @@ class DownloadService : Service() {
                 downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.FAILED, error = network.localizedMessage ?: getString(R.string.error_connection_unavailable))
             } catch (cancellation: CancellationException) { throw cancellation }
             finally { inFlight.decrementAndGet(); refreshSummaryThrottled(force = true) }
+        } finally {
+            limiter.release()
         }
     }
 
@@ -224,7 +286,12 @@ class DownloadService : Service() {
         }
     }
 
-    private fun stopWhenIdle() { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); stopSelf() }
+    private fun stopWhenIdle() {
+        // A Wi-Fi hold keeps the service (and its notification) up so the transfer resumes by itself.
+        if (wifiHoldActive) return
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 
     private fun refreshSummaryThrottled(force: Boolean = false) {
         val now = System.currentTimeMillis()

@@ -48,10 +48,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    // androidx.activity 1.9 exposes a non-null onNewIntent(Intent); matching that
+    // signature is what keeps this override (and the notification tap path) working.
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        openDownloadsRequested = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
+        openDownloadsRequested = intent.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false)
     }
 
     companion object {

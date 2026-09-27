@@ -17,11 +17,12 @@ object Constants {
     val SUPPORTED_VIDEO_EXTENSIONS = listOf("mp4", "webm", "mov", "avi", "3gp", "m4v", "mkv", "flv")
     val SUPPORTED_AUDIO_EXTENSIONS = listOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "wma")
     val SUPPORTED_IMAGE_EXTENSIONS = listOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
-    val SUPPORTED_PLAYLIST_EXTENSIONS = listOf("m3u8", "mpd", "ts")
+    // MPEG-DASH (.mpd) is not listed: the app cannot segment it yet, so it is never offered.
+    val SUPPORTED_PLAYLIST_EXTENSIONS = listOf("m3u8", "ts")
 
     val SUPPORTED_VIDEO_MIME_TYPES = listOf("video/mp4", "video/webm", "video/quicktime", "video/3gpp", "video/x-matroska", "video/x-flv", "video/mp2t", "video/x-msvideo")
     val SUPPORTED_AUDIO_MIME_TYPES = listOf("audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/flac", "audio/ogg", "audio/x-ms-wma")
-    val SUPPORTED_PLAYLIST_MIME_TYPES = listOf("application/vnd.apple.mpegurl", "application/x-mpegURL", "application/dash+xml")
+    val SUPPORTED_PLAYLIST_MIME_TYPES = listOf("application/vnd.apple.mpegurl", "application/x-mpegURL")
 
     const val CONNECT_TIMEOUT_SECONDS = 10L
     const val READ_TIMEOUT_SECONDS = 30L
@@ -36,6 +37,11 @@ object Constants {
     const val NOTIFICATION_ID_DOWNLOAD = 1000
 
     const val DEFAULT_SEARCH_ENGINE = "Google"
+
+    // About screen destinations. All three are real, public URLs.
+    const val SOURCE_CODE_URL = "https://github.com/SaliSalvia/SalviaBrowxer"
+    const val LICENSE_URL = "https://www.gnu.org/licenses/gpl-3.0.txt"
+    const val PRIVACY_POLICY_URL = "https://github.com/SaliSalvia/SalviaBrowxer/blob/main/docs/privacy-policy.md"
 
     val SEARCH_ENGINES = mapOf(
         "Google" to "https://www.google.com/search?q=%s",

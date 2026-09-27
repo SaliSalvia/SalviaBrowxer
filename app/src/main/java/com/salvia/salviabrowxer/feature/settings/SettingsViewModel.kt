@@ -1,11 +1,15 @@
 package com.salvia.salviabrowxer.feature.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.ui.utils.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,21 +29,23 @@ data class SettingsUiState(
     val isDesktopSite: Boolean = false,
     val isJavaScriptEnabled: Boolean = true,
     val areCookiesEnabled: Boolean = true,
-    val downloadDirectory: String = "",
+    /** Real, app-scoped folder the downloader writes to. Never a user-editable label. */
+    val downloadDirectoryPath: String = "",
     val maxSimultaneousDownloads: Int = 3,
     val isWifiOnly: Boolean = false,
-    val isDarkTheme: Boolean = true,
+    val isCleartextAllowed: Boolean = false,
     val isFloatingButtonAlwaysVisible: Boolean = true,
     val floatingButtonSize: Int = 56
 ) {
     val searchEngineOptions: List<String> get() = Constants.SEARCH_ENGINES.keys.toList()
-    val downloadDirectoryLabel: String get() = downloadDirectory.ifBlank { "Downloads" }
 }
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
-    private val historyRepository: HistoryRepository
+    private val historyRepository: HistoryRepository,
+    private val storageManager: StorageManager,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -59,14 +65,14 @@ class SettingsViewModel @Inject constructor(
             launch { settingsDataStore.isDesktopSite.collectLatest { value -> mutate { copy(isDesktopSite = value) } } }
             launch { settingsDataStore.isJavaScriptEnabled.collectLatest { value -> mutate { copy(isJavaScriptEnabled = value) } } }
             launch { settingsDataStore.areCookiesEnabled.collectLatest { value -> mutate { copy(areCookiesEnabled = value) } } }
-            launch { settingsDataStore.downloadDirectory.collectLatest { value -> mutate { copy(downloadDirectory = value) } } }
+            mutate { copy(downloadDirectoryPath = runCatching { storageManager.getDefaultDownloadDirectory() }.getOrDefault("")) }
             launch {
                 settingsDataStore.maxSimultaneousDownloads.collectLatest { value ->
                     mutate { copy(maxSimultaneousDownloads = value) }
                 }
             }
             launch { settingsDataStore.isWifiOnly.collectLatest { value -> mutate { copy(isWifiOnly = value) } } }
-            launch { settingsDataStore.isDarkTheme.collectLatest { value -> mutate { copy(isDarkTheme = value) } } }
+            launch { settingsDataStore.isCleartextAllowed.collectLatest { value -> mutate { copy(isCleartextAllowed = value) } } }
             launch {
                 settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { value ->
                     mutate { copy(isFloatingButtonAlwaysVisible = value) }
@@ -95,7 +101,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { settingsDataStore.setHomepage(trimmed) }
         }
-        _messages.trySend("Homepage updated")
+        _messages.trySend(context.getString(R.string.settings_homepage_updated))
     }
 
     fun updateDesktopSite(isDesktop: Boolean) {
@@ -119,14 +125,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateDownloadDirectory(directory: String) {
-        val trimmed = directory.trim()
-        mutate { copy(downloadDirectory = trimmed) }
-        viewModelScope.launch {
-            runCatching { settingsDataStore.setDownloadDirectory(trimmed) }
-        }
-    }
-
     fun updateMaxSimultaneousDownloads(count: Int) {
         val safe = count.coerceIn(1, 5)
         mutate { copy(maxSimultaneousDownloads = safe) }
@@ -142,10 +140,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateDarkTheme(enabled: Boolean) {
-        mutate { copy(isDarkTheme = enabled) }
+    fun updateCleartextAllowed(enabled: Boolean) {
+        mutate { copy(isCleartextAllowed = enabled) }
         viewModelScope.launch {
-            runCatching { settingsDataStore.setDarkTheme(enabled) }
+            runCatching { settingsDataStore.setCleartextAllowed(enabled) }
         }
     }
 
@@ -173,7 +171,7 @@ class SettingsViewModel @Inject constructor(
     fun clearHistory() {
         viewModelScope.launch {
             runCatching { historyRepository.deleteAllHistory() }
-            _messages.trySend("History cleared")
+            _messages.trySend(context.getString(R.string.settings_history_cleared))
         }
     }
 
@@ -181,7 +179,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
             runCatching { android.webkit.CookieManager.getInstance().flush() }
-            _messages.trySend("Cookies cleared")
+            _messages.trySend(context.getString(R.string.settings_cookies_cleared))
         }
     }
 
@@ -191,7 +189,7 @@ class SettingsViewModel @Inject constructor(
             runCatching { android.webkit.CookieManager.getInstance().removeAllCookies(null) }
             runCatching { android.webkit.CookieManager.getInstance().flush() }
             runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
-            _messages.trySend("Browsing data cleared")
+            _messages.trySend(context.getString(R.string.settings_browsing_data_cleared))
         }
     }
 }

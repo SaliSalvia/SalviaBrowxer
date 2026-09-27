@@ -16,7 +16,7 @@ import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepositoryImpl
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepositoryImpl
-import com.salvia.salviabrowxer.media.detector.DefaultMediaDetector
+import com.salvia.salviabrowxer.media.detector.DomMediaDetector
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
 import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
@@ -59,8 +59,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
+        // Real migrations only: a failed upgrade must surface, never wipe browsing data.
         return Room.databaseBuilder(context, AppDatabase::class.java, "salviabrowxer_db")
-            .fallbackToDestructiveMigration()
+            .addMigrations(AppDatabase.MIGRATION_1_2)
             .build()
     }
 
@@ -90,7 +91,7 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideMediaDetector(): MediaDetector = DefaultMediaDetector()
+    fun provideMediaDetector(): MediaDetector = DomMediaDetector()
 
     @Provides
     @Singleton

@@ -47,10 +47,19 @@ class DirectMediaResolver(
         val title = name.substringBeforeLast('.', name).ifEmpty { "Media" }
         val isHls = extension.equals("m3u8", true) || mimeType.contains("mpegurl", true)
         val isDash = extension.equals("mpd", true) || mimeType.contains("dash+xml", true)
+        // MPEG-DASH cannot be segmented without a manifest parser, so it is reported as
+        // unsupported instead of being offered as a file that would always fail.
+        if (isDash) {
+            return@withContext MediaInfo(
+                title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
+                formats = emptyList(), audioFormats = emptyList(), videoFormats = emptyList(),
+                combinedFormats = emptyList(), source = url, extractor = "unsupported-dash", webpageUrl = url
+            )
+        }
 
-        // InShot-like: expand HLS/DASH master playlists into multiple selectable qualities.
-        if (isHls || isDash) {
-            val hlsFormats = if (isHls) tryParseHlsVariants(url, ua) else emptyList()
+        // Expand the HLS master playlist into one selectable quality per variant.
+        if (isHls) {
+            val hlsFormats = tryParseHlsVariants(url, ua)
             if (hlsFormats.isNotEmpty()) {
                 return@withContext MediaInfo(
                     title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
@@ -58,17 +67,17 @@ class DirectMediaResolver(
                     combinedFormats = hlsFormats, source = url, extractor = "direct-hls", webpageUrl = url
                 )
             }
-            // Fall back to single "HLS/DASH" entry so the sheet still has exactly one option (previous behaviour)
+            // Fall back to a single "HLS" entry so the sheet still has exactly one option.
         }
 
         val format = MediaFormat(
-            id = url, format = if (isHls) "HLS" else if (isDash) "DASH" else extension.uppercase().ifEmpty { "ORIGINAL" },
+            id = url, format = if (isHls) "HLS" else extension.uppercase().ifEmpty { "ORIGINAL" },
             url = url, mimeType = mimeType.ifEmpty { "application/octet-stream" },
             extension = extension.ifEmpty { "mp4" },
             size = contentLength?.takeIf { it > 0 },
-            isVideo = mimeType.startsWith("video/") || isHls || isDash || extension in setOf("mp4","webm","mkv","mov"),
+            isVideo = mimeType.startsWith("video/") || isHls || extension in setOf("mp4","webm","mkv","mov"),
             isAudio = mimeType.startsWith("audio/"),
-            isHls = isHls, isDash = isDash
+            isHls = isHls
         )
 
         MediaInfo(
@@ -147,7 +156,6 @@ class DirectMediaResolver(
 
     private fun extensionFromMime(mime: String): String? = when {
         mime.contains("mpegurl") || mime.contains("x-mpegurl") -> "m3u8"
-        mime.contains("dash+xml") -> "mpd"
         mime.startsWith("video/mp4") -> "mp4"
         mime.startsWith("video/webm") -> "webm"
         mime.startsWith("audio/mpeg") -> "mp3"

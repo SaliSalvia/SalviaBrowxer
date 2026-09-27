@@ -57,6 +57,7 @@ class BrowserViewModelTest {
         every { settingsDataStore.isJavaScriptEnabled } returns flowOf(true)
         every { settingsDataStore.areCookiesEnabled } returns flowOf(true)
         every { settingsDataStore.isDesktopSite } returns flowOf(false)
+        every { settingsDataStore.isCleartextAllowed } returns flowOf(false)
         every { settingsDataStore.floatingButtonX } returns flowOf(0f)
         every { settingsDataStore.floatingButtonY } returns flowOf(0f)
         every { downloadRepository.getDownloadsByStates(any()) } returns
@@ -91,10 +92,45 @@ class BrowserViewModelTest {
     }
 
     @Test
-    fun `an explicit scheme is kept as typed`() {
+    fun `an https url is kept as typed`() {
+        viewModel.loadFromAddressBar("https://example.org/page")
+
+        assertEquals("https://example.org/page", viewModel.uiState.value.url)
+    }
+
+    @Test
+    fun `cleartext navigation is refused and explained while the setting is off`() {
         viewModel.loadFromAddressBar("http://example.org/page")
 
-        assertEquals("http://example.org/page", viewModel.uiState.value.url)
+        val state = viewModel.uiState.value
+        assertEquals("http://example.org/page", state.blockedCleartextUrl)
+        assertFalse("http must not become the loaded page", state.url.startsWith("http://"))
+        assertFalse(state.isLoading)
+        coVerify(exactly = 0) { settingsDataStore.setCleartextAllowed(true) }
+    }
+
+    @Test
+    fun `allowing cleartext persists the setting and loads the requested url`() {
+        viewModel.loadFromAddressBar("http://example.org/page")
+
+        viewModel.allowCleartextAndRetry()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.isCleartextAllowed)
+        assertNull(state.blockedCleartextUrl)
+        assertEquals("http://example.org/page", state.url)
+        coVerify(exactly = 1) { settingsDataStore.setCleartextAllowed(true) }
+    }
+
+    @Test
+    fun `cleartext allowed keeps loading http normally afterwards`() {
+        viewModel.loadFromAddressBar("http://example.org/first")
+        viewModel.allowCleartextAndRetry()
+
+        viewModel.loadFromAddressBar("http://example.org/second")
+
+        assertEquals("http://example.org/second", viewModel.uiState.value.url)
+        assertNull(viewModel.uiState.value.blockedCleartextUrl)
     }
 
     @Test
