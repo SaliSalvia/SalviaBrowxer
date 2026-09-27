@@ -1,5 +1,7 @@
 package com.salvia.salviabrowxer.feature.settings
 
+import android.content.Context
+import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import io.mockk.coEvery
@@ -26,6 +28,8 @@ class SettingsViewModelTest {
     private lateinit var viewModel: SettingsViewModel
     private val settingsDataStore: SettingsDataStore = mockk(relaxed = true)
     private val historyRepository: HistoryRepository = mockk(relaxed = true)
+    private val storageManager: StorageManager = mockk(relaxed = true)
+    private val context: Context = mockk(relaxed = true)
 
     @Before
     fun setup() {
@@ -35,15 +39,15 @@ class SettingsViewModelTest {
         every { settingsDataStore.isDesktopSite } returns flowOf(false)
         every { settingsDataStore.isJavaScriptEnabled } returns flowOf(true)
         every { settingsDataStore.areCookiesEnabled } returns flowOf(true)
-        every { settingsDataStore.downloadDirectory } returns flowOf("")
         every { settingsDataStore.maxSimultaneousDownloads } returns flowOf(3)
         every { settingsDataStore.isWifiOnly } returns flowOf(false)
-        every { settingsDataStore.isDarkTheme } returns flowOf(true)
+        every { settingsDataStore.isCleartextAllowed } returns flowOf(false)
         every { settingsDataStore.floatingButtonSize } returns flowOf(56)
         every { settingsDataStore.floatingButtonX } returns flowOf(0f)
         every { settingsDataStore.floatingButtonY } returns flowOf(0f)
+        every { storageManager.getDefaultDownloadDirectory() } returns "/storage/emulated/0/Android/data/com.salvia.salviabrowxer/files/Downloads"
 
-        viewModel = SettingsViewModel(settingsDataStore, historyRepository)
+        viewModel = SettingsViewModel(settingsDataStore, historyRepository, storageManager, context)
     }
 
     @Test
@@ -80,20 +84,20 @@ class SettingsViewModelTest {
         viewModel.updateJavaScriptEnabled(false)
         viewModel.updateCookiesEnabled(false)
         viewModel.updateWifiOnly(true)
-        viewModel.updateDarkTheme(false)
+        viewModel.updateCleartextAllowed(true)
 
         val state = viewModel.uiState.value
         assertTrue(state.isDesktopSite)
         assertFalse(state.isJavaScriptEnabled)
         assertFalse(state.areCookiesEnabled)
         assertTrue(state.isWifiOnly)
-        assertFalse(state.isDarkTheme)
+        assertTrue(state.isCleartextAllowed)
 
         coVerify(exactly = 1) { settingsDataStore.setDesktopSite(true) }
         coVerify(exactly = 1) { settingsDataStore.setJavaScriptEnabled(false) }
         coVerify(exactly = 1) { settingsDataStore.setCookiesEnabled(false) }
         coVerify(exactly = 1) { settingsDataStore.setWifiOnly(true) }
-        coVerify(exactly = 1) { settingsDataStore.setDarkTheme(false) }
+        coVerify(exactly = 1) { settingsDataStore.setCleartextAllowed(true) }
     }
 
     @Test
@@ -125,7 +129,15 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `download directory falls back to a readable label`() {
-        assertEquals("Downloads", viewModel.uiState.value.downloadDirectoryLabel)
+    fun `download directory shows the real app-scoped path`() {
+        assertEquals(
+            "/storage/emulated/0/Android/data/com.salvia.salviabrowxer/files/Downloads",
+            viewModel.uiState.value.downloadDirectoryPath
+        )
+    }
+
+    @Test
+    fun `cleartext stays off until the user turns it on`() {
+        assertFalse(viewModel.uiState.value.isCleartextAllowed)
     }
 }

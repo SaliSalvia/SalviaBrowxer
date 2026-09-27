@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Narrow on purpose: only the folders that actually hold finished downloads or blob
+  staging are shareable. Broad external-files/files/cache roots would let any caller
+  ask for unrelated app-private files.
+-->
 <paths>
     <!-- context.getExternalFilesDir(DIRECTORY_DOWNLOADS) -->
-    <external-files-path
-        name="external_downloads"
-        path="." />
-    <!-- context.filesDir -->
-    <files-path
-        name="internal_files"
-        path="." />
-    <cache-path
-        name="internal_cache"
-        path="." />
+    <external-files-path name="external_downloads" path="Downloads/" />
+    <!-- context.getExternalFilesDir(DIRECTORY_MOVIES / MUSIC / PICTURES / DOCUMENTS) -->
+    <external-files-path name="external_movies" path="Movies/" />
+    <external-files-path name="external_music" path="Music/" />
+    <external-files-path name="external_pictures" path="Pictures/" />
+    <external-files-path name="external_documents" path="Documents/" />
+    <!-- context.filesDir/Downloads, used when external storage is unavailable -->
+    <files-path name="internal_downloads" path="Downloads/" />
+    <!-- blob staging: context.cacheDir/blob -->
+    <cache-path name="blob_staging" path="blob/" />
 </paths>

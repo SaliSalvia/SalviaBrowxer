@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * High-performance WebViewClient with:
- * - InShot-style media sniffing: intercepts HLS/DASH/blob and raw mp4/mp3 etc.
+ * - Media sniffing: intercepts HLS, blob and raw mp4/mp3 requests the page made itself.
  * - Per-URL throttle (200ms) + dedupe set to prevent flooding the FAB.
  * - Header-aware MIME detection (Content-Type overrides extension).
  * - Never blocks the renderer thread.
@@ -51,7 +51,7 @@ class WebViewClientWrapper(
 
             val ext = mediaExtension(url)
             val mimeFromAccept = mimeFromAcceptHeader(accept)
-            val isHlsOrDash = url.contains(".m3u8", true) || url.contains(".mpd", true) || url.contains("manifest", true)
+            val isHlsOrDash = url.contains(".m3u8", true) || url.contains("manifest", true)
             val isBlob = url.startsWith("blob:")
 
             val isMedia = ext != null || mimeFromAccept != null || isHlsOrDash || isBlob
@@ -91,7 +91,7 @@ class WebViewClientWrapper(
             extension = extension.lowercase(),
             source = MediaSource.WEBVIEW,
             confidence = when {
-                url.contains(".m3u8", true) || url.contains(".mpd", true) -> 0.95f
+                url.contains(".m3u8", true) -> 0.95f
                 extension in setOf("mp4", "webm", "mkv", "mov") -> 0.9f
                 else -> 0.78f
             }
@@ -108,7 +108,6 @@ class WebViewClientWrapper(
             "audio/" in lower -> lower.substringAfter("audio/").substringBefore(',').substringBefore(';').let { "audio/$it" }
             "application/vnd.apple.mpegurl" in lower -> "application/vnd.apple.mpegurl"
             "application/x-mpegurl" in lower -> "application/vnd.apple.mpegurl"
-            "application/dash+xml" in lower -> "application/dash+xml"
             else -> null
         }
     }
@@ -116,7 +115,6 @@ class WebViewClientWrapper(
     private fun extensionFromMime(mime: String?): String? = when {
         mime == null -> null
         mime.contains("mpegurl") || mime.contains("x-mpegurl") -> "m3u8"
-        mime.contains("dash+xml") -> "mpd"
         mime.startsWith("video/mp4") -> "mp4"
         mime.startsWith("video/webm") -> "webm"
         mime.startsWith("audio/mpeg") -> "mp3"

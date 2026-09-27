@@ -15,11 +15,14 @@
     <string name="home">Home</string>
     <string name="tabs">Tabs</string>
     <string name="downloads">Downloads</string>
+    <string name="bookmark_added">Bookmark added</string>
     <string name="bookmarks">Bookmarks</string>
     <string name="history">History</string>
     <string name="settings">Settings</string>
     <string name="search_or_type_url">Search or type URL</string>
     <string name="download_enqueued">Added to download queue</string>
+    <string name="download_waiting_for_wifi">Waiting for Wi-Fi</string>
+    <string name="notifications_denied_downloads_anyway">Downloading anyway — notifications stay off</string>
 
     <!-- Downloads -->
     <string name="downloads_title">Downloads</string>
@@ -71,8 +74,19 @@
     <string name="settings_download_directory">Download Directory</string>
     <string name="settings_simultaneous_downloads">Simultaneous Downloads</string>
     <string name="settings_wifi_only">Wi-Fi Only</string>
+    <string name="settings_wifi_only_hint">Transfers wait and pause unless the network is Wi-Fi</string>
+    <string name="settings_allow_cleartext">Allow insecure http:// sites</string>
+    <string name="settings_allow_cleartext_hint">Off by default. Only turn on for a site you trust</string>
+    <string name="settings_download_directory_hint">This app\'s private storage</string>
+    <string name="settings_downloads_at_a_time">%1$d at a time</string>
+    <string name="settings_dp_value">%1$d dp</string>
+    <string name="settings_floating_button_position_hint">Drag the button anywhere on the page</string>
+    <string name="settings_clear_browsing_data_hint">History, cookies and cached session data will be removed.</string>
+    <string name="settings_homepage_updated">Homepage updated</string>
+    <string name="settings_history_cleared">History cleared</string>
+    <string name="settings_cookies_cleared">Cookies cleared</string>
+    <string name="settings_browsing_data_cleared">Browsing data cleared</string>
     <string name="settings_notifications">Notifications</string>
-    <string name="settings_dark_theme">Dark Theme</string>
     <string name="settings_floating_button_size">Floating Button Size</string>
     <string name="settings_floating_button_position">Floating Button Position</string>
     <string name="settings_private_browsing">Private Browsing</string>
@@ -82,6 +96,7 @@
 
     <!-- Errors -->
     <string name="error_connection_unavailable">Connection unavailable</string>
+    <string name="error_cleartext_blocked">http:// is blocked. Allow insecure sites in Settings, then load it again.</string>
     <string name="error_unable_to_resolve_media">Unable to resolve this media</string>
     <string name="error_unsupported_media">This media cannot be downloaded</string>
     <string name="error_drm_protected">Protected media cannot be downloaded</string>
@@ -96,11 +111,14 @@
     <string name="action_no">No</string>
     <string name="action_delete">Delete</string>
     <string name="action_clear">Clear</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_dismiss">Dismiss</string>
 
     <!-- About -->
     <string name="about_title">About SalviaBrowxer</string>
     <string name="about_version">Version %s</string>
-    <string name="about_description">%s is a fast, modern, and premium native Android browser with intelligent media detection and download capabilities.</string>
-    <string name="about_license">License: GPL-3.0</string>
+    <string name="about_description">%s is a fast, private Android browser that saves media a page already offers.</string>
+    <string name="about_license">License</string>
+    <string name="about_privacy_policy">Privacy Policy</string>
     <string name="about_source_code">Source Code</string>
 </resources>

@@ -146,7 +146,6 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
             }
         }
         if (format.isHls) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(AuroraTeal.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("HLS", style = MaterialTheme.typography.labelSmall, color = AuroraTeal) }
-        if (format.isDash) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(NebulaViolet.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("DASH", style = MaterialTheme.typography.labelSmall, color = NebulaVioletLight) }
     }
 }
 

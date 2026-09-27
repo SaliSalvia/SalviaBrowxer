@@ -10,10 +10,9 @@ interface SettingsDataStore {
     val isDesktopSite: Flow<Boolean>
     val isJavaScriptEnabled: Flow<Boolean>
     val areCookiesEnabled: Flow<Boolean>
-    val downloadDirectory: Flow<String>
     val maxSimultaneousDownloads: Flow<Int>
     val isWifiOnly: Flow<Boolean>
-    val isDarkTheme: Flow<Boolean>
+    val isCleartextAllowed: Flow<Boolean>
     val isFloatingButtonAlwaysVisible: Flow<Boolean>
     val floatingButtonSize: Flow<Int>
     val floatingButtonX: Flow<Float>
@@ -24,10 +23,9 @@ interface SettingsDataStore {
     suspend fun setDesktopSite(enabled: Boolean)
     suspend fun setJavaScriptEnabled(enabled: Boolean)
     suspend fun setCookiesEnabled(enabled: Boolean)
-    suspend fun setDownloadDirectory(directory: String)
     suspend fun setMaxSimultaneousDownloads(count: Int)
     suspend fun setWifiOnly(enabled: Boolean)
-    suspend fun setDarkTheme(enabled: Boolean)
+    suspend fun setCleartextAllowed(enabled: Boolean)
     suspend fun setFloatingButtonAlwaysVisible(enabled: Boolean)
     suspend fun setFloatingButtonSize(size: Int)
     suspend fun setFloatingButtonPosition(x: Float, y: Float)

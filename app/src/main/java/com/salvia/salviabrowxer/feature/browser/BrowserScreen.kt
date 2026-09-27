@@ -1,10 +1,14 @@
 package com.salvia.salviabrowxer.feature.browser
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,11 +17,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -41,6 +51,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
@@ -52,6 +63,7 @@ import com.salvia.salviabrowxer.ui.components.MediaQualitySelectionSheet
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.SignatureWordmark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
@@ -59,6 +71,7 @@ import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.SplashNebulaBrush
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.WebViewClientWrapper
+import java.io.File
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -73,6 +86,7 @@ fun BrowserScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val noMediaMessage = stringResource(R.string.no_media_detected)
+    val notificationsDeniedMessage = stringResource(R.string.notifications_denied_downloads_anyway)
 
     var webView: WebView? by remember { mutableStateOf(null) }
     var pageAreaSize by remember { mutableStateOf(IntSize.Zero) }
@@ -82,8 +96,25 @@ fun BrowserScreen(
     val blobBridge = remember(context) {
         BlobDownloadBridge(
             onBlobCaptured = { pageUrl, blobUrl, file, mime -> viewModel.onBlobCaptured(pageUrl, blobUrl, file, mime) },
-            cacheDirProvider = { context.cacheDir }
+            // Blob staging gets its own cache subdirectory so FileProvider only exposes that folder.
+            cacheDirProvider = { File(context.cacheDir, "blob") }
         )
+    }
+
+    // POST_NOTIFICATIONS is requested in context, the first time a download is enqueued.
+    // Denying it never blocks the transfer; it only means no progress notification.
+    var notificationAsked by remember { mutableStateOf(false) }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) scope.launch { snackbarHostState.showSnackbar(notificationsDeniedMessage) }
+    }
+    val ensureNotificationPermission: () -> Unit = remember(context, notificationAsked, notificationLauncher) {
+        {
+            val missing = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationAsked && missing) {
+                notificationAsked = true
+                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
 
     val isMediaDetected = state.detectedMedia.isNotEmpty()
@@ -332,6 +363,28 @@ fun BrowserScreen(
             }
         }
 
+        state.blockedCleartextUrl?.let {
+            Row(
+                modifier = Modifier.fillMaxWidth().background(CharcoalElevated).padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Security, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.error_cleartext_blocked),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PearlWhite,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = remember(viewModel) { { viewModel.allowCleartextAndRetry() } }) {
+                    Text(stringResource(R.string.action_allow), color = AuroraTeal)
+                }
+                TextButton(onClick = remember(viewModel) { { viewModel.dismissCleartextBlock() } }) {
+                    Text(stringResource(R.string.action_dismiss), color = SilverMid)
+                }
+            }
+        }
+
         BrowserBottomBar(
             onHomeClick = remember(viewModel) { { viewModel.goHome() } },
             onDownloadsClick = onNavigateToDownloads,
@@ -345,7 +398,12 @@ fun BrowserScreen(
             mediaInfo = sheet.mediaInfo,
             isResolving = sheet.isResolving,
             onDismiss = remember(viewModel) { { viewModel.closeQualitySheet() } },
-            onQualitySelected = remember(viewModel) { { format -> viewModel.handleFormatSelected(format) } }
+            onQualitySelected = remember(viewModel, ensureNotificationPermission) {
+                { format ->
+                    ensureNotificationPermission()
+                    viewModel.handleFormatSelected(format)
+                }
+            }
         )
     }
 

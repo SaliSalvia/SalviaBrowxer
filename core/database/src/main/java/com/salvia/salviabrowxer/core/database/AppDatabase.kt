@@ -1,8 +1,6 @@
 package com.salvia.salviabrowxer.core.database
 
-import android.content.Context
 import androidx.room.Database
-import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
@@ -27,23 +25,17 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 
     companion object {
-        @Volatile private var INSTANCE: AppDatabase? = null
-
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        /**
+         * v1 -> v2 adds two indexes to `downloads`, so every queued, bookmarked and visited row
+         * survives the upgrade.
+         *
+         * There is deliberately no `fallbackToDestructiveMigration()`: a schema that cannot be
+         * upgraded must fail loudly instead of silently wiping the user's queue and history.
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloads_status` ON `downloads` (`status`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloads_createdAt` ON `downloads` (`createdAt`)")
-            }
-        }
-
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "salviabrowxer_db")
-                    .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration()
-                    .build()
-                INSTANCE = instance
-                instance
             }
         }
     }

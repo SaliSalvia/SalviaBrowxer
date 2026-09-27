@@ -15,28 +15,16 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "SalviaBrowxer"
+
+// A module only exists when it has a public API and a caller outside itself.
+// Feature screens live in :app; this list is the whole graph.
 include(":app")
 
-// Core modules
-include(":core:common")
+// Core
 include(":core:model")
-include(":core:network")
 include(":core:database")
-include(":core:storage")
-include(":core:testing")
 
-// Feature modules
-include(":feature:browser")
-include(":feature:downloads")
-include(":feature:bookmarks")
-include(":feature:history")
-include(":feature:settings")
-include(":feature:player")
-include(":feature:home")
-
-// Media modules
+// Media
 include(":media:detector")
 include(":media:resolver")
-include(":media:extractor")
 include(":media:downloader")
-include(":media:processor")

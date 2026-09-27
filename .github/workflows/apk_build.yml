@@ -43,7 +43,8 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           "$SDKMANAGER" --version
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          # API 36 (Android 16) is required for new Play submissions since 31 Aug 2026.
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
           java -version
 
       - name: Verify Gradle wrapper
@@ -90,7 +91,7 @@ jobs:
           # Signed builds produce app-release.apk; unsigned ones app-release-unsigned.apk.
           if [ "$HAS_SIGNING" = "true" ]; then
             test -f extracted-apk/app-release.apk || { echo "expected signed app-release.apk"; exit 1; }
-            "$ANDROID_HOME"/build-tools/34.0.0/apksigner verify --print-certs extracted-apk/app-release.apk | tee extracted-apk/signing-info.txt
+            "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs extracted-apk/app-release.apk | tee extracted-apk/signing-info.txt
           else
             echo "Signing secrets absent — release APK is unsigned." | tee extracted-apk/signing-info.txt
           fi

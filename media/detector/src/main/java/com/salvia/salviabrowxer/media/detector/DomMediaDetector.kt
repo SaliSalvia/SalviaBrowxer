@@ -7,12 +7,14 @@ import org.jsoup.nodes.Document
 
 class DomMediaDetector : MediaDetector {
 
-    private val videoExtRegex = Regex("""\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|mpd|ts)(\?|#|$)""", RegexOption.IGNORE_CASE)
+    // MPEG-DASH (.mpd) is deliberately absent: the app cannot segment or download it yet,
+    // so detecting it would only produce a quality row that always fails.
+    private val videoExtRegex = Regex("""\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|ts)(\?|#|$)""", RegexOption.IGNORE_CASE)
     private val audioExtRegex = Regex("""\.(mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)""", RegexOption.IGNORE_CASE)
-    private val anyMediaExtRegex = Regex("""\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|mpd|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)""", RegexOption.IGNORE_CASE)
+    private val anyMediaExtRegex = Regex("""\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)""", RegexOption.IGNORE_CASE)
 
     // Captures any http(s) URL that contains a media extension (for JSON/script extraction)
-    private val urlInTextRegex = Regex("""https?://[^\s"'<>]+\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|mpd|ts|mp3|m4a|aac|wav|flac|ogg|wma)[^\s"'<>]*""", RegexOption.IGNORE_CASE)
+    private val urlInTextRegex = Regex("""https?://[^\s"'<>]+\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|ts|mp3|m4a|aac|wav|flac|ogg|wma)[^\s"'<>]*""", RegexOption.IGNORE_CASE)
 
     override suspend fun detect(pageUrl: String, html: String?): List<MediaCandidate> {
         if (html.isNullOrBlank()) return emptyList()
@@ -115,7 +117,7 @@ class DomMediaDetector : MediaDetector {
 
     private fun detectPlainUrls(html: String, pageUrl: String, out: MutableList<MediaCandidate>) {
         // Also catch protocol-relative //cdn.example.com/video.mp4
-        val protoRel = Regex("""//[^\s"'<>]+\.(mp4|webm|mov|m3u8|mpd|mp3|m4a)[^\s"'<>]*""", RegexOption.IGNORE_CASE)
+        val protoRel = Regex("""//[^\s"'<>]+\.(mp4|webm|mov|m3u8|mp3|m4a)[^\s"'<>]*""", RegexOption.IGNORE_CASE)
         var c = 0
         for (m in protoRel.findAll(html)) {
             if (c++ > 8) break

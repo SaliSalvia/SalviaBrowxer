@@ -1,114 +1,99 @@
 # SalviaBrowxer
 
-A fast, modern, and premium native Android browser with intelligent media detection and download capabilities.
+A fast, private Android browser whose signature is a precise media tray: when a page already
+exposes a downloadable file, an open HLS playlist, or a blob the page itself can read, the browser
+says so quietly and saves it reliably.
 
-## Features
+Package `com.salvia.salviabrowxer` · `minSdk` 24 · `targetSdk`/`compileSdk` 36 (Android 16) ·
+versionName `0.9.0` (pre-release).
 
-- **Modern Browser**: Fast, smooth, and native browsing experience
-- **Media Detection**: Automatically detects downloadable media from web pages
-- **Media Download**: Download videos, audio, and other media with quality selection
-- **Background Downloads**: Continue downloading even when you leave the app
-- **Multiple Tabs**: Browse with multiple tabs
-- **Bookmarks**: Save your favorite websites
-- **History**: Keep track of your browsing history
-- **Private Browsing**: Browse without saving history
-- **Dark Theme**: Premium dark visual identity
-- **Customizable**: Adjust settings to your preference
+## What it does today
 
-## Architecture
+- **Browsing** — one live WebView with an address bar, back / forward / reload / stop, homepage,
+  five search engines, JavaScript and cookie toggles, desktop user-agent, and private tabs that
+  never write history.
+- **Media detection** — DOM scan of the loaded page (`media`, `source`, anchors, meta tags, JSON
+  and plain-text URLs) plus WebView request interception for HLS, blob and raw media requests the
+  page made itself, plus blob reassembly through a `JavascriptInterface` bridge.
+- **Quality sheet** — resolver runs HEAD, falls back to a ranged GET when HEAD is refused, and
+  expands an HLS master playlist into one row per variant (resolution, bitrate, size when known).
+  The sheet opens immediately and refines its rows when the probe returns.
+- **Downloads** — foreground `dataSync` service, Room-backed queue, pause / cancel / retry,
+  direct files resume over HTTP Range from a `.part` file (including after process death),
+  non-encrypted VOD HLS playlists are fetched segment by segment and concatenated, blob saves land
+  in the same queue. Wi-Fi-only mode pauses and holds transfers off Wi-Fi. Finished files are
+  shareable through `FileProvider` and playable in the in-app Media3 player.
+- **Library** — downloads, bookmarks and history in Room; settings in DataStore.
+- **Language** — English today, Persian (`values-fa`) and full RTL are in progress.
 
-- **Clean Architecture + MVVM**: Separation of concerns with ViewModels, Use Cases, and Repositories
-- **Modular**: Organized into feature and core modules
-- **Jetpack Compose**: Modern UI toolkit
-- **Kotlin**: First-class Kotlin support
-- **Coroutines**: Asynchronous programming with Kotlin Coroutines
-- **Room**: Persistence with SQLite
-- **DataStore**: Preferences storage
-- **WorkManager**: Background tasks
-- **OkHttp**: Network requests
+## What it deliberately does not do
+
+SalviaBrowxer is **not** a YouTube, Instagram or TikTok downloader, and it does not defeat
+protection:
+
+- no site-specific extractors or signature/token harvesting
+- no DRM (Widevine / FairPlay / PlayReady) — the app fails with an honest error
+- no AES-128 encrypted HLS key recovery, and no live HLS
+- no MPEG-DASH: it is detected nowhere and offered nowhere, because the app cannot segment it yet
+- no native FFmpeg binary and no audio/video muxing
+- no analytics SDK, no ad SDK, no account system, and no network call other than a page load, a
+  media probe, or a download the user started
 
 ## Modules
 
-- **app**: Main application module
-- **core**: Core functionality
-  - common: Shared utilities
-  - model: Data models
-  - network: Network operations
-  - database: Database access
-  - storage: File storage
-  - testing: Test utilities
-- **feature**: Feature modules
-  - browser: Browser functionality
-  - downloads: Download management
-  - bookmarks: Bookmark management
-  - history: Browsing history
-  - settings: Application settings
-  - player: Media player
-  - home: Home screen
-- **media**: Media handling
-  - detector: Media detection
-  - resolver: Media resolution
-  - extractor: Media extraction
-  - downloader: Download engine
-  - processor: Media processing
+| Module | Contains |
+| --- | --- |
+| `:app` | screens, view models, services, DI, theme, resources |
+| `:core:model` | `MediaCandidate`, `MediaInfo`, `MediaFormat`, `DownloadState`, `Tab` |
+| `:core:database` | Room database, DAOs, entities, v1→v2 migration |
+| `:media:detector` | `DomMediaDetector` behind the `MediaDetector` interface |
+| `:media:resolver` | `DirectMediaResolver` (HEAD, ranged GET, HLS variant parse) |
+| `:media:downloader` | `DownloadManager` (Range resume) and `HlsDownloader` (VOD, non-encrypted) |
 
-## Getting Started
+A Gradle module only exists here when it has a public API and a caller outside itself.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/SaliSalvia/SalviaBrowxer.git
-   ```
-2. Open in Android Studio
-3. Add your logo to `app/src/main/res/drawable-nodpi/salviabrowxer_logo.png`
-4. Build and run
+## Build
 
-The Gradle wrapper is committed to the repository (`gradlew`, `gradlew.bat` and
-`gradle/wrapper/gradle-wrapper.jar`, pinned to Gradle 8.7), so a local Android/Gradle install is not
-required:
+JDK 17 and Android SDK 36 (`platforms;android-36`, `build-tools;36.0.0`). `local.properties` must
+point at your SDK; CI gets it from the preinstalled image.
 
 ```bash
-./gradlew :app:assembleDebug        # -> app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleRelease        # R8 + resource shrinking
+./gradlew :app:bundleRelease          # AAB for Play: app/build/outputs/bundle/release/
+./gradlew :app:testDebugUnitTest      # unit tests
 ```
 
-### CI debug APK
+Release signing is read from environment variables only (`SIGNING_KEYSTORE_BASE64`,
+`SIGNING_KEYSTORE_PASSWORD`, `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD`); the keystore is never
+committed. Without them the release build is unsigned, which is what CI uploads.
 
-`Android CI` (`.github/workflows/android_ci.yml`) builds the debug variant on JDK 17 and uploads it
-as the `salviabrowxer-debug-apk` artifact:
+## CI
 
-```bash
-gh run download --name salviabrowxer-debug-apk
-```
-
-## Requirements
-
-- Android Studio (latest version)
-- JDK 17+
-- Android SDK 34+
-- Minimum SDK: 24 (Android 7.0 Nougat)
-
-## Configuration
-
-Add your logo to `app/src/main/res/drawable-nodpi/salviabrowxer_logo.png`
+`.github/workflows/android_ci.yml` builds the debug APK, the release APK and the release AAB, and
+uploads all three. `.github/workflows/apk_build.yml` produces the downloadable APK set. CI installs
+Android SDK 36 itself.
 
 ## Permissions
 
-The app requires the following permissions:
-- INTERNET: For web browsing
-- ACCESS_NETWORK_STATE: To check network status
-- WAKE_LOCK: To keep device awake during downloads
-- FOREGROUND_SERVICE: For download service
-- WRITE_EXTERNAL_STORAGE: To save downloaded files (Android 9 and below only)
-- READ_EXTERNAL_STORAGE: To read existing files (Android 12 and below only)
+- `INTERNET` — load pages and downloads
+- `ACCESS_NETWORK_STATE` — Wi-Fi-only gating
+- `WAKE_LOCK`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC` — the download service
+- `POST_NOTIFICATIONS` — download progress on Android 13+; requested in context, and denying it
+  still lets downloads finish
 
-Downloaded media is written to the app-scoped external storage directory
-(`Android/data/com.salvia.salviabrowxer/files/Downloads`) so no runtime storage permission is needed,
-and each finished file is handed to `MediaScannerConnection` so it also shows up in the system
-downloads UI. Finished files are shared with other apps through a `FileProvider`.
+No storage permission is needed: files are written to the app-scoped external downloads directory
+(`Android/data/com.salvia.salviabrowxer/files/Downloads`), which the Settings screen states
+verbatim, and each finished file is handed to `MediaScannerConnection` so it also appears in the
+system downloads UI.
+
+## Privacy
+
+Pages are loaded by the sites you visit, downloads stay on the device, and the app has no account
+and no analytics. Backups and device transfer exclude the database, preferences, WebView cookies
+and cache. A short privacy policy lives in [`docs/privacy-policy.md`](docs/privacy-policy.md).
 
 ## License
 
-GPL-3.0
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
+GPL-3.0 — see [`LICENSE`](LICENSE). Selling the app is compatible with the GPL as long as
+corresponding source is offered to recipients.

@@ -27,6 +27,5 @@ data class MediaFormat(
     val audioBitrate: Int? = null,
     val isVideo: Boolean = false,
     val isAudio: Boolean = false,
-    val isHls: Boolean = false,
-    val isDash: Boolean = false
+    val isHls: Boolean = false
 )

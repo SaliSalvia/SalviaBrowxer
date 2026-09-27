@@ -101,8 +101,8 @@ private fun isMediaUrl(url: String): Boolean {
         val ext = path.substring(lastDot + 1).lowercase()
         if (ext in Constants.SUPPORTED_VIDEO_EXTENSIONS || ext in Constants.SUPPORTED_AUDIO_EXTENSIONS || ext in Constants.SUPPORTED_PLAYLIST_EXTENSIONS) return true
     }
-    // HLS/DASH may appear without extension via query e.g. .../manifest?format=m3u8
-    if (url.contains(".m3u8", true) || url.contains(".mpd", true) || url.contains("manifest", true)) return true
+    // HLS may appear without an extension via query e.g. .../manifest?format=m3u8
+    if (url.contains(".m3u8", true) || url.contains("manifest", true)) return true
     if (url.startsWith("blob:")) return true
     return false
 }
