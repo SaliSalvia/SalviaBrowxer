@@ -37,12 +37,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
-import com.salvia.salviabrowxer.ui.theme.AuroraTealDeep
-import com.salvia.salviabrowxer.ui.theme.AuroraTealLight
-import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
+import com.salvia.salviabrowxer.ui.theme.FabActiveBrushNebula
+import com.salvia.salviabrowxer.ui.theme.FabInactiveBrushNebula
 import com.salvia.salviabrowxer.ui.theme.NebulaViolet
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import kotlin.math.roundToInt
 
@@ -65,16 +64,13 @@ fun FloatingDownloadButton(
 
     // Allocate gradients once — recreating brushes on every recomposition causes GC churn
     // and dropped frames while dragging the button.
-    val activeBrush = remember {
-        Brush.radialGradient(colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep))
-    }
-    val inactiveBrush = remember {
-        Brush.radialGradient(colors = listOf(Color(0xFF3E3E46), Color(0xFF2B2B32), Color(0xFF1E1E24)))
-    }
+    val activeBrush = remember { FabActiveBrushNebula }
+    val inactiveBrush = remember { FabInactiveBrushNebula }
 
+    // Snappier spring: higher stiffness so the badge pop feels instant, not floaty.
     val scale by animateFloatAsState(
         targetValue = if (isMediaDetected) 1.06f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
         label = "fabScale"
     )
 
@@ -106,8 +102,12 @@ fun FloatingDownloadButton(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val r = size.minDimension / 2f
             drawCircle(brush = if (isMediaDetected) activeBrush else inactiveBrush, radius = r * scale)
-            // Subtle pearl rim
-            drawCircle(color = Color.White.copy(alpha = 0.12f), radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx()))
+            // Pearl rim: violet→blush glow when media is detected, subtle otherwise
+            drawCircle(
+                brush = Brush.sweepGradient(colors = listOf(NebulaVioletLight, NebulaViolet, Color.White.copy(alpha = 0.5f), NebulaVioletLight)),
+                radius = r,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = (if (isMediaDetected) 2.0f else 1.2f).dp.toPx())
+            )
             // Specular highlight
             drawCircle(color = Color.White.copy(alpha = if (isMediaDetected) 0.18f else 0.08f), radius = r * 0.45f, center = center.copy(x = center.x - r * 0.18f, y = center.y - r * 0.22f))
         }
@@ -122,7 +122,7 @@ fun FloatingDownloadButton(
         if (isMediaDetected && mediaCount > 0) {
             Box(
                 modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).size(19.dp).clip(CircleShape)
-                    .background(Brush.radialGradient(colors = listOf(NebulaViolet, NebulaViolet.copy(alpha = 0.85f))))
+                    .background(Brush.radialGradient(colors = listOf(NebulaVioletLight, NebulaViolet)))
                     .shadow(4.dp, CircleShape),
                 contentAlignment = Alignment.Center
             ) {

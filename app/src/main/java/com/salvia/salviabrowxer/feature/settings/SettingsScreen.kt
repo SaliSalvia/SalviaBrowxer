@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.feature.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,13 +64,23 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
+import com.salvia.salviabrowxer.ui.components.SignatureWordmark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.BlushPink
+import com.salvia.salviabrowxer.ui.theme.BlushPinkLight
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
+import com.salvia.salviabrowxer.ui.theme.NebulaEdge
+import com.salvia.salviabrowxer.ui.theme.NebulaViolet
+import com.salvia.salviabrowxer.ui.theme.NebulaMist
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 import kotlinx.coroutines.flow.collectLatest
 
 private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, ClearData }
@@ -88,17 +100,21 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
+            Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
                 }
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
             }
-            HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.6f))
+            // Owner signature branding header
+            SignatureWordmark(width = 190.dp, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp).align(Alignment.CenterHorizontally))
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 SettingsSectionTitle(Icons.Default.Search, stringResource(R.string.settings_browser))
                 SettingsItem(Icons.Default.Search, stringResource(R.string.settings_search_engine), state.searchEngine) { dialog = SettingsDialog.SearchEngine }
@@ -115,6 +131,12 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Nightlight, stringResource(R.string.settings_appearance))
                 SwitchSettingsItem(Icons.Default.Nightlight, stringResource(R.string.settings_dark_theme), "SalviaBrowxer ships a dark identity only", state.isDarkTheme) { viewModel.updateDarkTheme(it) }
+                SwitchSettingsItem(
+                    Icons.Default.TouchApp,
+                    stringResource(R.string.settings_floating_button_always),
+                    "The download button stays pinned on every page",
+                    state.isFloatingButtonAlwaysVisible
+                ) { viewModel.updateFloatingButtonAlwaysVisible(it) }
                 SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_size), "${state.floatingButtonSize} dp") { dialog = SettingsDialog.ButtonSize }
                 SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_position), "Drag the floating button anywhere on the page") {}
                 Spacer(Modifier.height(16.dp))
@@ -123,6 +145,10 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_cookies)) { viewModel.clearCookies() }
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Info, stringResource(R.string.settings_about))
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                    OrbitalBrandMark(size = 84.dp, animate = true)
+                }
+                SignatureWordmark(width = 210.dp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp))
                 SettingsItem(Icons.Default.Info, stringResource(R.string.about_title), String.format(stringResource(R.string.about_description), stringResource(R.string.app_name))) {}
                 Spacer(Modifier.height(32.dp))
             }
@@ -175,8 +201,8 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
 
 @Composable
 fun SettingsSectionTitle(icon: ImageVector, title: String) {
-    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = AuroraTeal, modifier = Modifier.size(20.dp))
+    Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = BlushPink, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         Text(title, style = MaterialTheme.typography.titleMedium, color = PearlWhite)
     }
@@ -185,10 +211,16 @@ fun SettingsSectionTitle(icon: ImageVector, title: String) {
 @Composable
 fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(NebulaMist.copy(alpha = 0.45f))
+            .border(0.8.dp, NebulaEdge.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp, horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = SilverMid, modifier = Modifier.size(24.dp))
+        Icon(icon, null, tint = BlushPinkLight, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
@@ -200,10 +232,16 @@ fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onC
 @Composable
 fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = null, isChecked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onCheckedChange(!isChecked) }.padding(vertical = 8.dp, horizontal = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(NebulaMist.copy(alpha = 0.45f))
+            .border(0.8.dp, NebulaEdge.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+            .clickable { onCheckedChange(!isChecked) }
+            .padding(vertical = 9.dp, horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = SilverMid, modifier = Modifier.size(24.dp))
+        Icon(icon, null, tint = BlushPinkLight, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
@@ -214,8 +252,8 @@ fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = nul
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = PearlWhite,
-                checkedTrackColor = AuroraTeal,
-                checkedBorderColor = AuroraTeal,
+                checkedTrackColor = NebulaViolet,
+                checkedBorderColor = NebulaVioletLight,
                 uncheckedThumbColor = SilverMid,
                 uncheckedTrackColor = CharcoalSurface,
                 uncheckedBorderColor = CharcoalBorder

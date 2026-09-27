@@ -45,6 +45,22 @@ val Gold = AuroraTeal
 val Violet = NebulaViolet
 val ElectricIndigo = NebulaVioletDeep
 
+// ── Orbital brand mark (gold ring + electric blue energy) ──
+val OrbitGold = Color(0xFFFFB300)
+val OrbitGoldLight = Color(0xFFFFD54F)
+val OrbitBlue = Color(0xFF2196F3)
+val OrbitBlueLight = Color(0xFF4FC3F7)
+
+// ── Blush Pink (صورتی کم‌رنگ) ──
+val BlushPink = Color(0xFFFFB3D1)
+val BlushPinkLight = Color(0xFFFFD6E8)
+val BlushPinkDeep = Color(0xFFE0679E)
+val BlushPinkContainer = Color(0xFF2B1521)
+
+// ── Nebula surfaces (سطوح بنفش سحابی روی ذغال) ──
+val NebulaMist = Color(0xFF241A3E)
+val NebulaEdge = Color(0xFF3B2A66)
+
 // ── Semantic Mappings ──
 val Primary = AuroraTeal
 val PrimaryContainer = AuroraTealContainer
@@ -112,4 +128,58 @@ val FabActiveBrush = Brush.radialGradient(
 
 val FabInactiveBrush = Brush.radialGradient(
     colors = listOf(Color(0xFF3A3A42), Color(0xFF2E2E34))
+)
+
+// ── Nebula & Blush gradients (سحابی + صورتی روی ذغال) ──
+val NebulaSurfaceBrush = Brush.verticalGradient(
+    colors = listOf(CharcoalSurface, NebulaMist.copy(alpha = 0.55f), MatteCharcoal)
+)
+
+val TopBarBrush = Brush.verticalGradient(
+    colors = listOf(NebulaMist.copy(alpha = 0.9f), CharcoalSurface)
+)
+
+val BottomBarBrush = Brush.verticalGradient(
+    colors = listOf(CharcoalSurface, MatteCharcoal)
+)
+
+val AddressBarBrush = Brush.linearGradient(
+    colors = listOf(NebulaMist, DeepCharcoal, NebulaMist.copy(alpha = 0.8f))
+)
+
+// Pearl iridescence edge — the 7-color reflection the brand is built on
+val PearlEdgeBrush = Brush.horizontalGradient(
+    colors = listOf(
+        BlushPinkLight.copy(alpha = 0.55f),
+        NebulaVioletLight.copy(alpha = 0.55f),
+        PearlIridescentTeal.copy(alpha = 0.55f),
+        NebulaVioletLight.copy(alpha = 0.55f),
+        BlushPinkLight.copy(alpha = 0.55f)
+    )
+)
+
+// Accent actions: violet → blush → blue, the nebula signature sweep
+val NebulaBlushBrush = Brush.linearGradient(
+    colors = listOf(NebulaViolet, BlushPink, OrbitBlueLight)
+)
+
+val AccentIndicatorBrush = Brush.horizontalGradient(
+    colors = listOf(NebulaViolet, BlushPink, AuroraTeal)
+)
+
+val DownloadCtaBrush = Brush.linearGradient(
+    colors = listOf(NebulaViolet, NebulaVioletDeep)
+)
+
+val FabActiveBrushNebula = Brush.radialGradient(
+    colors = listOf(NebulaVioletLight, NebulaViolet, NebulaVioletDeep)
+)
+
+val FabInactiveBrushNebula = Brush.radialGradient(
+    colors = listOf(NebulaMist, CharcoalElevated, DeepCharcoal)
+)
+
+val SplashNebulaBrush = Brush.radialGradient(
+    colors = listOf(NebulaMist, DeepCharcoal, MatteCharcoal),
+    radius = 900f
 )

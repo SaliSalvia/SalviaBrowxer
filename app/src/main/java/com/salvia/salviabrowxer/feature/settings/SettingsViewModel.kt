@@ -29,6 +29,7 @@ data class SettingsUiState(
     val maxSimultaneousDownloads: Int = 3,
     val isWifiOnly: Boolean = false,
     val isDarkTheme: Boolean = true,
+    val isFloatingButtonAlwaysVisible: Boolean = true,
     val floatingButtonSize: Int = 56
 ) {
     val searchEngineOptions: List<String> get() = Constants.SEARCH_ENGINES.keys.toList()
@@ -66,6 +67,11 @@ class SettingsViewModel @Inject constructor(
             }
             launch { settingsDataStore.isWifiOnly.collectLatest { value -> mutate { copy(isWifiOnly = value) } } }
             launch { settingsDataStore.isDarkTheme.collectLatest { value -> mutate { copy(isDarkTheme = value) } } }
+            launch {
+                settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { value ->
+                    mutate { copy(isFloatingButtonAlwaysVisible = value) }
+                }
+            }
             launch { settingsDataStore.floatingButtonSize.collectLatest { value -> mutate { copy(floatingButtonSize = value) } } }
             mutate { copy(isLoading = false) }
         }
@@ -146,6 +152,13 @@ class SettingsViewModel @Inject constructor(
     fun updateFloatingButtonPosition(x: Float, y: Float) {
         viewModelScope.launch {
             runCatching { settingsDataStore.setFloatingButtonPosition(x, y) }
+        }
+    }
+
+    fun updateFloatingButtonAlwaysVisible(enabled: Boolean) {
+        mutate { copy(isFloatingButtonAlwaysVisible = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setFloatingButtonAlwaysVisible(enabled) }
         }
     }
 
