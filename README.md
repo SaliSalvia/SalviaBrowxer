@@ -9,9 +9,13 @@ versionName `0.9.0` (pre-release).
 
 ## What it does today
 
-- **Browsing** — one live WebView with an address bar, back / forward / reload / stop, homepage,
-  five search engines, JavaScript and cookie toggles, desktop user-agent, and private tabs that
-  never write history.
+- **Browsing** — a real multi-tab browser: up to eight live WebViews, one per tab, and beyond that
+  the least recently used tab is hibernated and restored by URL. Address bar with back / forward /
+  reload / stop, a tab switcher with close, new tab and new private tab, private tabs that never
+  write history, find in page, share and copy link, homepage, five search engines, JavaScript and
+  cookie toggles, and a desktop user-agent toggle that shows its state.
+- **Library screens** — bookmarks (add from the browser menu, remove in the list) and history open
+  in the current tab, with in-list search and per-row delete.
 - **Media detection** — DOM scan of the loaded page (`media`, `source`, anchors, meta tags, JSON
   and plain-text URLs) plus WebView request interception for HLS, blob and raw media requests the
   page made itself, plus blob reassembly through a `JavascriptInterface` bridge.
@@ -23,7 +27,10 @@ versionName `0.9.0` (pre-release).
   non-encrypted VOD HLS playlists are fetched segment by segment and concatenated, blob saves land
   in the same queue. Wi-Fi-only mode pauses and holds transfers off Wi-Fi. Finished files are
   shareable through `FileProvider` and playable in the in-app Media3 player.
-- **Library** — downloads, bookmarks and history in Room; settings in DataStore.
+- **Library** — downloads in Room, surfaced through the downloads screen; settings in DataStore.
+- **Intents** — `VIEW` (http / https) and `SEND` (`text/plain`) are registered: a link handed to the
+  app by another app opens in its own tab, and `tel:` / `mailto:` / `intent:` are passed to the
+  system instead of being loaded as pages.
 - **Language** — English today, Persian (`values-fa`) and full RTL are in progress.
 
 ## What it deliberately does not do

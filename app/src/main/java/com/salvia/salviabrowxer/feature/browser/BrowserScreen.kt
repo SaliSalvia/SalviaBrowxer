@@ -3,34 +3,44 @@ package com.salvia.salviabrowxer.feature.browser
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import android.webkit.CookieManager
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.FrameLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,13 +65,16 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.ui.bridge.BlobDownloadBridge
+import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.ui.components.BrowserBottomBar
+import com.salvia.salviabrowxer.ui.components.BrowserMenuItem
 import com.salvia.salviabrowxer.ui.components.BrowserTopBar
+import com.salvia.salviabrowxer.ui.components.FindInPageBar
 import com.salvia.salviabrowxer.ui.components.FloatingDownloadButton
 import com.salvia.salviabrowxer.ui.components.MediaQualitySelectionSheet
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.SignatureWordmark
+import com.salvia.salviabrowxer.ui.components.TabSwitcher
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
@@ -70,7 +83,6 @@ import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.SplashNebulaBrush
 import com.salvia.salviabrowxer.ui.utils.Constants
-import com.salvia.salviabrowxer.ui.utils.WebViewClientWrapper
 import java.io.File
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -79,6 +91,14 @@ import kotlinx.coroutines.launch
 fun BrowserScreen(
     onNavigateToDownloads: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToBookmarks: () -> Unit,
+    onNavigateToHistory: () -> Unit,
+    /** A URL picked inside the app (bookmark, history entry): it loads in the current tab. */
+    inAppUrl: String? = null,
+    onInAppUrlConsumed: () -> Unit = {},
+    /** A URL another app handed us (VIEW / SEND): it gets its own tab. */
+    externalUrl: String? = null,
+    onExternalUrlConsumed: () -> Unit = {},
     viewModel: BrowserViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -88,16 +108,24 @@ fun BrowserScreen(
     val noMediaMessage = stringResource(R.string.no_media_detected)
     val notificationsDeniedMessage = stringResource(R.string.notifications_denied_downloads_anyway)
 
-    var webView: WebView? by remember { mutableStateOf(null) }
     var pageAreaSize by remember { mutableStateOf(IntSize.Zero) }
-    val initialUrl = remember { state.url }
-    var defaultUserAgent by remember { mutableStateOf<String?>(null) }
 
-    val blobBridge = remember(context) {
-        BlobDownloadBridge(
-            onBlobCaptured = { pageUrl, blobUrl, file, mime -> viewModel.onBlobCaptured(pageUrl, blobUrl, file, mime) },
-            // Blob staging gets its own cache subdirectory so FileProvider only exposes that folder.
-            cacheDirProvider = { File(context.cacheDir, "blob") }
+    // One WebView per live tab. The store owns render state; the view model owns tab metadata.
+    val store = remember(context, viewModel) {
+        TabWebViewStore(
+            context = context,
+            callbacks = object : TabWebViewStore.Callbacks {
+                override fun onPageStarted(tabId: String, url: String) = viewModel.onPageStarted(tabId, url)
+                override fun onPageFinished(tabId: String, url: String, title: String?) = viewModel.onPageFinished(tabId, url, title)
+                override fun onProgress(tabId: String, progress: Int) = viewModel.onProgressChanged(tabId, progress)
+                override fun onNavigationState(tabId: String, canGoBack: Boolean, canGoForward: Boolean) = viewModel.updateNavigationState(tabId, canGoBack, canGoForward)
+                override fun onPageHtml(tabId: String, pageUrl: String, html: String) = viewModel.onPageHtml(tabId, pageUrl, html)
+                override fun onMediaDetected(candidate: MediaCandidate) = viewModel.onMediaIntercepted(candidate)
+                override fun onBlobCaptured(pageUrl: String, blobUrl: String, file: File, mimeType: String) = viewModel.onBlobCaptured(pageUrl, blobUrl, file, mimeType)
+                override fun onTabHibernated(tabId: String, url: String, title: String) = viewModel.onTabHibernated(tabId, url, title)
+                override fun onFindResult(tabId: String, matches: Int, activeMatch: Int) = viewModel.onFindResult(tabId, matches, activeMatch)
+                override fun onExternalScheme(url: String): Boolean = viewModel.openExternalScheme(url)
+            }
         )
     }
 
@@ -119,6 +147,7 @@ fun BrowserScreen(
 
     val isMediaDetected = state.detectedMedia.isNotEmpty()
     val mediaCount = state.detectedMedia.size
+    val hasPage = state.url.isNotBlank()
     val onUrlChange = remember(viewModel) { { input: String -> viewModel.onAddressInputChange(input) } }
     val onUrlSubmit = remember(viewModel) { { input: String -> viewModel.loadFromAddressBar(input) } }
     val onBackClick = remember(viewModel) { { viewModel.goBack() } }
@@ -136,22 +165,31 @@ fun BrowserScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    // A bookmark or a history entry reuses the tab the user came from.
+    LaunchedEffect(inAppUrl) {
+        val url = inAppUrl ?: return@LaunchedEffect
+        viewModel.openInCurrentTab(url)
+        onInAppUrlConsumed()
+    }
+
+    // A URL handed to the app (VIEW / SEND) opens in its own tab, so it never buries the page
+    // the user was reading.
+    LaunchedEffect(externalUrl) {
+        val url = externalUrl ?: return@LaunchedEffect
+        viewModel.openExternalUrl(url)
+        onExternalUrlConsumed()
+    }
+
+    LaunchedEffect(store, viewModel) {
         viewModel.commands.collectLatest { command ->
-            webView?.let { view ->
-                when (command) {
-                    is BrowserCommand.Load -> if (command.url.isNotBlank()) view.loadUrl(command.url)
-                    BrowserCommand.Back -> if (view.canGoBack()) view.goBack()
-                    BrowserCommand.Forward -> if (view.canGoForward()) view.goForward()
-                    BrowserCommand.Reload -> view.reload()
-                    BrowserCommand.Stop -> view.stopLoading()
-                    is BrowserCommand.FetchBlob -> {
-                        val js = BLOB_FETCH_JS
-                            .replace("__BLOB_URL__", command.blobUrl.replace("\\", "\\\\").replace("'", "\\'"))
-                            .replace("__PAGE_URL__", command.pageUrl.replace("\\", "\\\\").replace("'", "\\'"))
-                        view.evaluateJavascript(js, null)
-                    }
-                }
+            val tabId = viewModel.uiState.value.currentTabId ?: return@collectLatest
+            when (command) {
+                is BrowserCommand.Load -> store.loadUrl(tabId, command.url)
+                BrowserCommand.Back -> store.goBack(tabId)
+                BrowserCommand.Forward -> store.goForward(tabId)
+                BrowserCommand.Reload -> store.reload(tabId)
+                BrowserCommand.Stop -> store.stopLoading(tabId)
+                is BrowserCommand.FetchBlob -> store.fetchBlob(tabId, command.blobUrl, command.pageUrl)
             }
         }
     }
@@ -162,446 +200,229 @@ fun BrowserScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        BrowserTopBar(
-            url = state.url,
-            isLoading = state.isLoading,
-            isSecure = state.isSecure,
-            canGoBack = state.canGoBack,
-            canGoForward = state.canGoForward,
-            progress = state.progress,
-            onUrlChange = onUrlChange,
-            onUrlSubmit = onUrlSubmit,
-            onBackClick = onBackClick,
-            onForwardClick = onForwardClick,
-            onRefreshClick = onRefreshClick,
-            onStopClick = onStopClick
-        )
+    // Find in page is driven by the WebView's own match counter.
+    val findState = state.findInPage
+    LaunchedEffect(findState?.query, state.currentTabId, findState != null) {
+        val tabId = state.currentTabId ?: return@LaunchedEffect
+        if (findState == null) store.clearFind(tabId) else store.findAll(tabId, findState.query)
+    }
 
-        Box(
+    val menuItems = listOf(
+        BrowserMenuItem(stringResource(R.string.new_tab), Icons.Default.Add, onClick = { viewModel.createNewTab() }),
+        BrowserMenuItem(stringResource(R.string.new_private_tab), Icons.Default.Lock, onClick = { viewModel.createNewTab(isPrivate = true) }),
+        BrowserMenuItem(stringResource(R.string.tabs), Icons.Default.Tab, onClick = { viewModel.openTabSwitcher() }),
+        BrowserMenuItem(stringResource(R.string.find_in_page), Icons.Default.Search, onClick = { viewModel.openFindInPage() }, isEnabled = hasPage),
+        BrowserMenuItem(stringResource(R.string.bookmark_add), Icons.Default.Bookmark, onClick = { viewModel.bookmarkCurrentTab() }, isEnabled = hasPage),
+        BrowserMenuItem(stringResource(R.string.bookmarks), Icons.Default.Bookmarks, onClick = onNavigateToBookmarks),
+        BrowserMenuItem(stringResource(R.string.history), Icons.Default.History, onClick = onNavigateToHistory),
+        BrowserMenuItem(stringResource(R.string.share_page), Icons.Default.Share, onClick = { viewModel.shareCurrentPage() }, isEnabled = hasPage),
+        BrowserMenuItem(stringResource(R.string.copy_link), Icons.Default.Link, onClick = { viewModel.copyCurrentLink() }, isEnabled = hasPage),
+        BrowserMenuItem(
+            stringResource(R.string.settings_desktop_site),
+            Icons.Default.Sync,
+            onClick = { viewModel.toggleDesktopSite() },
+            isChecked = state.isDesktopSite,
+            showsCheck = true
+        ),
+        BrowserMenuItem(stringResource(R.string.downloads), Icons.Default.Download, onClick = onNavigateToDownloads),
+        BrowserMenuItem(stringResource(R.string.settings), Icons.Default.Settings, onClick = onNavigateToSettings)
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .onSizeChanged { size -> pageAreaSize = size }
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // Brand splash while the first page loads — nebula glow backdrop
-            if (state.url.isBlank() || (state.url == Constants.DEFAULT_HOMEPAGE && state.progress < 25)) {
-                Column(
-                    modifier = Modifier.fillMaxSize().background(SplashNebulaBrush).padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    OrbitalBrandMark(size = 108.dp)
-                    Spacer(Modifier.height(18.dp))
-                    SignatureWordmark(width = 240.dp)
-                    Spacer(Modifier.height(6.dp))
+            BrowserTopBar(
+                url = state.url,
+                isLoading = state.isLoading,
+                isSecure = state.isSecure,
+                canGoBack = state.canGoBack,
+                canGoForward = state.canGoForward,
+                progress = state.progress,
+                onUrlChange = onUrlChange,
+                onUrlSubmit = onUrlSubmit,
+                onBackClick = onBackClick,
+                onForwardClick = onForwardClick,
+                onRefreshClick = onRefreshClick,
+                onStopClick = onStopClick
+            )
+
+            findState?.let { find ->
+                FindInPageBar(
+                    query = find.query,
+                    matches = find.matches,
+                    activeMatch = find.activeMatch,
+                    onQueryChange = remember(viewModel) { { viewModel.updateFindQuery(it) } },
+                    onNext = remember(store, viewModel) { { viewModel.uiState.value.currentTabId?.let { store.findNext(it, true) } } },
+                    onPrevious = remember(store, viewModel) { { viewModel.uiState.value.currentTabId?.let { store.findNext(it, false) } } },
+                    onClose = remember(viewModel) { { viewModel.closeFindInPage() } }
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onSizeChanged { size -> pageAreaSize = size }
+            ) {
+                // Brand splash while the first page loads — nebula glow backdrop
+                if (state.url.isBlank() || (state.url == Constants.DEFAULT_HOMEPAGE && state.progress < 25)) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().background(SplashNebulaBrush).padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        OrbitalBrandMark(size = 108.dp)
+                        Spacer(Modifier.height(18.dp))
+                        SignatureWordmark(width = 240.dp)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = PearlWhite,
+                            letterSpacing = 3.sp
+                        )
+                    }
+                }
+
+                AndroidView(
+                    factory = { ctx -> FrameLayout(ctx) },
+                    update = { container ->
+                        val tabId = state.currentTabId
+                        if (tabId != null) {
+                            // Closed tabs lose their WebView; live ones keep history and scroll.
+                            store.retain(state.tabs.map { it.id }.toSet())
+                            val initialUrl = state.tabs.firstOrNull { it.id == tabId }?.url.orEmpty()
+                            val view: WebView = store.attach(container, tabId, initialUrl)
+                            store.applySettings(state.isJavaScriptEnabled, state.areCookiesEnabled, state.isDesktopSite)
+                            viewModel.onTabActivated(tabId)
+                            viewModel.updateNavigationState(tabId, view.canGoBack(), view.canGoForward())
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                if (isMediaDetected) {
                     Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.titleMedium,
+                        text = stringResource(R.string.media_detected, mediaCount),
+                        style = MaterialTheme.typography.labelMedium,
                         color = PearlWhite,
-                        letterSpacing = 3.sp
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(12.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(alpha = 0.52f))
+                            .padding(1.dp)
+                            .background(PearlEdgeBrush)
+                            .padding(horizontal = 11.dp, vertical = 5.dp)
+                    )
+                }
+
+                val fabVisible = state.isFabAlwaysVisible || isMediaDetected
+                if (fabVisible) {
+                    FloatingDownloadButton(
+                        isMediaDetected = isMediaDetected,
+                        mediaCount = mediaCount,
+                        onClick = onFabClick,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp),
+                        buttonSize = state.floatingButtonSize.dp,
+                        containerSize = pageAreaSize,
+                        initialOffset = Offset(state.fabPosition.x, state.fabPosition.y),
+                        onOffsetChanged = remember(viewModel) {
+                            { offset: Offset -> viewModel.saveFabPosition(offset.x, offset.y) }
+                        }
+                    )
+                }
+
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                )
+
+                if (state.isLoading && state.progress < 10) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(26.dp),
+                        color = NebulaVioletLight,
+                        strokeWidth = 2.dp
                     )
                 }
             }
-            AndroidView(
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
-                        isVerticalScrollBarEnabled = false
-                        isHorizontalScrollBarEnabled = false
-                        overScrollMode = WebView.OVER_SCROLL_NEVER
-                        settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            databaseEnabled = true
-                            setSupportZoom(true)
-                            builtInZoomControls = true
-                            displayZoomControls = false
-                            loadWithOverviewMode = true
-                            useWideViewPort = true
-                            // Max-speed browsing: aggressive caching + preload
-                            cacheMode = WebSettings.LOAD_DEFAULT
-                            mediaPlaybackRequiresUserGesture = false
-                            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                            allowFileAccess = false
-                            allowContentAccess = false
-                            allowFileAccessFromFileURLs = false
-                            allowUniversalAccessFromFileURLs = false
-                            javaScriptCanOpenWindowsAutomatically = false
-                            setGeolocationEnabled(false)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                safeBrowsingEnabled = true
-                                // Instant render of loaded content while scrolling
-                                offscreenPreRaster = true
-                            }
-                            @Suppress("DEPRECATION")
-                            setRenderPriority(WebSettings.RenderPriority.HIGH)
-                        }
-                        // Pre-warm the renderer so the first paint is instant
-                        setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
-                        defaultUserAgent = settings.userAgentString
 
-                        // InShot-style: expose blob bridge before any page loads
-                        addJavascriptInterface(blobBridge, "SalviaBridge")
+            state.blockedCleartextUrl?.let {
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(CharcoalElevated).padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.error_cleartext_blocked),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PearlWhite,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = remember(viewModel) { { viewModel.allowCleartextAndRetry() } }) {
+                        Text(stringResource(R.string.action_allow), color = AuroraTeal)
+                    }
+                    TextButton(onClick = remember(viewModel) { { viewModel.dismissCleartextBlock() } }) {
+                        Text(stringResource(R.string.action_dismiss), color = SilverMid)
+                    }
+                }
+            }
 
-                        webViewClient = WebViewClientWrapper(
-                            onPageStartedHook = { _, url, _ -> viewModel.onPageStarted(url) },
-                            onPageFinishedHook = { view, url ->
-                                val pageUrl = view.url ?: url ?: ""
-                                viewModel.onPageFinished(pageUrl, view.title)
-                                viewModel.updateNavigationState(
-                                    canGoBack = view.canGoBack(),
-                                    canGoForward = view.canGoForward()
-                                )
-                                view.evaluateJavascript(IN_SHOT_NETWORK_SNIFFER, null)
-                                view.evaluateJavascript(
-                                    MEDIA_DETECTION_JAVASCRIPT
-                                ) { rawHtml ->
-                                    if (pageUrl.isNotEmpty()) {
-                                        decodeJavascriptString(rawHtml)
-                                            ?.let { html -> viewModel.detectMediaInPage(pageUrl, html) }
-                                    }
-                                }
-                            },
-                            onMediaDetectedHook = { candidate -> viewModel.onMediaIntercepted(candidate) }
-                        )
-
-                        webChromeClient = object : WebChromeClient() {
-                            private var lastProgress = 0
-                            private var lastProgressTime = 0L
-                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                super.onProgressChanged(view, newProgress)
-                                val now = System.currentTimeMillis()
-                                if (newProgress == 100 || newProgress - lastProgress >= 2 || now - lastProgressTime >= 80) {
-                                    lastProgress = newProgress
-                                    lastProgressTime = now
-                                    viewModel.onProgressChanged(newProgress)
-                                }
-                            }
-                        }
-
-                        if (initialUrl.isNotBlank()) {
-                            loadUrl(initialUrl)
-                        }
-                    }
-                },
-                update = { view ->
-                    webView = view
-                    if (view.settings.javaScriptEnabled != state.isJavaScriptEnabled) {
-                        view.settings.javaScriptEnabled = state.isJavaScriptEnabled
-                    }
-                    val cookiesEnabled = state.areCookiesEnabled
-                    if (CookieManager.getInstance().acceptCookie() != cookiesEnabled) {
-                        CookieManager.getInstance().setAcceptCookie(cookiesEnabled)
-                    }
-                    val agent = if (state.isDesktopSite) {
-                        Constants.DESKTOP_USER_AGENT
-                    } else {
-                        defaultUserAgent ?: view.settings.userAgentString
-                    }
-                    if (view.settings.userAgentString != agent) {
-                        view.settings.userAgentString = agent
-                        if (view.url?.isNotBlank() == true) view.reload()
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
+            BrowserBottomBar(
+                onHomeClick = remember(viewModel) { { viewModel.goHome() } },
+                onDownloadsClick = onNavigateToDownloads,
+                onSettingsClick = onNavigateToSettings,
+                onTabsClick = remember(viewModel) { { viewModel.openTabSwitcher() } },
+                menuItems = menuItems,
+                activeDownloadCount = state.activeDownloadCount,
+                tabsCount = state.tabs.size,
+                menuContentDescription = stringResource(R.string.menu)
             )
-
-            if (isMediaDetected) {
-                Text(
-                    text = stringResource(R.string.media_detected, mediaCount),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = PearlWhite,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(12.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color.Black.copy(alpha = 0.52f))
-                        .padding(1.dp)
-                        .background(PearlEdgeBrush)
-                        .padding(horizontal = 11.dp, vertical = 5.dp)
-                )
-            }
-
-    val fabVisible = state.isFabAlwaysVisible || isMediaDetected
-    if (fabVisible) {
-        FloatingDownloadButton(
-            isMediaDetected = isMediaDetected,
-            mediaCount = mediaCount,
-            onClick = onFabClick,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            buttonSize = state.floatingButtonSize.dp,
-            containerSize = pageAreaSize,
-            initialOffset = Offset(state.fabPosition.x, state.fabPosition.y),
-            onOffsetChanged = remember(viewModel) {
-                { offset: Offset -> viewModel.saveFabPosition(offset.x, offset.y) }
-            }
-        )
-    }
-
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
-            )
-
-            if (state.isLoading && state.progress < 10) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(26.dp),
-                    color = NebulaVioletLight,
-                    strokeWidth = 2.dp
-                )
-            }
         }
 
-        state.blockedCleartextUrl?.let {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(CharcoalElevated).padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Security, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.error_cleartext_blocked),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = PearlWhite,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = remember(viewModel) { { viewModel.allowCleartextAndRetry() } }) {
-                    Text(stringResource(R.string.action_allow), color = AuroraTeal)
-                }
-                TextButton(onClick = remember(viewModel) { { viewModel.dismissCleartextBlock() } }) {
-                    Text(stringResource(R.string.action_dismiss), color = SilverMid)
-                }
-            }
+        if (state.isTabSwitcherVisible) {
+            TabSwitcher(
+                tabs = state.tabs,
+                currentTabId = state.currentTabId,
+                hibernatedTabIds = state.hibernatedTabIds,
+                onSelect = remember(viewModel) { { id: String -> viewModel.switchTab(id) } },
+                onClose = remember(viewModel) { { id: String -> viewModel.closeTab(id) } },
+                onNewTab = remember(viewModel) { { viewModel.createNewTab() } },
+                onNewPrivateTab = remember(viewModel) { { viewModel.createNewTab(isPrivate = true) } },
+                onDismiss = remember(viewModel) { { viewModel.closeTabSwitcher() } }
+            )
         }
 
-        BrowserBottomBar(
-            onHomeClick = remember(viewModel) { { viewModel.goHome() } },
-            onDownloadsClick = onNavigateToDownloads,
-            onSettingsClick = onNavigateToSettings,
-            activeDownloadCount = state.activeDownloadCount
-        )
-    }
-
-    state.qualitySheet?.let { sheet ->
-        MediaQualitySelectionSheet(
-            mediaInfo = sheet.mediaInfo,
-            isResolving = sheet.isResolving,
-            onDismiss = remember(viewModel) { { viewModel.closeQualitySheet() } },
-            onQualitySelected = remember(viewModel, ensureNotificationPermission) {
-                { format ->
-                    ensureNotificationPermission()
-                    viewModel.handleFormatSelected(format)
+        state.qualitySheet?.let { sheet ->
+            MediaQualitySelectionSheet(
+                mediaInfo = sheet.mediaInfo,
+                isResolving = sheet.isResolving,
+                onDismiss = remember(viewModel) { { viewModel.closeQualitySheet() } },
+                onQualitySelected = remember(viewModel, ensureNotificationPermission) {
+                    { format ->
+                        ensureNotificationPermission()
+                        viewModel.handleFormatSelected(format)
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(store) {
         onDispose {
-            webView?.apply {
-                stopLoading()
-                removeJavascriptInterface("SalviaBridge")
-                webViewClient = android.webkit.WebViewClient()
-                webChromeClient = null
-                destroy()
-            }
-            webView = null
+            // Leaving the browser releases the WebViews. The view model keeps every tab's URL
+            // and title, so coming back restores the current tab from its last committed URL.
+            store.destroyAll()
         }
     }
 }
-
-private fun decodeJavascriptString(raw: String?): String? {
-    if (raw.isNullOrBlank() || raw == "null") return null
-    val trimmed = raw.trim()
-    if (!trimmed.startsWith("\"")) return trimmed
-    return runCatching { org.json.JSONTokener(trimmed).nextValue() as? String }.getOrNull()
-        ?: trimmed.removeSurrounding("\"")
-}
-
-/** Fetches a blob: URL chunked so Binder never overflows — InShot style. */
-private const val BLOB_FETCH_JS = """
-    (function(){
-        var blobUrl='__BLOB_URL__';
-        var pageUrl='__PAGE_URL__';
-        var CHUNK=480*1024;
-        try{
-            if(window.SalviaBridge) window.SalviaBridge.onBlobUrlFound(pageUrl, blobUrl);
-            var xhr=new XMLHttpRequest();
-            xhr.open('GET', blobUrl, true);
-            xhr.responseType='blob';
-            xhr.onload=function(){
-                if(xhr.status!==200 && xhr.status!==0) return;
-                var blob=xhr.response; if(!blob) return;
-                var mime=blob.type || 'video/mp4';
-                if(blob.size < 4*1024*1024){
-                    var r=new FileReader();
-                    r.onloadend=function(){
-                        try{ if(window.SalviaBridge) window.SalviaBridge.onBlobData(pageUrl, blobUrl, r.result, mime); }catch(e){}
-                    };
-                    r.readAsDataURL(blob);
-                    return;
-                }
-                var total=Math.ceil(blob.size/CHUNK);
-                var idx=0;
-                function next(){
-                    if(idx>=total) return;
-                    var slice=blob.slice(idx*CHUNK, (idx+1)*CHUNK);
-                    var rr=new FileReader();
-                    (function(cur){
-                        rr.onloadend=function(){
-                            try{
-                                var b64=rr.result;
-                                if(window.SalviaBridge) window.SalviaBridge.onBlobChunk(pageUrl, blobUrl, cur, total, b64, mime);
-                            }catch(e){}
-                            idx++; next();
-                        };
-                        rr.onerror=function(){ idx++; next(); };
-                    })(idx);
-                    rr.readAsDataURL(slice);
-                }
-                next();
-            };
-            xhr.onerror=function(){};
-            xhr.send();
-        }catch(e){}
-    })();
-"""
-
-/**
- * InShot-style network sniffer: hooks XHR, fetch, video.src and blob URLs.
- * Also reports blob: URLs to SalviaBridge so they can be fetched on demand.
- */
-private const val IN_SHOT_NETWORK_SNIFFER = """
-    (function(){
-        if(window.__salviaSnifferInstalled) return;
-        window.__salviaSnifferInstalled = true;
-        window.__salviaFound = window.__salviaFound || [];
-        function isMediaUrl(u){
-            if(!u) return false;
-            if(u.indexOf('blob:')===0) return true;
-            return /\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|mpd|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)/i.test(u) ||
-                   /mime=video|mime=audio|video\/|audio\//i.test(u);
-        }
-        function pushUrl(u, src){
-            if(!u || !isMediaUrl(u)) return;
-            if(window.__salviaFound.indexOf(u)!==-1) return;
-            window.__salviaFound.push(u);
-            if(window.__salviaFound.length>40) window.__salviaFound.shift();
-            if(u.indexOf('blob:')===0 && window.SalviaBridge){
-                try{ window.SalviaBridge.onBlobUrlFound(location.href, u); }catch(e){}
-            }
-        }
-        try{
-            var origDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');
-            Object.defineProperty(HTMLMediaElement.prototype,'src',{
-                get: function(){ return origDescriptor.get.call(this); },
-                set: function(v){ pushUrl(v,'media.src'); return origDescriptor.set.call(this,v); },
-                configurable:true
-            });
-        }catch(e){}
-        try{
-            var openOrig = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method,url){
-                this.__salviaUrl = url;
-                return openOrig.apply(this, arguments);
-            };
-            var sendOrig = XMLHttpRequest.prototype.send;
-            XMLHttpRequest.prototype.send = function(){
-                if(this.__salviaUrl) pushUrl(this.__salviaUrl,'xhr');
-                return sendOrig.apply(this, arguments);
-            };
-        }catch(e){}
-        try{
-            var fetchOrig = window.fetch;
-            window.fetch = function(input,init){
-                var u = typeof input==='string'? input : (input && input.url);
-                pushUrl(u,'fetch');
-                return fetchOrig.apply(this, arguments);
-            };
-        }catch(e){}
-        try{
-            var obs = new MutationObserver(function(mutations){
-                mutations.forEach(function(m){
-                    m.addedNodes.forEach(function(n){
-                        if(!n || !n.tagName) return;
-                        var t=n.tagName.toLowerCase();
-                        if(t==='video'||t==='audio'){
-                            var s=n.getAttribute('src'); if(s) pushUrl(s,'mut');
-                            n.querySelectorAll&&n.querySelectorAll('source').forEach(function(s2){ var u=s2.getAttribute('src'); if(u) pushUrl(u,'mut-src');});
-                        } else if(t==='source'){
-                            var su=n.getAttribute('src'); if(su) pushUrl(su,'mut-src');
-                        } else if(t==='a'){
-                            var hr=n.getAttribute('href'); if(hr) pushUrl(hr,'mut-a');
-                        }
-                    });
-                });
-            });
-            obs.observe(document.documentElement,{childList:true,subtree:true});
-        }catch(e){}
-        setInterval(function(){
-            try{
-                document.querySelectorAll('video,audio').forEach(function(v){
-                    var s=v.currentSrc||v.src; if(s) pushUrl(s,'poll');
-                    if(v.src && v.src.indexOf('blob:')===0) pushUrl(v.src,'blob');
-                });
-            }catch(e){}
-        },1500);
-    })();
-"""
-
-private const val MEDIA_DETECTION_JAVASCRIPT = """
-    (function () {
-        if(window.__salviaFound && window.__salviaFound.length){
-            var out='<html><body>';
-            for(var i=0;i<window.__salviaFound.length;i++){
-                var u=window.__salviaFound[i];
-                var esc=u.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-                out+='<a href="'+esc+'"></a>';
-            }
-            try{
-                var nodes=document.querySelectorAll('video,audio,source,a[href]');
-                var mediaPath=/\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|mpd|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)/i;
-                for(var j=0;j<nodes.length&&out.length<58000;j++){
-                    var n=nodes[j];
-                    if(n.tagName==='A' && !mediaPath.test(n.getAttribute('href')||'')) continue;
-                    var h=n.outerHTML;
-                    if(out.length+h.length>62000) break;
-                    out+=h;
-                }
-            }catch(e){}
-            return out+'</body></html>';
-        }
-        var maxCharacters = 62000;
-        var mediaPath = /\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|mpd|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)/i;
-        var nodes = Array.prototype.slice.call(
-            document.querySelectorAll('video, audio, source, a[href], [src]')
-        );
-        var html = '<html><body>';
-        nodes.sort(function(a,b){
-            var aP = (a.tagName==='VIDEO'||a.tagName==='AUDIO')?0:1;
-            var bP = (b.tagName==='VIDEO'||b.tagName==='AUDIO')?0:1;
-            return aP-bP;
-        });
-        for (var i = 0; i < nodes.length && html.length < maxCharacters; i++) {
-            var node = nodes[i];
-            if(node.tagName==='A' && !mediaPath.test(node.getAttribute('href')||'')) continue;
-            var outer = node.outerHTML || '';
-            if(!outer) continue;
-            if(outer.length>8000) continue;
-            if (html.length + outer.length > maxCharacters) break;
-            html += outer;
-        }
-        return html + '</body></html>';
-    })();
-"""

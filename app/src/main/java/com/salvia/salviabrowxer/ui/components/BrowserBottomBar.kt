@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,19 +43,25 @@ fun BrowserBottomBar(
     onHomeClick: () -> Unit,
     onDownloadsClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onTabsClick: () -> Unit,
+    menuItems: List<BrowserMenuItem>,
     modifier: Modifier = Modifier,
-    activeDownloadCount: Int = 0
+    activeDownloadCount: Int = 0,
+    tabsCount: Int = 1,
+    menuContentDescription: String = ""
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         // Iridescent hairline on top of the bar
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
         Row(
-            modifier = Modifier.fillMaxWidth().height(62.dp).background(BottomBarBrush).padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().height(62.dp).background(BottomBarBrush).padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
         ) {
             BottomBarAction(icon = Icons.Default.Home, label = stringResource(R.string.home), onClick = onHomeClick, badge = 0, modifier = Modifier.weight(1f))
             BottomBarAction(icon = Icons.Default.Download, label = stringResource(R.string.downloads), onClick = onDownloadsClick, badge = activeDownloadCount, modifier = Modifier.weight(1f))
+            BottomBarAction(icon = Icons.Default.Tab, label = stringResource(R.string.tabs), onClick = onTabsClick, badge = tabsCount, modifier = Modifier.weight(1f))
             BottomBarAction(icon = Icons.Default.Settings, label = stringResource(R.string.settings), onClick = onSettingsClick, badge = 0, modifier = Modifier.weight(1f))
+            BrowserMenuButton(items = menuItems, contentDescription = menuContentDescription, modifier = Modifier.weight(1f))
         }
     }
 }
