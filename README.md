@@ -19,14 +19,21 @@ versionName `0.9.0` (pre-release).
 - **Media detection** — DOM scan of the loaded page (`media`, `source`, anchors, meta tags, JSON
   and plain-text URLs) plus WebView request interception for HLS, blob and raw media requests the
   page made itself, plus blob reassembly through a `JavascriptInterface` bridge.
+- **Media tray** — candidates surface as a quiet pill in the top bar showing only the count; the
+  pill opens a tray that lists every candidate with its kind (video, audio, playlist) and container.
+  The draggable floating button still exists as an advanced setting, off by default, because a
+  button that covers the page should be something the user asked for.
 - **Quality sheet** — resolver runs HEAD, falls back to a ranged GET when HEAD is refused, and
   expands an HLS master playlist into one row per variant (resolution, bitrate, size when known).
-  The sheet opens immediately and refines its rows when the probe returns.
+  The sheet opens immediately from what the page already told us and refines its rows when the
+  probe returns, and it never blocks the download button while the probe is still running. A size
+  that is not known is reported as unavailable rather than guessed.
 - **Downloads** — foreground `dataSync` service, Room-backed queue, pause / cancel / retry,
   direct files resume over HTTP Range from a `.part` file (including after process death),
   non-encrypted VOD HLS playlists are fetched segment by segment and concatenated, blob saves land
   in the same queue. Wi-Fi-only mode pauses and holds transfers off Wi-Fi. Finished files are
-  shareable through `FileProvider` and playable in the in-app Media3 player.
+  shareable through `FileProvider` and play in the in-app Media3 player, which reports a file that
+  disappeared behind the queue's back and offers to remove the dead row.
 - **Library** — downloads in Room, surfaced through the downloads screen; settings in DataStore.
 - **Intents** — `VIEW` (http / https) and `SEND` (`text/plain`) are registered: a link handed to the
   app by another app opens in its own tab, and `tel:` / `mailto:` / `intent:` are passed to the
@@ -41,7 +48,8 @@ protection:
 - no site-specific extractors or signature/token harvesting
 - no DRM (Widevine / FairPlay / PlayReady) — the app fails with an honest error
 - no AES-128 encrypted HLS key recovery, and no live HLS
-- no MPEG-DASH: it is detected nowhere and offered nowhere, because the app cannot segment it yet
+- no MPEG-DASH: a `.mpd` is recognised and explained, never downloaded — segmenting a manifest
+  needs a parser the app does not have, so it is never offered as a file
 - no native FFmpeg binary and no audio/video muxing
 - no analytics SDK, no ad SDK, no account system, and no network call other than a page load, a
   media probe, or a download the user started

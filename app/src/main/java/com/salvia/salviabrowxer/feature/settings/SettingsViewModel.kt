@@ -34,7 +34,8 @@ data class SettingsUiState(
     val maxSimultaneousDownloads: Int = 3,
     val isWifiOnly: Boolean = false,
     val isCleartextAllowed: Boolean = false,
-    val isFloatingButtonAlwaysVisible: Boolean = true,
+    /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
+    val isFloatingButtonAlwaysVisible: Boolean = false,
     val floatingButtonSize: Int = 56
 ) {
     val searchEngineOptions: List<String> get() = Constants.SEARCH_ENGINES.keys.toList()

@@ -72,6 +72,7 @@ import com.salvia.salviabrowxer.ui.components.BrowserTopBar
 import com.salvia.salviabrowxer.ui.components.FindInPageBar
 import com.salvia.salviabrowxer.ui.components.FloatingDownloadButton
 import com.salvia.salviabrowxer.ui.components.MediaQualitySelectionSheet
+import com.salvia.salviabrowxer.ui.components.MediaTraySheet
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.SignatureWordmark
 import com.salvia.salviabrowxer.ui.components.TabSwitcher
@@ -154,16 +155,19 @@ fun BrowserScreen(
     val onForwardClick = remember(viewModel) { { viewModel.goForward() } }
     val onRefreshClick = remember(viewModel) { { viewModel.reload() } }
     val onStopClick = remember(viewModel) { { viewModel.stopLoading() } }
+    // Both the pill and the optional draggable button lead to the tray, which lists every
+    // candidate; the quality sheet is one step further in, per item.
     val onFabClick = remember(viewModel, isMediaDetected) {
         {
             if (isMediaDetected) {
-                viewModel.openQualitySheet()
+                viewModel.openMediaTray()
             } else {
                 scope.launch { snackbarHostState.showSnackbar(noMediaMessage) }
             }
             Unit
         }
     }
+    val onMediaClick = remember(viewModel) { { viewModel.openMediaTray() } }
 
     // A bookmark or a history entry reuses the tab the user came from.
     LaunchedEffect(inAppUrl) {
@@ -246,7 +250,9 @@ fun BrowserScreen(
                 onBackClick = onBackClick,
                 onForwardClick = onForwardClick,
                 onRefreshClick = onRefreshClick,
-                onStopClick = onStopClick
+                onStopClick = onStopClick,
+                mediaCount = mediaCount,
+                onMediaClick = onMediaClick
             )
 
             findState?.let { find ->
@@ -320,8 +326,8 @@ fun BrowserScreen(
                     )
                 }
 
-                val fabVisible = state.isFabAlwaysVisible || isMediaDetected
-                if (fabVisible) {
+                // Off by default: the media pill in the top bar is the normal affordance.
+                if (state.isFabAlwaysVisible) {
                     FloatingDownloadButton(
                         isMediaDetected = isMediaDetected,
                         mediaCount = mediaCount,
@@ -390,6 +396,15 @@ fun BrowserScreen(
             )
         }
 
+        if (state.isMediaTrayVisible) {
+            MediaTraySheet(
+                candidates = state.detectedMedia,
+                unsupportedReason = remember(viewModel) { { candidate -> viewModel.unsupportedReasonFor(candidate) } },
+                onSelect = remember(viewModel) { { candidate -> viewModel.openQualitySheetFor(candidate) } },
+                onDismiss = remember(viewModel) { { viewModel.closeMediaTray() } }
+            )
+        }
+
         if (state.isTabSwitcherVisible) {
             TabSwitcher(
                 tabs = state.tabs,
@@ -407,6 +422,7 @@ fun BrowserScreen(
             MediaQualitySelectionSheet(
                 mediaInfo = sheet.mediaInfo,
                 isResolving = sheet.isResolving,
+                unsupported = sheet.unsupported,
                 onDismiss = remember(viewModel) { { viewModel.closeQualitySheet() } },
                 onQualitySelected = remember(viewModel, ensureNotificationPermission) {
                     { format ->

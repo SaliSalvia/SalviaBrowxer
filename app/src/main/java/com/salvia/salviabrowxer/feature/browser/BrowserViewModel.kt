@@ -26,6 +26,8 @@ import com.salvia.salviabrowxer.service.DownloadService
 import com.salvia.salviabrowxer.ui.utils.AddressBarResolver
 import com.salvia.salviabrowxer.ui.utils.CleartextPolicy
 import com.salvia.salviabrowxer.ui.utils.Constants
+import com.salvia.salviabrowxer.ui.utils.MediaOfferability
+import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 import com.salvia.salviabrowxer.ui.utils.sanitizeFilename
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -83,8 +85,11 @@ data class BrowserUiState(
     val detectedMedia: List<MediaCandidate> = emptyList(),
     val fabPosition: FabPosition = FabPosition(),
     val floatingButtonSize: Int = 56,
-    val isFabAlwaysVisible: Boolean = true,
+    /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
+    val isFabAlwaysVisible: Boolean = false,
     val qualitySheet: QualitySheetState? = null,
+    /** The tray lists every candidate on the page; the pill in the top bar opens it. */
+    val isMediaTrayVisible: Boolean = false,
     /** Tabs whose WebView was destroyed to stay under the live-tab cap; they reload on select. */
     val hibernatedTabIds: Set<String> = emptySet(),
     val isTabSwitcherVisible: Boolean = false,
@@ -103,7 +108,9 @@ data class FindInPageState(
 data class QualitySheetState(
     val candidate: MediaCandidate,
     val mediaInfo: MediaInfo,
-    val isResolving: Boolean = false
+    val isResolving: Boolean = false,
+    /** Set when the candidate cannot be downloaded at all; the sheet explains instead of offering. */
+    val unsupported: UnsupportedMedia? = null
 )
 
 @HiltViewModel
@@ -144,7 +151,7 @@ class BrowserViewModel @Inject constructor(
             val fabX = runCatching { settingsDataStore.floatingButtonX.first() }.getOrNull() ?: 0f
             val fabY = runCatching { settingsDataStore.floatingButtonY.first() }.getOrNull() ?: 0f
             val fabSize = runCatching { settingsDataStore.floatingButtonSize.first() }.getOrNull() ?: 56
-            val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: true
+            val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: false
             val cleartextAllowed = runCatching { settingsDataStore.isCleartextAllowed.first() }.getOrNull() ?: false
             _uiState.update {
                 it.copy(
@@ -402,13 +409,44 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun openQualitySheet() {
-        val candidate = _uiState.value.detectedMedia.firstOrNull() ?: return
-        openQualitySheetFor(candidate)
+    fun openMediaTray() {
+        if (_uiState.value.detectedMedia.isEmpty()) {
+            _messages.trySend(context.getString(R.string.no_media_detected))
+            return
+        }
+        _uiState.update { it.copy(isMediaTrayVisible = true) }
     }
 
+    fun closeMediaTray() { _uiState.update { it.copy(isMediaTrayVisible = false) } }
+
+    /**
+     * Opens the quality sheet for one tray row. The sheet is filled immediately from what the
+     * page already told us and refines itself when the HEAD/HLS probe returns — the page is never
+     * blocked, and a stream this app cannot save is refused with a message instead of a probe.
+     */
     fun openQualitySheetFor(candidate: MediaCandidate) {
-        _uiState.update { it.copy(qualitySheet = QualitySheetState(candidate = candidate, mediaInfo = mediaInfoFrom(candidate), isResolving = true)) }
+        val unsupported = unsupportedReasonFor(candidate)
+        val info = mediaInfoFrom(candidate)
+        _uiState.update {
+            it.copy(
+                isMediaTrayVisible = false,
+                qualitySheet = QualitySheetState(
+                    candidate = candidate,
+                    // An unsupported stream still gets a title and a thumbnail to look at, but no
+                    // format at all: there is nothing selectable to offer.
+                    mediaInfo = if (unsupported == null) info else info.copy(
+                        formats = emptyList(), audioFormats = emptyList(),
+                        videoFormats = emptyList(), combinedFormats = emptyList()
+                    ),
+                    isResolving = unsupported == null,
+                    unsupported = unsupported
+                )
+            )
+        }
+        if (unsupported != null) {
+            _messages.trySend(context.getString(messageFor(unsupported)))
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val resolved = runCatching { mediaResolver.resolve(candidate.mediaUrl) }.getOrNull()
             val merged = resolved?.let { info ->
@@ -425,6 +463,15 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun closeQualitySheet() { _uiState.update { it.copy(qualitySheet = null) } }
+
+    /** Null when the candidate can be downloaded; otherwise the honest reason it cannot. */
+    fun unsupportedReasonFor(candidate: MediaCandidate): UnsupportedMedia? =
+        MediaOfferability.unsupportedReason(candidate.mediaUrl, candidate.mimeType, candidate.extension, candidate.isLive)
+
+    private fun messageFor(reason: UnsupportedMedia): Int = when (reason) {
+        UnsupportedMedia.DASH -> R.string.error_dash_unsupported
+        UnsupportedMedia.LIVE -> R.string.error_live_unsupported
+    }
 
     private fun mediaInfoFrom(candidate: MediaCandidate): MediaInfo {
         val extension = candidate.extension ?: com.salvia.salviabrowxer.media.downloader.DownloadManager.extensionFromUrl(candidate.mediaUrl)
@@ -495,6 +542,13 @@ class BrowserViewModel @Inject constructor(
     fun enqueueDownload(format: MediaFormat) {
         val sheet = _uiState.value.qualitySheet ?: return
         val candidate = sheet.candidate
+        // Defence in depth: an unsupported stream must never reach the queue, even if a future
+        // caller forgets to check the sheet state first.
+        val unsupported = sheet.unsupported ?: unsupportedReasonFor(candidate)
+        if (unsupported != null) {
+            _messages.trySend(context.getString(messageFor(unsupported)))
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val title = sheet.mediaInfo.title.takeIf { it.isNotBlank() } ?: candidate.pageUrl
             val extension = format.extension.takeIf { it.isNotBlank() } ?: com.salvia.salviabrowxer.media.downloader.DownloadManager.extensionFromUrl(format.url)

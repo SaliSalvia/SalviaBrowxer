@@ -58,6 +58,10 @@
     <string name="download_retry">Retry</string>
     <string name="download_open">Open</string>
     <string name="download_share">Share</string>
+    <string name="download_not_ready">This download is not finished yet</string>
+    <string name="download_file_missing">This file is missing on disk</string>
+    <string name="download_open_failed">No app can open this file</string>
+    <string name="download_share_failed">Nothing can share this file</string>
     <string name="download_delete">Delete</string>
     <string name="no_active_downloads">No active downloads</string>
     <string name="no_queued_downloads">No queued downloads</string>
@@ -69,9 +73,19 @@
     <string name="no_media_detected">No downloadable media detected</string>
     <string name="select_quality">Select Quality</string>
     <string name="download_start">Start Download</string>
+    <string name="media_pill_description">%1$d media items on this page</string>
+    <string name="media_tray_title">Media on this page</string>
+    <string name="media_tray_count">%1$d found</string>
+    <string name="media_tray_empty">No media detected on this page.</string>
+    <string name="media_open_quality">Choose quality</string>
+    <string name="media_kind_video">Video</string>
+    <string name="media_kind_audio">Audio</string>
+    <string name="media_kind_playlist">Playlist</string>
+    <string name="quality_checking">Checking available qualities…</string>
+    <string name="quality_options">%1$d quality options</string>
 
     <!-- Settings -->
-    <string name="settings_floating_button_always">Always show download button</string>
+    <string name="settings_floating_button_always">Draggable download button</string>
     <string name="player_speed">Speed</string>
     <string name="player_order">Playback order</string>
     <string name="player_order_sequential">In order</string>
@@ -81,6 +95,17 @@
     <string name="player_previous">Previous</string>
     <string name="player_next">Next</string>
     <string name="player_playlist">Playlist %1$d / %2$d</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_fullscreen">Fullscreen</string>
+    <string name="player_exit_fullscreen">Exit fullscreen</string>
+    <string name="player_mute">Mute</string>
+    <string name="player_unmute">Unmute</string>
+    <string name="player_file_missing">This file is missing or empty. It may have been deleted.</string>
+    <string name="player_playback_failed">This file cannot be played.</string>
+    <string name="player_delete_download">Delete from downloads</string>
+    <string name="player_retry">Try again</string>
+    <string name="media_fallback_title">Media file</string>
     <string name="settings_browser">Browser</string>
     <string name="settings_downloads">Downloads</string>
     <string name="settings_appearance">Appearance</string>
@@ -103,6 +128,7 @@
     <string name="settings_downloads_at_a_time">%1$d at a time</string>
     <string name="settings_dp_value">%1$d dp</string>
     <string name="settings_floating_button_position_hint">Drag the button anywhere on the page</string>
+    <string name="settings_floating_button_always_hint">Advanced, off by default. The media pill in the address bar is the normal way to the tray</string>
     <string name="settings_clear_browsing_data_hint">History, cookies and cached session data will be removed.</string>
     <string name="settings_homepage_updated">Homepage updated</string>
     <string name="settings_history_cleared">History cleared</string>
@@ -121,6 +147,8 @@
     <string name="error_cleartext_blocked">http:// is blocked. Allow insecure sites in Settings, then load it again.</string>
     <string name="error_unable_to_resolve_media">Unable to resolve this media</string>
     <string name="error_unsupported_media">This media cannot be downloaded</string>
+    <string name="error_dash_unsupported">MPEG-DASH is not supported, so this stream cannot be saved</string>
+    <string name="error_live_unsupported">Live streams cannot be downloaded</string>
     <string name="error_drm_protected">Protected media cannot be downloaded</string>
     <string name="error_size_unavailable">Size unavailable</string>
     <string name="error_disk_full">Not enough storage space</string>

@@ -68,10 +68,11 @@ class WebViewClientWrapper(
 
             val ext = mediaExtension(url)
             val mimeFromAccept = mimeFromAcceptHeader(accept)
-            val isHlsOrDash = url.contains(".m3u8", true) || url.contains("manifest", true)
+            val isDash = MediaOfferability.isDash(url, contentType.ifBlank { null }, ext)
+            val isHls = url.contains(".m3u8", true) || url.contains("manifest", true)
             val isBlob = url.startsWith("blob:")
 
-            val isMedia = ext != null || mimeFromAccept != null || isHlsOrDash || isBlob
+            val isMedia = ext != null || mimeFromAccept != null || isHls || isDash || isBlob
             if (!isMedia) return super.shouldInterceptRequest(view, request)
 
             // Blob: URLs are already direct media; emit immediately
@@ -91,8 +92,16 @@ class WebViewClientWrapper(
 
             lastEmit[url] = now
 
-            val extension = ext ?: extensionFromMime(mimeFromAccept) ?: "mp4"
-            val mime = mimeFromAccept ?: mimeTypeFor(extension) ?: "video/mp4"
+            // A DASH manifest keeps its real identity: the tray explains that it cannot be saved
+            // instead of offering it as an mp4 that would always fail at download time.
+            val extension = when {
+                isDash -> "mpd"
+                else -> ext ?: extensionFromMime(mimeFromAccept) ?: "mp4"
+            }
+            val mime = when {
+                isDash -> "application/dash+xml"
+                else -> mimeFromAccept ?: mimeTypeFor(extension) ?: "video/mp4"
+            }
             emitCandidate(view, url, extension, mime)
         }
         return super.shouldInterceptRequest(view, request)

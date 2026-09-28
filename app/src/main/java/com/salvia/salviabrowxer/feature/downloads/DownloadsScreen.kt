@@ -129,7 +129,8 @@ private fun DownloadList(items: List<DownloadEntity>, viewModel: DownloadsViewMo
                 onResumeClick = { viewModel.resumeDownload(download.id) },
                 onCancelClick = { viewModel.cancelDownload(download.id) },
                 onRetryClick = { viewModel.retryDownload(download.id) },
-                onDeleteClick = { viewModel.deleteDownload(download.id) }
+                onDeleteClick = { viewModel.deleteDownload(download.id) },
+                onShareClick = { viewModel.shareDownload(download.id) }
             )
         }
     }
