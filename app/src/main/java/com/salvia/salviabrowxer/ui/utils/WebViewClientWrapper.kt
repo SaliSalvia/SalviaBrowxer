@@ -8,14 +8,23 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
+import com.salvia.salviabrowxer.core.model.MediaUrlRules
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * High-performance WebViewClient with:
- * - Media sniffing: intercepts HLS, blob and raw mp4/mp3 requests the page made itself.
+ * - Media sniffing: intercepts HLS, blob and media requests the page made itself.
  * - Per-URL throttle (200ms) + dedupe set to prevent flooding the FAB.
  * - Header-aware MIME detection (Content-Type overrides extension).
  * - Never blocks the renderer thread.
+ *
+ * What this layer can and cannot see is worth stating, because the rest of detection used to assume
+ * it saw more than it does. `shouldInterceptRequest` receives **request** headers, never the
+ * response `Content-Type`, so a URL with no extension and a generic `Accept` is invisible here —
+ * which is most media on social CDNs. That case belongs to [MediaSniffer], which runs in the page
+ * and can read the response. This class covers the same-origin and extension-bearing cases, plus
+ * `blob:` URLs, and deliberately does not try to guess at the rest: a wrong guess here means a row
+ * in the tray that fails at download time.
  */
 class WebViewClientWrapper(
     private val onPageStartedHook: (WebView, String?, android.graphics.Bitmap?) -> Unit = { _, _, _ -> },
@@ -66,10 +75,13 @@ class WebViewClientWrapper(
             val accept = headers["Accept"] ?: headers["accept"] ?: ""
             val contentType = headers["Content-Type"] ?: headers["content-type"] ?: ""
 
-            val ext = mediaExtension(url)
-            val mimeFromAccept = mimeFromAcceptHeader(accept)
-            val isDash = MediaOfferability.isDash(url, contentType.ifBlank { null }, ext)
-            val isHls = url.contains(".m3u8", true) || url.contains("manifest", true)
+            val ext = MediaUrlRules.pathExtension(url)?.takeIf { it in MediaUrlRules.MEDIA_EXTENSIONS }
+            val mimeFromAccept = MediaUrlRules.normalizeMime(mimeFromAcceptHeader(accept))
+            val isDash = MediaUrlRules.isDashUrl(url, contentType.ifBlank { null })
+            // A bare `manifest` in the URL used to count as HLS, so `site.webmanifest` and
+            // `manifest.json` offered themselves as playlists that could never download.
+            // MediaUrlRules.isPlaylistUrl keeps the real CDN hint and excludes document manifests.
+            val isHls = MediaUrlRules.isPlaylistUrl(url, contentType.ifBlank { null })
             val isBlob = url.startsWith("blob:")
 
             val isMedia = ext != null || mimeFromAccept != null || isHls || isDash || isBlob
@@ -95,11 +107,11 @@ class WebViewClientWrapper(
             // A DASH manifest keeps its real identity: the tray explains that it cannot be saved
             // instead of offering it as an mp4 that would always fail at download time.
             val extension = when {
-                isDash -> "mpd"
-                else -> ext ?: extensionFromMime(mimeFromAccept) ?: "mp4"
+                isDash -> MediaUrlRules.DASH_EXTENSION
+                else -> ext ?: MediaUrlRules.extensionForMime(mimeFromAccept) ?: "mp4"
             }
             val mime = when {
-                isDash -> "application/dash+xml"
+                isDash -> MediaUrlRules.DASH_MIME_TYPE
                 else -> mimeFromAccept ?: mimeTypeFor(extension) ?: "video/mp4"
             }
             emitCandidate(view, url, extension, mime)
@@ -117,7 +129,7 @@ class WebViewClientWrapper(
             extension = extension.lowercase(),
             source = MediaSource.WEBVIEW,
             confidence = when {
-                url.contains(".m3u8", true) -> 0.95f
+                MediaUrlRules.isPlaylistUrl(url, mime) -> 0.95f
                 extension in setOf("mp4", "webm", "mkv", "mov") -> 0.9f
                 else -> 0.78f
             }
@@ -138,16 +150,6 @@ class WebViewClientWrapper(
         }
     }
 
-    private fun extensionFromMime(mime: String?): String? = when {
-        mime == null -> null
-        mime.contains("mpegurl") || mime.contains("x-mpegurl") -> "m3u8"
-        mime.startsWith("video/mp4") -> "mp4"
-        mime.startsWith("video/webm") -> "webm"
-        mime.startsWith("audio/mpeg") -> "mp3"
-        mime.startsWith("audio/mp4") -> "m4a"
-        else -> null
-    }
-
     private inline fun <T> safe(where: String, block: () -> T): T? {
         return try {
             block()
@@ -158,26 +160,10 @@ class WebViewClientWrapper(
         }
     }
 
-    private fun mediaExtension(url: String): String? {
-        val path = url.substringBefore('#').substringBefore('?')
-        val lastDot = path.lastIndexOf('.')
-        val lastSlash = path.lastIndexOf('/')
-        if (lastDot <= lastSlash || lastDot == path.length - 1) return null
-        val ext = path.substring(lastDot + 1).lowercase()
-        // Reject obvious non-media even if extension matches by accident (e.g. /api.mp4/thumbnail)
-        if (path.contains("/api/") && ext == "mp4" && path.length > 300) return null
-        return ext.takeIf { it in DOWNLOADABLE_EXTENSIONS }
-    }
-
     private fun mimeTypeFor(extension: String): String? =
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
 
     companion object {
         private const val TAG = "WebViewClientWrapper"
-        private val DOWNLOADABLE_EXTENSIONS: Set<String> = (
-            Constants.SUPPORTED_VIDEO_EXTENSIONS +
-                Constants.SUPPORTED_AUDIO_EXTENSIONS +
-                Constants.SUPPORTED_PLAYLIST_EXTENSIONS
-            ).toSet()
     }
 }

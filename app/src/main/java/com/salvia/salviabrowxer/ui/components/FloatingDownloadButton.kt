@@ -33,10 +33,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.FabActiveBrushNebula
 import com.salvia.salviabrowxer.ui.theme.FabInactiveBrushNebula
@@ -114,7 +116,11 @@ fun FloatingDownloadButton(
 
         Icon(
             imageVector = Icons.Default.Download,
-            contentDescription = "Download",
+            contentDescription = if (isMediaDetected && mediaCount > 0) {
+                stringResource(R.string.media_button_description, mediaCount)
+            } else {
+                stringResource(R.string.media_button_description_empty)
+            },
             tint = if (isMediaDetected) Color.White else PearlWhite.copy(alpha = 0.88f),
             modifier = Modifier.size(25.dp)
         )

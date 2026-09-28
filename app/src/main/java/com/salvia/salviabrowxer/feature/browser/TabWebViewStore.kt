@@ -7,8 +7,13 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.salvia.salviabrowxer.core.model.MediaCandidate
+import com.salvia.salviabrowxer.core.model.MediaUrlRules
 import com.salvia.salviabrowxer.ui.bridge.BlobDownloadBridge
+import com.salvia.salviabrowxer.ui.bridge.MediaSnifferBridge
+import com.salvia.salviabrowxer.ui.utils.MediaSniffer
 import com.salvia.salviabrowxer.ui.utils.WebViewClientWrapper
 import com.salvia.salviabrowxer.ui.utils.WebViewSetup
 import java.io.File
@@ -61,6 +66,19 @@ class TabWebViewStore(
         // Blob staging gets its own cache subdirectory so FileProvider only exposes that folder.
         cacheDirProvider = { File(context.cacheDir, "blob") }
     )
+
+    /**
+     * Where [MediaSniffer]'s script reports what the page actually fetched. The previous sniffer
+     * had no listener on this side at all, which is why its findings were never used.
+     */
+    private val snifferBridge = MediaSnifferBridge(
+        onAdmitted = { candidate -> callbacks.onMediaDetected(candidate) }
+    )
+
+    /** Document-start injection needs a WebView new enough to have the feature. */
+    private val documentStartSniffer: Boolean = runCatching {
+        WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+    }.getOrDefault(false)
 
     fun liveTabIds(): Set<String> = live.keys.toSet()
 
@@ -220,13 +238,20 @@ class TabWebViewStore(
         WebViewSetup.apply(view, javaScriptEnabled, desktopMode)
         if (defaultUserAgent == null) defaultUserAgent = view.settings.userAgentString
         view.addJavascriptInterface(blobBridge, BRIDGE_NAME)
+        view.addJavascriptInterface(snifferBridge, MediaSniffer.BRIDGE_NAME)
+        installSniffer(view)
         view.webViewClient = WebViewClientWrapper(
-            onPageStartedHook = { _, url, _ -> url?.takeIf { it.isNotBlank() }?.let { callbacks.onPageStarted(tabId, it) } },
+            onPageStartedHook = { _, url, _ ->
+                url?.takeIf { it.isNotBlank() }?.let { callbacks.onPageStarted(tabId, it) }
+                // The script guards itself with window.__salviaMediaHook, so running it here as
+                // well as at document start costs one no-op and covers WebViews where document
+                // start injection is not available.
+                view.evaluateJavascript(MediaSniffer.script, null)
+            },
             onPageFinishedHook = { web, url ->
                 val pageUrl = web.url ?: url.orEmpty()
                 callbacks.onPageFinished(tabId, pageUrl, web.title)
                 callbacks.onNavigationState(tabId, web.canGoBack(), web.canGoForward())
-                web.evaluateJavascript(NETWORK_SNIFFER_JS, null)
                 web.evaluateJavascript(MEDIA_DETECTION_JS) { rawHtml ->
                     if (pageUrl.isNotBlank()) decodeJavascriptString(rawHtml)?.let { html -> callbacks.onPageHtml(tabId, pageUrl, html) }
                 }
@@ -254,10 +279,24 @@ class TabWebViewStore(
         return view
     }
 
+    /**
+     * Installs the media sniffer before the page runs any of its own script.
+     *
+     * This is the difference for a player that fetches its manifest and first segments the moment
+     * it loads: by `onPageFinished` those requests are long gone. The feature is gated because it
+     * needs a WebView new enough to have it; [MediaSniffer.script] is also evaluated from
+     * `onPageStarted`, and the script's own guard makes doing both idempotent.
+     */
+    private fun installSniffer(view: WebView) {
+        if (!documentStartSniffer) return
+        runCatching { WebViewCompat.addDocumentStartJavaScript(view, MediaSniffer.script, setOf("*")) }
+    }
+
     private fun destroyView(view: WebView) {
         (view.parent as? ViewGroup)?.removeView(view)
         runCatching { view.stopLoading() }
         runCatching { view.removeJavascriptInterface(BRIDGE_NAME) }
+        runCatching { view.removeJavascriptInterface(MediaSniffer.BRIDGE_NAME) }
         runCatching { view.webViewClient = WebViewClient() }
         runCatching { view.webChromeClient = null }
         runCatching { view.destroy() }
@@ -328,87 +367,23 @@ private const val BLOB_FETCH_JS = """
     })();
 """
 
-/** Hooks XHR, fetch, video.src and blob URLs so media the page already fetched is visible. */
-private const val NETWORK_SNIFFER_JS = """
-    (function(){
-        if(window.__salviaSnifferInstalled) return;
-        window.__salviaSnifferInstalled = true;
-        window.__salviaFound = window.__salviaFound || [];
-        function isMediaUrl(u){
-            if(!u) return false;
-            if(u.indexOf('blob:')===0) return true;
-            return /\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)/i.test(u) ||
-                   /mime=video|mime=audio|video\/|audio\//i.test(u);
-        }
-        function pushUrl(u, src){
-            if(!u || !isMediaUrl(u)) return;
-            if(window.__salviaFound.indexOf(u)!==-1) return;
-            window.__salviaFound.push(u);
-            if(window.__salviaFound.length>40) window.__salviaFound.shift();
-            if(u.indexOf('blob:')===0 && window.SalviaBridge){
-                try{ window.SalviaBridge.onBlobUrlFound(location.href, u); }catch(e){}
-            }
-        }
-        try{
-            var origDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');
-            Object.defineProperty(HTMLMediaElement.prototype,'src',{
-                get: function(){ return origDescriptor.get.call(this); },
-                set: function(v){ pushUrl(v,'media.src'); return origDescriptor.set.call(this,v); },
-                configurable:true
-            });
-        }catch(e){}
-        try{
-            var openOrig = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method,url){
-                this.__salviaUrl = url;
-                return openOrig.apply(this, arguments);
-            };
-            var sendOrig = XMLHttpRequest.prototype.send;
-            XMLHttpRequest.prototype.send = function(){
-                if(this.__salviaUrl) pushUrl(this.__salviaUrl,'xhr');
-                return sendOrig.apply(this, arguments);
-            };
-        }catch(e){}
-        try{
-            var fetchOrig = window.fetch;
-            window.fetch = function(input,init){
-                var u = typeof input==='string'? input : (input && input.url);
-                pushUrl(u,'fetch');
-                return fetchOrig.apply(this, arguments);
-            };
-        }catch(e){}
-        try{
-            var obs = new MutationObserver(function(mutations){
-                mutations.forEach(function(m){
-                    m.addedNodes.forEach(function(n){
-                        if(!n || !n.tagName) return;
-                        var t=n.tagName.toLowerCase();
-                        if(t==='video'||t==='audio'){
-                            var s=n.getAttribute('src'); if(s) pushUrl(s,'mut');
-                            n.querySelectorAll&&n.querySelectorAll('source').forEach(function(s2){ var u=s2.getAttribute('src'); if(u) pushUrl(u,'mut-src');});
-                        } else if(t==='source'){
-                            var su=n.getAttribute('src'); if(su) pushUrl(su,'mut-src');
-                        } else if(t==='a'){
-                            var hr=n.getAttribute('href'); if(hr) pushUrl(hr,'mut-a');
-                        }
-                    });
-                });
-            });
-            obs.observe(document.documentElement,{childList:true,subtree:true});
-        }catch(e){}
-        setInterval(function(){
-            try{
-                document.querySelectorAll('video,audio').forEach(function(v){
-                    var s=v.currentSrc||v.src; if(s) pushUrl(s,'poll');
-                    if(v.src && v.src.indexOf('blob:')===0) pushUrl(v.src,'blob');
-                });
-            }catch(e){}
-        },1500);
-    })();
-"""
+/*
+ * The sniffer that used to live here is now MediaSniffer.script, installed at document start by
+ * TabWebViewStore.installSniffer(). It hooked the same APIs but only ever called Kotlin for blob:
+ * URLs — and that handler just logged — so everything else it found was written into a page-side
+ * array, serialised as HTML below, and then discarded by DomMediaDetector for having no media
+ * extension. That is why an extension-less CDN video was never detected.
+ */
 
-/** Serialises the page's media-bearing markup for [com.salvia.salviabrowxer.media.detector.DomMediaDetector]. */
-private const val MEDIA_DETECTION_JS = """
+/**
+ * Serialises the page's media-bearing markup for
+ * [com.salvia.salviabrowxer.media.detector.DomMediaDetector].
+ *
+ * The extension alternation is interpolated from
+ * [com.salvia.salviabrowxer.core.model.MediaUrlRules] rather than written out again, because this
+ * regex used to be a third copy that could disagree with the Kotlin side.
+ */
+private val MEDIA_DETECTION_JS: String = """
     (function () {
         if(window.__salviaFound && window.__salviaFound.length){
             var out='<html><body>';
@@ -419,7 +394,7 @@ private const val MEDIA_DETECTION_JS = """
             }
             try{
                 var nodes=document.querySelectorAll('video,audio,source,a[href]');
-                var mediaPath=/\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)/i;
+                var mediaPath=/\.(__MEDIA_EXT__)(\?|#|$)/i;
                 for(var j=0;j<nodes.length&&out.length<58000;j++){
                     var n=nodes[j];
                     if(n.tagName==='A' && !mediaPath.test(n.getAttribute('href')||'')) continue;
@@ -431,7 +406,7 @@ private const val MEDIA_DETECTION_JS = """
             return out+'</body></html>';
         }
         var maxCharacters = 62000;
-        var mediaPath = /\.(mp4|webm|mov|avi|3gp|m4v|mkv|flv|m3u8|ts|mp3|m4a|aac|wav|flac|ogg|wma)(\?|#|$)/i;
+        var mediaPath = /\.(__MEDIA_EXT__)(\?|#|$)/i;
         var nodes = Array.prototype.slice.call(
             document.querySelectorAll('video, audio, source, a[href], [src]')
         );
@@ -452,4 +427,4 @@ private const val MEDIA_DETECTION_JS = """
         }
         return html + '</body></html>';
     })();
-"""
+""".replace("__MEDIA_EXT__", MediaUrlRules.EXTENSION_ALTERNATION)

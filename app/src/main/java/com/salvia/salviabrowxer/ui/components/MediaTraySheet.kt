@@ -40,6 +40,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -103,7 +105,7 @@ fun MediaTraySheet(
                                 color = AuroraTeal
                             )
                         }
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, stringResource(R.string.action_dismiss), tint = SilverMid)
                         }
                     }
@@ -138,12 +140,18 @@ private fun MediaTrayRow(candidate: MediaCandidate, reason: UnsupportedMedia?, o
     val title = candidate.title?.takeIf { it.isNotBlank() } ?: filenameOf(candidate.mediaUrl)
     val extension = candidate.extension?.takeIf { it.isNotBlank() }?.uppercase()
 
+    val chooseLabel = stringResource(R.string.media_open_quality)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(CharcoalSurface)
-            .clickable(enabled = reason == null, onClick = onSelect)
+            .clickable(enabled = reason == null, role = Role.Button, onClickLabel = chooseLabel, onClick = onSelect)
+            // A row that cannot be downloaded is not a button, so it has to merge its own text:
+            // otherwise TalkBack reads the title, the metadata and the reason as three unrelated
+            // fragments instead of one statement about one item.
+            .then(if (reason != null) Modifier.semantics(mergeDescendants = true) {} else Modifier)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -187,9 +195,9 @@ private fun MediaTrayRow(candidate: MediaCandidate, reason: UnsupportedMedia?, o
             }
         }
         if (reason == null) {
-            IconButton(onClick = onSelect) {
-                Icon(Icons.Default.Download, stringResource(R.string.media_open_quality), tint = PearlWhite, modifier = Modifier.size(20.dp))
-            }
+            // An affordance, not a second button: the whole row is the 48dp-or-taller target, so
+            // TalkBack does not offer the same action twice.
+            Icon(Icons.Default.Download, null, tint = PearlWhite, modifier = Modifier.padding(start = 8.dp).size(20.dp))
         }
     }
 }

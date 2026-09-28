@@ -24,6 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -49,7 +51,9 @@ fun ListSearchRow(query: String, hint: String, onQueryChange: (String) -> Unit) 
                 singleLine = true,
                 textStyle = TextStyle(color = PearlWhite),
                 cursorBrush = SolidColor(AuroraTeal),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                // The hint text vanishes once the user types, so the field names itself.
+                modifier = Modifier.semantics { contentDescription = hint }
             )
         }
     }

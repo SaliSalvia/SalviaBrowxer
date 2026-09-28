@@ -6,8 +6,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -47,6 +49,15 @@ fun SalviaBrowxerTheme(
     val colorScheme = DarkColorScheme
     val view = LocalView.current
 
+    // The typeface follows the app language: Persian renders in Vazirmatn, everything else in
+    // Inter. Neither is FontFamily.Default, so the brand survives a device that ships a
+    // different system face. `locales` is API 24+, which is this app's minSdk.
+    val languageTag = LocalConfiguration.current.locales[0]?.language
+    val persian = AppFonts.usesPersianFace(languageTag)
+    val typography = remember(languageTag) {
+        salviaTypography(AppFonts.familyFor(languageTag), persian)
+    }
+
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
@@ -63,7 +74,7 @@ fun SalviaBrowxerTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = typography,
         content = content
     )
 }

@@ -1,188 +1,402 @@
 package com.salvia.salviabrowxer.feature.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Newspaper
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.core.database.entities.BookmarkEntity
-import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
+import com.salvia.salviabrowxer.ui.components.DownloadItem
+import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
+import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletContainer
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
+import com.salvia.salviabrowxer.ui.theme.SilverDeep
 import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.theme.TopBarBrush
+import kotlinx.coroutines.flow.collectLatest
 
+/**
+ * The home screen: paste a link, and watch what is downloading.
+ *
+ * The paste field is deliberately the first thing on the screen and there is exactly one decision
+ * behind it. A URL that already names a file (`…/clip.mp4`, `…/master.m3u8`) goes straight to the
+ * quality sheet, because there is nothing to discover. Anything else is a page, and this app has no
+ * site-specific extractors by design, so the honest thing is to open it and let the media tray find
+ * what the page exposes — which is why the button's label changes with the link instead of
+ * promising a download that a page cannot produce.
+ */
 @Composable
 fun HomeScreen(
-    bookmarks: List<BookmarkEntity>,
-    history: List<HistoryEntity>,
-    onBookmarkClick: (String) -> Unit,
-    onHistoryClick: (String) -> Unit,
-    onSettingsClick: () -> Unit
+    onOpenLink: (url: String) -> Unit,
+    onNavigateToBrowser: () -> Unit,
+    onNavigateToDownloads: () -> Unit,
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
-    // Single LazyColumn for entire screen → one scrollable, one composition pass, no nested scroll interop
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MatteCharcoal)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        item(key = "header") {
-            Spacer(Modifier.height(16.dp))
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val onPasteTitle = stringResource(R.string.home_paste_title)
+
+    val submit: () -> Unit = remember(viewModel, keyboard) {
+        {
+            keyboard?.hide()
+            viewModel.submitInput()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.messages.collectLatest { message -> if (message.isNotBlank()) snackbarHostState.showSnackbar(message) }
+    }
+    LaunchedEffect(Unit) {
+        viewModel.openRequests.collectLatest { url -> onOpenLink(url) }
+    }
+
+    // The clipboard is only readable by a foreground app, so resuming is exactly when to look —
+    // and it is what makes "copy a link elsewhere, come back, paste is already filled" work.
+    LifecycleResumeEffect(Unit) {
+        viewModel.onForeground()
+        onPauseOrDispose { }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            HomeHeader(onNavigateToBrowser = onNavigateToBrowser)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+            ) {
+                Spacer(Modifier.height(16.dp))
+                PasteCard(
+                    state = state,
+                    fieldLabel = onPasteTitle,
+                    onInputChange = viewModel::onInputChange,
+                    onClear = viewModel::clearInput,
+                    onPaste = viewModel::pasteFromClipboard,
+                    onUseSuggestion = viewModel::useClipboardSuggestion,
+                    onDismissSuggestion = viewModel::dismissClipboardSuggestion,
+                    onSubmit = submit
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.home_how_it_works),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SilverDeep
+                )
+                Spacer(Modifier.height(22.dp))
+                ActiveDownloads(state = state, viewModel = viewModel, onNavigateToDownloads = onNavigateToDownloads)
+                Spacer(Modifier.height(28.dp))
+            }
+        }
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
+    }
+}
+
+@Composable
+private fun HomeHeader(onNavigateToBrowser: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OrbitalBrandMark(size = 34.dp, animate = false)
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineSmall,
-                color = PearlWhite
+                style = MaterialTheme.typography.titleMedium,
+                color = PearlWhite,
+                letterSpacing = 2.sp
             )
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onNavigateToBrowser) {
+                Icon(Icons.Default.Public, stringResource(R.string.home_open_browser), tint = PearlWhite)
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
+    }
+}
+
+@Composable
+private fun PasteCard(
+    state: HomeUiState,
+    fieldLabel: String,
+    onInputChange: (String) -> Unit,
+    onClear: () -> Unit,
+    onPaste: () -> Unit,
+    onUseSuggestion: () -> Unit,
+    onDismissSuggestion: () -> Unit,
+    onSubmit: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val borderColor by animateColorAsState(
+        targetValue = if (focused) AuroraTeal else CharcoalBorder,
+        label = "pasteFieldBorder"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(CharcoalElevated)
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Link, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
-                text = stringResource(R.string.app_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = SilverMid.copy(alpha = 0.85f),
-                modifier = Modifier.padding(top = 4.dp)
+                text = stringResource(R.string.home_paste_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = PearlWhite,
+                letterSpacing = 0.6.sp
             )
-            Spacer(Modifier.height(20.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(DeepCharcoal)
+                .border(1.dp, borderColor, RoundedCornerShape(14.dp))
+                .padding(start = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                BasicTextField(
+                    value = state.input,
+                    onValueChange = onInputChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { focused = it.hasFocus }
+                        .semantics { contentDescription = fieldLabel },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
+                    cursorBrush = Brush.horizontalGradient(listOf(BlushPink, NebulaVioletLight, AuroraTeal)),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { onSubmit() }),
+                    decorationBox = { inner ->
+                        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
+                            if (state.input.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.home_paste_hint),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = SilverDeep
+                                )
+                            }
+                            inner()
+                        }
+                    }
+                )
+            }
+            if (state.input.isNotEmpty()) {
+                IconButton(onClick = onClear, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Close, stringResource(R.string.home_clear_input), tint = SilverMid, modifier = Modifier.size(18.dp))
+                }
+            }
+            IconButton(onClick = onPaste, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.ContentPaste, stringResource(R.string.home_paste_from_clipboard), tint = AuroraTeal, modifier = Modifier.size(20.dp))
+            }
         }
 
-        // Bookmarks section
-        item(key = "bookmarks_header") {
-            SectionHeader(title = stringResource(R.string.bookmarks), icon = Icons.Default.Bookmark)
-            Spacer(Modifier.height(8.dp))
-        }
-        if (bookmarks.isEmpty()) {
-            item(key = "bookmarks_empty") {
-                EmptyHint("No bookmarks yet — save a page to see it here")
-                Spacer(Modifier.height(16.dp))
-            }
-        } else {
-            items(bookmarks.take(5), key = { "bm_${it.url}" }) { item ->
-                HomeRow(title = item.title, url = item.url, onClick = { onBookmarkClick(item.url) })
-            }
-            item(key = "bookmarks_spacer") { Spacer(Modifier.height(16.dp)) }
-        }
-
-        // History section
-        item(key = "history_header") {
-            SectionHeader(title = stringResource(R.string.history), icon = Icons.Default.History)
-            Spacer(Modifier.height(8.dp))
-        }
-        if (history.isEmpty()) {
-            item(key = "history_empty") {
-                EmptyHint("No recent pages")
-                Spacer(Modifier.height(16.dp))
-            }
-        } else {
-            items(history.take(5), key = { "hi_${it.url}_${it.visitedAt}" }) { item ->
-                HomeRow(title = item.title, url = item.url, onClick = { onHistoryClick(item.url) })
-            }
-            item(key = "history_spacer") { Spacer(Modifier.height(16.dp)) }
-        }
-
-        item(key = "settings_card") {
+        val suggestion = state.clipboardUrl
+        AnimatedVisibility(
+            visible = suggestion != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(CharcoalElevated)
-                    .clickable(onClick = onSettingsClick)
-                    .padding(16.dp),
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NebulaVioletContainer)
+                    .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(CharcoalSurface),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Settings, null, tint = AuroraTeal, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.ContentPaste, contentDescription = null, tint = NebulaVioletLight, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            if (state.clipboardIsMediaFile) R.string.home_clipboard_media else R.string.home_clipboard_page
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PearlWhite
+                    )
+                    if (suggestion != null) {
+                        Text(
+                            text = suggestion,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SilverMid,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings), style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
-                    Text("Browser, downloads & privacy", style = MaterialTheme.typography.bodySmall, color = SilverMid)
+                TextButton(onClick = onUseSuggestion, contentPadding = PaddingValues(horizontal = 10.dp)) {
+                    Text(stringResource(R.string.home_clipboard_use), style = MaterialTheme.typography.labelMedium, color = NebulaVioletLight)
                 }
-                Icon(Icons.Default.Settings, null, tint = SilverMid.copy(alpha = 0.45f), modifier = Modifier.size(18.dp))
+                IconButton(onClick = onDismissSuggestion, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Close, stringResource(R.string.home_clipboard_dismiss), tint = SilverMid, modifier = Modifier.size(16.dp))
+                }
             }
-            Spacer(Modifier.height(24.dp))
         }
-    }
-}
 
-@Composable
-private fun SectionHeader(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Icon(icon, null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleSmall, color = PearlWhite)
-        Spacer(Modifier.weight(1f))
-        Text("See all", style = MaterialTheme.typography.labelSmall, color = SilverMid.copy(alpha = 0.9f))
-    }
-}
-
-@Composable
-private fun HomeRow(title: String, url: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(CharcoalElevated)
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(CharcoalSurface),
-            contentAlignment = Alignment.Center
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = onSubmit,
+            enabled = state.input.isNotBlank(),
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AuroraTeal,
+                contentColor = MatteCharcoal,
+                disabledContainerColor = CharcoalSurface,
+                disabledContentColor = SilverDeep
+            )
         ) {
-            Icon(Icons.Default.Newspaper, null, tint = SilverMid, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title.ifBlank { url }, style = MaterialTheme.typography.bodyMedium, color = PearlWhite, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(url, style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.78f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(
+                imageVector = if (state.inputIsMediaFile) Icons.Default.Download else Icons.Default.Public,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(if (state.inputIsMediaFile) R.string.home_download_file else R.string.home_open_link),
+                style = MaterialTheme.typography.labelLarge
+            )
         }
     }
 }
 
 @Composable
-private fun EmptyHint(text: String) {
-    Box(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(CharcoalElevated.copy(alpha = 0.72f)).padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text, style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.85f))
+private fun ActiveDownloads(
+    state: HomeUiState,
+    viewModel: HomeViewModel,
+    onNavigateToDownloads: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Download, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.home_active_title),
+                style = MaterialTheme.typography.titleSmall,
+                color = PearlWhite
+            )
+            if (state.inFlightCount > 0) {
+                Spacer(Modifier.width(8.dp))
+                Text(text = "${state.inFlightCount}", style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
+            }
+            Spacer(Modifier.weight(1f))
+            if (state.inFlightCount > 0) {
+                TextButton(onClick = onNavigateToDownloads, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text(stringResource(R.string.home_active_see_all), style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        if (state.active.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(CharcoalSurface)
+                    .padding(18.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.home_active_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SilverMid
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                state.active.forEach { download ->
+                    DownloadItem(
+                        download = download,
+                        // Only in-flight rows appear here, and a finished row leaves as soon as the
+                        // queue publishes it — so open/share/delete cannot be reached from home.
+                        onOpenClick = onNavigateToDownloads,
+                        onPauseClick = { viewModel.pauseDownload(download.id) },
+                        onResumeClick = { viewModel.resumeDownload(download.id) },
+                        onCancelClick = { viewModel.cancelDownload(download.id) },
+                        onRetryClick = { viewModel.retryDownload(download.id) },
+                        onDeleteClick = {}
+                    )
+                }
+            }
+        }
     }
 }

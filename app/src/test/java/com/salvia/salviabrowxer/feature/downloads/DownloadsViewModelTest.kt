@@ -9,8 +9,11 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
@@ -127,7 +130,14 @@ class DownloadsViewModelTest {
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(downloads)
 
         val vm = DownloadsViewModel(mockDownloadRepository, mockContext)
-        val state = vm.uiState.value
+        // The ViewModel collects on Dispatchers.IO, so the buckets are published by a real
+        // background thread. Reading uiState.value straight after construction raced that thread
+        // and passed or failed depending on scheduling. Waiting on the default dispatcher keeps
+        // the wait in real time — a timeout on the test scheduler's virtual clock would fire
+        // instantly and only make the flake look deterministic.
+        val state = withContext(Dispatchers.Default) {
+            withTimeout(5_000L) { vm.uiState.first { it.all.size == downloads.size } }
+        }
 
         assertEquals(1, state.active.size)
         assertEquals(1, state.queued.size)

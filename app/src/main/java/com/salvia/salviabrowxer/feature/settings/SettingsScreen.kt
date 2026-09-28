@@ -3,6 +3,8 @@ package com.salvia.salviabrowxer.feature.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nightlight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -56,21 +60,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.os.ConfigurationCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.BuildConfig
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.service.ConnectionKind
+import com.salvia.salviabrowxer.service.ConnectivityGate
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
-import com.salvia.salviabrowxer.ui.components.SignatureWordmark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.BlushPinkLight
@@ -86,6 +98,7 @@ import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.TopBarBrush
+import java.util.Locale
 import kotlinx.coroutines.flow.collectLatest
 
 private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, ClearData }
@@ -97,6 +110,11 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
     val snackbarHostState = remember { SnackbarHostState() }
     var dialog by remember { mutableStateOf(SettingsDialog.None) }
     val context = LocalContext.current
+    // Live connection readout. The app browses and downloads on whatever network the phone has, so
+    // the Wi-Fi-only switch shows what is actually active instead of asking the user to guess.
+    val connectivityGate = remember(context) { ConnectivityGate(context) }
+    val connectionFlow = remember(connectivityGate) { connectivityGate.observeConnection() }
+    val connectionKind by connectionFlow.collectAsStateWithLifecycle(initialValue = ConnectionKind.OFFLINE)
     // About rows open real destinations; nothing here is a placeholder link.
     val openUrl: (String) -> Unit = remember(context) {
         { url ->
@@ -105,6 +123,31 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             }
             Unit
         }
+    }
+
+    // The app language is the device language, or an app-only one chosen on Android 13+. The row
+    // only exists where the picker does, so it is never a control that cannot act.
+    val locales = ConfigurationCompat.getLocales(LocalConfiguration.current)
+    val languageLabel = remember(locales) {
+        val locale = if (locales.isEmpty) Locale.getDefault() else locales[0] ?: Locale.getDefault()
+        locale.getDisplayName(locale).replaceFirstChar { it.uppercase() }
+    }
+    val openAppLanguageSettings: (() -> Unit)? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        remember(context) {
+            {
+                runCatching {
+                    context.startActivity(
+                        Intent(
+                            android.provider.Settings.ACTION_APP_LOCALE_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null)
+                        )
+                    )
+                }
+                Unit
+            }
+        }
+    } else {
+        null
     }
 
     LaunchedEffect(Unit) {
@@ -117,7 +160,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
         Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
             Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
@@ -128,21 +171,43 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 }
                 Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
             }
-            // Owner signature branding header
-            SignatureWordmark(width = 190.dp, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp).align(Alignment.CenterHorizontally))
+            // Brand strip: mark plus app name, so the header reads as app chrome.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OrbitalBrandMark(size = 34.dp, animate = false)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = PearlWhite,
+                    letterSpacing = 2.sp
+                )
+            }
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 SettingsSectionTitle(Icons.Default.Search, stringResource(R.string.settings_browser))
                 SettingsItem(Icons.Default.Search, stringResource(R.string.settings_search_engine), state.searchEngine) { dialog = SettingsDialog.SearchEngine }
                 SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_homepage), state.homepage) { dialog = SettingsDialog.Homepage }
-                SwitchSettingsItem(Icons.Default.Sync, stringResource(R.string.settings_desktop_site), "Use the desktop user agent", state.isDesktopSite) { viewModel.updateDesktopSite(it) }
-                SwitchSettingsItem(Icons.Default.Security, stringResource(R.string.settings_javascript), "Pages can run scripts and media can be detected", state.isJavaScriptEnabled) { viewModel.updateJavaScriptEnabled(it) }
-                SwitchSettingsItem(Icons.Default.Storage, stringResource(R.string.settings_cookies), "Sites can store cookies on this device", state.areCookiesEnabled) { viewModel.updateCookiesEnabled(it) }
-                SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_browsing_data), "History, cookies and session data") { dialog = SettingsDialog.ClearData }
+                SwitchSettingsItem(Icons.Default.Sync, stringResource(R.string.settings_desktop_site), stringResource(R.string.settings_desktop_site_hint), state.isDesktopSite) { viewModel.updateDesktopSite(it) }
+                SwitchSettingsItem(Icons.Default.Security, stringResource(R.string.settings_javascript), stringResource(R.string.settings_javascript_hint), state.isJavaScriptEnabled) { viewModel.updateJavaScriptEnabled(it) }
+                SwitchSettingsItem(Icons.Default.Storage, stringResource(R.string.settings_cookies), stringResource(R.string.settings_cookies_hint), state.areCookiesEnabled) { viewModel.updateCookiesEnabled(it) }
+                SettingsItem(Icons.Default.Clear, stringResource(R.string.settings_clear_browsing_data), stringResource(R.string.settings_clear_browsing_data_hint)) { dialog = SettingsDialog.ClearData }
+                if (openAppLanguageSettings != null) {
+                    SettingsItem(
+                        Icons.Default.Language,
+                        stringResource(R.string.settings_language),
+                        "$languageLabel · ${stringResource(R.string.settings_language_hint)}",
+                        onClick = openAppLanguageSettings
+                    )
+                }
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Download, stringResource(R.string.settings_downloads))
                 SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryPath.ifBlank { stringResource(R.string.settings_download_directory_hint) })
                 SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), stringResource(R.string.settings_downloads_at_a_time, state.maxSimultaneousDownloads)) { dialog = SettingsDialog.Downloads }
                 SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint), state.isWifiOnly) { viewModel.updateWifiOnly(it) }
+                SettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_connection_label), connectionLabel(connectionKind))
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Nightlight, stringResource(R.string.settings_appearance))
                 SwitchSettingsItem(
@@ -163,7 +228,12 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 Box(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
                     OrbitalBrandMark(size = 84.dp, animate = true)
                 }
-                SignatureWordmark(width = 210.dp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp))
+                Text(
+                    text = stringResource(R.string.brand_tagline),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SilverMid,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp)
+                )
                 SettingsItem(Icons.Default.Info, stringResource(R.string.about_title), stringResource(R.string.about_version, BuildConfig.VERSION_NAME))
                 SettingsItem(Icons.Default.Info, stringResource(R.string.about_license), "GPL-3.0") { openUrl(Constants.LICENSE_URL) }
                 SettingsItem(Icons.Default.Security, stringResource(R.string.about_privacy_policy)) { openUrl(Constants.PRIVACY_POLICY_URL) }
@@ -217,6 +287,17 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
     }
 }
 
+/** The live connection, phrased as what it means for a download rather than as a radio name. */
+@Composable
+private fun connectionLabel(kind: ConnectionKind): String = stringResource(
+    when (kind) {
+        ConnectionKind.WIFI -> R.string.settings_connection_wifi
+        ConnectionKind.MOBILE -> R.string.settings_connection_mobile
+        ConnectionKind.OTHER -> R.string.settings_connection_other
+        ConnectionKind.OFFLINE -> R.string.settings_connection_offline
+    }
+)
+
 @Composable
 fun SettingsSectionTitle(icon: ImageVector, title: String) {
     Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -231,10 +312,11 @@ fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onC
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(NebulaMist.copy(alpha = 0.45f))
             .border(0.8.dp, NebulaEdge.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(vertical = 11.dp, horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -252,10 +334,12 @@ fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = nul
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(NebulaMist.copy(alpha = 0.45f))
             .border(0.8.dp, NebulaEdge.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
-            .clickable { onCheckedChange(!isChecked) }
+            // The row owns the action. The switch below is a state indicator only.
+            .toggleable(value = isChecked, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(vertical = 9.dp, horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -265,9 +349,11 @@ fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = nul
             Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
             if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = SilverMid)
         }
+        // `onCheckedChange = null` is what keeps TalkBack from offering the same toggle twice:
+        // taps land on the row's toggleable instead of a second, separate switch control.
         Switch(
             checked = isChecked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = PearlWhite,
                 checkedTrackColor = NebulaViolet,
@@ -296,12 +382,20 @@ private fun SelectionDialog(
             Column {
                 options.forEach { option ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onSelect(option) }.padding(vertical = 10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .selectable(
+                                selected = option == selected,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(option) }
+                            )
+                            .padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(
                             selected = option == selected,
-                            onClick = { onSelect(option) },
+                            onClick = null,
                             colors = RadioButtonDefaults.colors(selectedColor = AuroraTeal, unselectedColor = SilverMid)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -338,7 +432,12 @@ private fun TextEditDialog(
                 singleLine = true,
                 textStyle = TextStyle(color = PearlWhite),
                 cursorBrush = androidx.compose.ui.graphics.SolidColor(AuroraTeal),
-                modifier = Modifier.fillMaxWidth().background(CharcoalSurface, RoundedCornerShape(10.dp)).padding(12.dp)
+                // The dialog title names the value being edited, so the field carries it too.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CharcoalSurface, RoundedCornerShape(10.dp))
+                    .padding(12.dp)
+                    .semantics { contentDescription = title }
             )
         },
         confirmButton = {

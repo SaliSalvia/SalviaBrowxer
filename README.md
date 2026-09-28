@@ -1,24 +1,50 @@
 # SalviaBrowxer
 
-A fast, private Android browser whose signature is a precise media tray: when a page already
+A fast, private Android browser whose defining feature is a precise media tray: when a page already
 exposes a downloadable file, an open HLS playlist, or a blob the page itself can read, the browser
 says so quietly and saves it reliably.
 
 Package `com.salvia.salviabrowxer` · `minSdk` 24 · `targetSdk`/`compileSdk` 36 (Android 16) ·
-versionName `0.9.0` (pre-release).
+versionName `1.0.0`.
 
 ## What it does today
 
+- **Home** — the app opens on a paste field, because a downloader's entry point is the link. A
+  copied link is picked up when the app comes to the foreground and fills the field — never
+  overwriting something already typed, and never offered twice. A URL that names its own container
+  (`…/clip.mp4`, `…/master.m3u8`, `…/stream.mpd`) opens its quality sheet straight away; anything
+  else is a page, so it is opened and the media tray finds what that page exposes. There is no
+  third behaviour, and no pretending a page link can be turned into a file on its own. The same
+  screen lists the transfers in progress with their rate and the time left, and leads to the queue.
 - **Browsing** — a real multi-tab browser: up to eight live WebViews, one per tab, and beyond that
-  the least recently used tab is hibernated and restored by URL. Address bar with back / forward /
-  reload / stop, a tab switcher with close, new tab and new private tab, private tabs that never
-  write history, find in page, share and copy link, homepage, five search engines, JavaScript and
-  cookie toggles, and a desktop user-agent toggle that shows its state.
+  the least recently used tab is hibernated and restored by URL. The chrome is split so every
+  control keeps a 48 dp touch target on a 360 dp phone: history in the top bar next to the address
+  field and the media pill, and reload / stop, downloads, tabs and the overflow menu along the
+  bottom. Home moved into the overflow menu when reload / stop took its slot, so nothing became
+  unreachable. A tab switcher with close, new tab and new private tab, private tabs that never
+  write history, find in page, share and copy link, five search engines, JavaScript and cookie
+  toggles, and a desktop user-agent toggle that shows its state.
 - **Library screens** — bookmarks (add from the browser menu, remove in the list) and history open
   in the current tab, with in-list search and per-row delete.
-- **Media detection** — DOM scan of the loaded page (`media`, `source`, anchors, meta tags, JSON
-  and plain-text URLs) plus WebView request interception for HLS, blob and raw media requests the
-  page made itself, plus blob reassembly through a `JavascriptInterface` bridge.
+- **Media detection** — four layers feeding one rule set:
+  - a **document-start sniffer** hooks `XMLHttpRequest`, `fetch`, `MediaSource.addSourceBuffer` and
+    the media elements themselves, and reads the **response** `Content-Type` rather than guessing
+    from the URL. That is what finds media on an extension-less CDN path, which is the normal shape
+    on social sites. It reports over a `JavascriptInterface` bridge, so a sighting becomes a
+    candidate immediately instead of travelling through serialised HTML.
+  - **request interception** in the WebView client covers the same-origin and extension-bearing
+    cases plus `blob:` URLs. It is handed request headers only, never a response, so it does not
+    pretend to cover the rest.
+  - a **DOM scan** of the loaded page (`media`, `source`, anchors, meta tags, JSON and plain-text
+    URLs) for whatever the markup itself states.
+  - **blob reassembly** through the bridge, in Binder-safe 480 KiB chunks.
+
+  Every layer takes its notion of "is this media" from one object, `MediaUrlRules` — previously
+  there were five copies and they disagreed, most visibly over `manifest`, which made a PWA's
+  `site.webmanifest` offer itself as a playlist. Admission is evidence-based, in
+  `MediaSniffAdmission`: the type has to come from the server or from a player that actually loaded
+  the URL, so HLS segments, ranged fragment reads, web manifests and ordinary page assets never
+  reach the tray as candidates that would fail at download time.
 - **Media tray** — candidates surface as a quiet pill in the top bar showing only the count; the
   pill opens a tray that lists every candidate with its kind (video, audio, playlist) and container.
   The draggable floating button still exists as an advanced setting, off by default, because a
@@ -31,14 +57,29 @@ versionName `0.9.0` (pre-release).
 - **Downloads** — foreground `dataSync` service, Room-backed queue, pause / cancel / retry,
   direct files resume over HTTP Range from a `.part` file (including after process death),
   non-encrypted VOD HLS playlists are fetched segment by segment and concatenated, blob saves land
-  in the same queue. Wi-Fi-only mode pauses and holds transfers off Wi-Fi. Finished files are
+  in the same queue. Every progress tick also stores the rate the transfer measured and the seconds
+  it estimates are left, so a row reads `4.2 MB/s · 0:31 left`. Both are cleared the moment a
+  transfer stops, so a paused or finished row never shows a stale speed. Wi-Fi-only mode is off by default: the app browses and downloads on whatever
+  connection the phone has, mobile data included, and only holds transfers when the user turns the
+  setting on. The settings screen shows the live connection next to that switch. Finished files are
   shareable through `FileProvider` and play in the in-app Media3 player, which reports a file that
   disappeared behind the queue's back and offers to remove the dead row.
 - **Library** — downloads in Room, surfaced through the downloads screen; settings in DataStore.
 - **Intents** — `VIEW` (http / https) and `SEND` (`text/plain`) are registered: a link handed to the
   app by another app opens in its own tab, and `tel:` / `mailto:` / `intent:` are passed to the
   system instead of being loaded as pages.
-- **Language** — English today, Persian (`values-fa`) and full RTL are in progress.
+- **Language** — English and Persian, both complete. Strings live in `values/` and `values-fa/`,
+  `supportsRtl` is on, and `res/xml/locales_config.xml` declares both so Android 13+ shows the app
+  in the system per-app language picker. Directional icons are the `AutoMirrored` variants, so the
+  back arrow points right in Persian, and nothing is aligned with absolute left/right padding.
+- **Typography** — the UI does not use `FontFamily.Default`. Inter ships for Latin locales and
+  Vazirmatn for Persian, chosen from the app language; Persian also drops Material's letter
+  spacing (which would tear joined Arabic-script words apart) and gets 15% more line height. See
+  [`docs/fonts.md`](docs/fonts.md) for both OFL licenses.
+- **Accessibility** — TalkBack labels say what a control does rather than what its glyph is named,
+  rows that announce both a title and an icon announce it once, toggles and radio rows expose a
+  single focus target each, every interactive control is at least 48 dp, and the type scale
+  survives a 1.3x font scale because the bars grow instead of clipping.
 
 ## What it deliberately does not do
 
@@ -51,15 +92,20 @@ protection:
 - no MPEG-DASH: a `.mpd` is recognised and explained, never downloaded — segmenting a manifest
   needs a parser the app does not have, so it is never offered as a file
 - no native FFmpeg binary and no audio/video muxing
+- no worker or service-worker sniffing: the injected script runs in the document, so a player that
+  fetches its media from a worker stays invisible
+- no end-of-stream knowledge for an MSE-backed blob — it is offered as the stream it is, not as a
+  fixed-length file
 - no analytics SDK, no ad SDK, no account system, and no network call other than a page load, a
-  media probe, or a download the user started
+  media probe, or a download the user started. Detection adds none: it reads response headers the
+  page already received rather than probing URLs itself
 
 ## Modules
 
 | Module | Contains |
 | --- | --- |
 | `:app` | screens, view models, services, DI, theme, resources |
-| `:core:model` | `MediaCandidate`, `MediaInfo`, `MediaFormat`, `DownloadState`, `Tab` |
+| `:core:model` | `MediaCandidate`, `MediaInfo`, `MediaFormat`, `DownloadState`, `Tab`, and the pure detection rules (`MediaUrlRules`, `MediaSniffAdmission`) |
 | `:core:database` | Room database, DAOs, entities, v1→v2 migration |
 | `:media:detector` | `DomMediaDetector` behind the `MediaDetector` interface |
 | `:media:resolver` | `DirectMediaResolver` (HEAD, ranged GET, HLS variant parse) |

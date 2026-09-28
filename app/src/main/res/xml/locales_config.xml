@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Locales the app ships resources for. Android 13+ reads this to offer a per-app language
+    picker, so a Persian user can switch the app to Persian without changing the whole device.
+    Declared by hand (and AGP's generator turned off) so there is exactly one source of truth:
+    add every res/values-* folder here.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="fa" />
+</locale-config>

@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,6 +25,7 @@ import com.salvia.salviabrowxer.feature.bookmarks.BookmarksScreen
 import com.salvia.salviabrowxer.feature.browser.BrowserScreen
 import com.salvia.salviabrowxer.feature.downloads.DownloadsScreen
 import com.salvia.salviabrowxer.feature.history.HistoryScreen
+import com.salvia.salviabrowxer.feature.home.HomeScreen
 import com.salvia.salviabrowxer.feature.player.MediaPlayerScreen
 import com.salvia.salviabrowxer.feature.settings.SettingsScreen
 import com.salvia.salviabrowxer.ui.theme.SalviaBrowxerTheme
@@ -90,6 +92,12 @@ fun SalviaBrowxerAppContent(
 ) {
     val navController = rememberNavController()
 
+    /**
+     * A link submitted on the home screen. Whether it becomes a download or a page load is decided
+     * in the browser's view model, so only the URL travels from here.
+     */
+    var submittedLink by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(openDownloads) {
         if (openDownloads && navController.currentDestination?.route != ROUTE_DOWNLOADS) {
             navController.navigate(ROUTE_DOWNLOADS)
@@ -108,8 +116,20 @@ fun SalviaBrowxerAppContent(
 
     NavHost(
         navController = navController,
-        startDestination = ROUTE_BROWSER
+        // The app opens on the paste field, like every other downloader: the link is the entry
+        // point, and browsing is what you do when you do not have one yet.
+        startDestination = ROUTE_HOME
     ) {
+        composable(ROUTE_HOME) {
+            HomeScreen(
+                onOpenLink = { url ->
+                    submittedLink = url
+                    navController.navigate(ROUTE_BROWSER) { launchSingleTop = true }
+                },
+                onNavigateToBrowser = { navController.navigate(ROUTE_BROWSER) { launchSingleTop = true } },
+                onNavigateToDownloads = { navController.navigate(ROUTE_DOWNLOADS) }
+            )
+        }
         composable(ROUTE_BROWSER) { entry ->
             val requestedUrl by entry.savedStateHandle
                 .getStateFlow<String?>(KEY_OPEN_URL, null)
@@ -119,6 +139,9 @@ fun SalviaBrowxerAppContent(
                 onNavigateToSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onNavigateToBookmarks = { navController.navigate(ROUTE_BOOKMARKS) },
                 onNavigateToHistory = { navController.navigate(ROUTE_HISTORY) },
+                onNavigateToHome = { navController.navigate(ROUTE_HOME) { popUpTo(ROUTE_HOME) { inclusive = false }; launchSingleTop = true } },
+                submittedLink = submittedLink,
+                onSubmittedLinkConsumed = { submittedLink = null },
                 inAppUrl = requestedUrl,
                 onInAppUrlConsumed = { entry.savedStateHandle[KEY_OPEN_URL] = null },
                 externalUrl = incomingUrl,
@@ -181,6 +204,7 @@ fun navigateToPlayer(navController: NavController, url: String, title: String) {
     navController.navigate("player/$encoded/$encodedTitle")
 }
 
+private const val ROUTE_HOME = "home"
 private const val ROUTE_BROWSER = "browser"
 private const val ROUTE_DOWNLOADS = "downloads"
 private const val ROUTE_BOOKMARKS = "bookmarks"

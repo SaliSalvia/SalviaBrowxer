@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +43,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -91,7 +95,7 @@ fun MediaQualitySelectionSheet(
                 Spacer(Modifier.height(14.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(text = stringResource(R.string.select_quality), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) { Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel), tint = SilverMid) }
+                    IconButton(onClick = onDismiss) { Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel), tint = SilverMid) }
                 }
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -116,7 +120,7 @@ fun MediaQualitySelectionSheet(
                 HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.7f))
                 Spacer(Modifier.height(8.dp))
                 when {
-                    unsupported != null -> Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    unsupported != null -> Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.Block, null, tint = SilverMid, modifier = Modifier.size(28.dp))
                             Spacer(Modifier.height(10.dp))
@@ -128,7 +132,7 @@ fun MediaQualitySelectionSheet(
                             )
                         }
                     }
-                    isResolving && formats.isEmpty() -> Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    isResolving && formats.isEmpty() -> Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(modifier = Modifier.size(28.dp), color = AuroraTeal, strokeWidth = 2.dp)
                     }
                     else -> LazyColumn(modifier = Modifier.fillMaxWidth().height(204.dp)) {
@@ -144,7 +148,8 @@ fun MediaQualitySelectionSheet(
                     onClick = { selectedFormat?.let { onQualitySelected(it) } },
                     // A probe still running never blocks a download the page already exposed.
                     enabled = selectedFormat != null,
-                    modifier = Modifier.fillMaxWidth().height(48.dp).background(DownloadCtaBrush, RoundedCornerShape(14.dp)),
+                    // A floor, not a fixed height: the label grows with the font scale.
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).background(DownloadCtaBrush, RoundedCornerShape(14.dp)),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White, disabledContainerColor = CharcoalSurface, disabledContentColor = SilverMid.copy(alpha = 0.5f))
                 ) { Text(text = stringResource(R.string.download_start), style = MaterialTheme.typography.titleSmall) }
@@ -155,7 +160,21 @@ fun MediaQualitySelectionSheet(
 
 @Composable
 fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isSelected) AuroraTeal.copy(alpha = 0.10f) else Color.Transparent).border(if (isSelected) 1.dp else 0.dp, if (isSelected) AuroraTeal.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(vertical = 11.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        // One option of a single-choice list, and it says so: the row is a radio button that
+        // reports whether it is the chosen one, and its minimum height keeps a 48 dp target at
+        // any font scale.
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isSelected) AuroraTeal.copy(alpha = 0.10f) else Color.Transparent)
+            .border(if (isSelected) 1.dp else 0.dp, if (isSelected) AuroraTeal.copy(alpha = 0.35f) else Color.Transparent, RoundedCornerShape(10.dp))
+            .clickable(role = Role.RadioButton, onClickLabel = format.format, onClick = onClick)
+            .semantics { selected = isSelected }
+            .heightIn(min = 48.dp)
+            .padding(vertical = 11.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(modifier = Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(if (isSelected) AuroraTeal else CharcoalSurface).border(1.dp, if (isSelected) AuroraTeal else CharcoalBorder, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
             if (isSelected) Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
@@ -171,7 +190,9 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
                 )
                 if (format.width != null && format.height != null) Text(text = " · ${format.width}x${format.height}", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.7f))
                 format.bitrate?.takeIf { it > 0 }?.let { Text(text = " · $it kbps", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.7f)) }
-                if (format.mimeType.isNotBlank()) Text(text = " · ${format.mimeType}", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // 0.65 rather than a lighter tint: this is small text and has to clear WCAG AA
+                // (4.5:1) against the charcoal it sits on.
+                if (format.mimeType.isNotBlank()) Text(text = " · ${format.mimeType}", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.65f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (format.isHls) Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(AuroraTeal.copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("HLS", style = MaterialTheme.typography.labelSmall, color = AuroraTeal) }

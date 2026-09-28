@@ -23,4 +23,7 @@ android {
 
 dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
+    // MediaUrlRules and MediaSniffAdmission are pure Kotlin, so they are tested here rather than
+    // through :app.
+    testImplementation("junit:junit:4.13.2")
 }

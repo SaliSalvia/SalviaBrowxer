@@ -298,11 +298,14 @@ class BrowserViewModelTest {
         viewModel.toggleDesktopSite()
 
         assertTrue(viewModel.uiState.value.isDesktopSite)
-        coVerify(exactly = 1) { settingsDataStore.setDesktopSite(true) }
+        // The state flips in memory first and the write happens on Dispatchers.IO, so the
+        // verification has to wait for that thread instead of assuming it has already run. The
+        // immediate `coVerify` here passed or failed depending on scheduling.
+        coVerify(timeout = 5_000, exactly = 1) { settingsDataStore.setDesktopSite(true) }
 
         viewModel.toggleDesktopSite()
         assertFalse(viewModel.uiState.value.isDesktopSite)
-        coVerify(exactly = 1) { settingsDataStore.setDesktopSite(false) }
+        coVerify(timeout = 5_000, exactly = 1) { settingsDataStore.setDesktopSite(false) }
     }
 
     @Test

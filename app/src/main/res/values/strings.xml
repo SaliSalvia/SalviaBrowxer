@@ -42,6 +42,11 @@
     <string name="history">History</string>
     <string name="settings">Settings</string>
     <string name="search_or_type_url">Search or type URL</string>
+    <string name="address_field">Address and search field</string>
+    <string name="address_go">Load this address or search for it</string>
+    <string name="address_clear">Clear the address field</string>
+    <string name="tab_open">Open this tab</string>
+    <string name="find_query_field">Text to find on the page</string>
     <string name="download_enqueued">Added to download queue</string>
     <string name="download_waiting_for_wifi">Waiting for Wi-Fi</string>
     <string name="notifications_denied_downloads_anyway">Downloading anyway — notifications stay off</string>
@@ -74,6 +79,8 @@
     <string name="select_quality">Select Quality</string>
     <string name="download_start">Start Download</string>
     <string name="media_pill_description">%1$d media items on this page</string>
+    <string name="media_button_description">%1$d media on this page. Opens the media tray.</string>
+    <string name="media_button_description_empty">Media on this page. Opens the media tray.</string>
     <string name="media_tray_title">Media on this page</string>
     <string name="media_tray_count">%1$d found</string>
     <string name="media_tray_empty">No media detected on this page.</string>
@@ -103,6 +110,7 @@
     <string name="player_unmute">Unmute</string>
     <string name="player_file_missing">This file is missing or empty. It may have been deleted.</string>
     <string name="player_playback_failed">This file cannot be played.</string>
+    <string name="player_queue_toggle">Show or hide the playlist</string>
     <string name="player_delete_download">Delete from downloads</string>
     <string name="player_retry">Try again</string>
     <string name="media_fallback_title">Media file</string>
@@ -114,14 +122,24 @@
     <string name="settings_search_engine">Search Engine</string>
     <string name="settings_homepage">Homepage</string>
     <string name="settings_javascript">JavaScript</string>
+    <string name="settings_javascript_hint">Pages can run scripts and media can be detected</string>
     <string name="settings_desktop_site">Desktop site</string>
+    <string name="settings_desktop_site_hint">Use the desktop user agent</string>
     <string name="settings_cookies">Cookies</string>
+    <string name="settings_cookies_hint">Sites can store cookies on this device</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_hint">System language, or set an app-only language on Android 13+</string>
     <string name="settings_cache">Cache</string>
     <string name="settings_clear_browsing_data">Clear Browsing Data</string>
     <string name="settings_download_directory">Download Directory</string>
     <string name="settings_simultaneous_downloads">Simultaneous Downloads</string>
-    <string name="settings_wifi_only">Wi-Fi Only</string>
-    <string name="settings_wifi_only_hint">Transfers wait and pause unless the network is Wi-Fi</string>
+    <string name="settings_wifi_only">Wi-Fi only downloads</string>
+    <string name="settings_wifi_only_hint">Off by default. Downloads use whatever connection you have — mobile data included — until you turn this on</string>
+    <string name="settings_connection_label">Current connection</string>
+    <string name="settings_connection_wifi">Wi-Fi · downloads run without restriction</string>
+    <string name="settings_connection_mobile">Mobile data · downloads run normally</string>
+    <string name="settings_connection_other">Connected · downloads run normally</string>
+    <string name="settings_connection_offline">Offline · downloads wait for a connection</string>
     <string name="settings_allow_cleartext">Allow insecure http:// sites</string>
     <string name="settings_allow_cleartext_hint">Off by default. Only turn on for a site you trust</string>
     <string name="settings_download_directory_hint">This app\'s private storage</string>
@@ -155,6 +173,7 @@
     <string name="error_permission_required">Storage permission required</string>
 
     <!-- Actions -->
+    <string name="action_open">Open</string>
     <string name="action_ok">OK</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_yes">Yes</string>
@@ -171,4 +190,32 @@
     <string name="about_license">License</string>
     <string name="about_privacy_policy">Privacy Policy</string>
     <string name="about_source_code">Source Code</string>
+    <string name="brand_tagline">Fast, private, and precise about media</string>
+
+    <!-- Task list: rate and estimate, reported by the transfer itself -->
+    <string name="download_speed">%1$s/s</string>
+    <string name="download_eta_left">%1$s left</string>
+
+    <!-- Home / paste link -->
+    <string name="home_paste_title">Paste a link</string>
+    <string name="home_paste_hint">https://…</string>
+    <string name="home_paste_from_clipboard">Paste from clipboard</string>
+    <string name="home_clear_input">Clear</string>
+    <string name="home_open_link">Open link</string>
+    <string name="home_download_file">Download this file</string>
+    <string name="home_clipboard_media">Media file found in your clipboard</string>
+    <string name="home_clipboard_page">Link found in your clipboard</string>
+    <string name="home_clipboard_use">Use it</string>
+    <string name="home_clipboard_dismiss">Dismiss</string>
+    <string name="home_invalid_link">That does not look like a web link</string>
+    <string name="home_empty_clipboard">Nothing to paste — the clipboard is empty</string>
+    <string name="home_active_title">Downloading now</string>
+    <string name="home_active_see_all">See all</string>
+    <string name="home_active_empty">No transfers running. Paste a link above, or browse and let the media tray find one.</string>
+    <string name="home_open_browser">Browser</string>
+    <string name="home_how_it_works">SalviaBrowxer saves media a page already offers. Paste a link to open it and the media tray picks up whatever that page exposes.</string>
+    <string name="home_start_screen">Start screen</string>
+
+    <!-- Accessibility -->
+    <string name="downloads_badge_description">%1$d active downloads</string>
 </resources>

@@ -25,7 +25,16 @@ class DownloadRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateDownloadProgress(id: String, progress: DownloadProgress) {
-        downloadDao.updateProgressColumns(id, progress.downloadedBytes, progress.totalBytes, System.currentTimeMillis())
+        // The rate and the estimate come from the transfer that is actually running, so they are
+        // persisted with the byte counters instead of being recomputed from sampling in the UI.
+        downloadDao.updateProgressColumns(
+            id = id,
+            downloadedBytes = progress.downloadedBytes,
+            totalBytes = progress.totalBytes,
+            bytesPerSecond = progress.speed,
+            etaSeconds = progress.eta,
+            updatedAt = System.currentTimeMillis()
+        )
     }
 
     override suspend fun updateDownloadResult(id: String, status: DownloadState, downloadedBytes: Long?, totalBytes: Long?, finalPath: String?, mimeType: String?, error: String?) {

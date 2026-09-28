@@ -27,6 +27,29 @@ fun formatFileSize(bytes: Long): String {
     return DecimalFormat("#,##0.#").format(bytes / Math.pow(1024.0, digitGroups.toDouble())) + " " + units[digitGroups]
 }
 
+/**
+ * A transfer rate for the task list: `4.2 MB/s`.
+ *
+ * The unit suffix is part of the string resource rather than this helper, because Persian does not
+ * write the rate the same way. This returns the number and the size unit only.
+ */
+fun formatTransferRate(bytesPerSecond: Long): String = formatFileSize(bytesPerSecond)
+
+/**
+ * A duration for the task list: `1:23`, or `1:02:03` past an hour.
+ *
+ * Deliberately not localized prose ("about two minutes"): an estimate that changes every second
+ * has to be short and comparable, and `m:ss` reads the same in both of the app's languages.
+ */
+fun formatDuration(seconds: Long): String {
+    val total = seconds.coerceAtLeast(0L)
+    val hours = total / 3600
+    val minutes = (total % 3600) / 60
+    val remainder = total % 60
+    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, remainder)
+    else "%d:%02d".format(minutes, remainder)
+}
+
 fun sanitizeFilename(filename: String): String {
     return filename
         .replace("[^a-zA-Z0-9._-]".toRegex(), "_")
