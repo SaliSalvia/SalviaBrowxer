@@ -1,5 +1,7 @@
 package com.salvia.salviabrowxer.ui.utils
 
+import com.salvia.salviabrowxer.core.model.MediaUrlRules
+
 object Constants {
     const val APP_NAME = "SalviaBrowxer"
     const val PACKAGE_NAME = "com.salvia.salviabrowxer"
@@ -14,11 +16,13 @@ object Constants {
     const val DOWNLOAD_RETRY_COUNT = 3
     const val CHUNK_SIZE = 8192
 
-    val SUPPORTED_VIDEO_EXTENSIONS = listOf("mp4", "webm", "mov", "avi", "3gp", "m4v", "mkv", "flv")
-    val SUPPORTED_AUDIO_EXTENSIONS = listOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "wma")
+    // Views onto MediaUrlRules rather than lists of their own. There used to be five separate
+    // answers in this app to "which extension is media", and they disagreed with each other.
+    val SUPPORTED_VIDEO_EXTENSIONS = MediaUrlRules.VIDEO_EXTENSIONS.toList()
+    val SUPPORTED_AUDIO_EXTENSIONS = MediaUrlRules.AUDIO_EXTENSIONS.toList()
     val SUPPORTED_IMAGE_EXTENSIONS = listOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
     // MPEG-DASH (.mpd) is not listed: the app cannot segment it yet, so it is never offered.
-    val SUPPORTED_PLAYLIST_EXTENSIONS = listOf("m3u8", "ts")
+    val SUPPORTED_PLAYLIST_EXTENSIONS = MediaUrlRules.PLAYLIST_EXTENSIONS.toList()
 
     val SUPPORTED_VIDEO_MIME_TYPES = listOf("video/mp4", "video/webm", "video/quicktime", "video/3gpp", "video/x-matroska", "video/x-flv", "video/mp2t", "video/x-msvideo")
     val SUPPORTED_AUDIO_MIME_TYPES = listOf("audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/flac", "audio/ogg", "audio/x-ms-wma")

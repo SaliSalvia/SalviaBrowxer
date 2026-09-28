@@ -61,7 +61,7 @@ object AppModule {
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         // Real migrations only: a failed upgrade must surface, never wipe browsing data.
         return Room.databaseBuilder(context, AppDatabase::class.java, "salviabrowxer_db")
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .build()
     }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -56,7 +58,7 @@ fun BookmarksScreen(
     Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
         Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
@@ -92,13 +94,16 @@ fun BookmarksScreen(
 
 @Composable
 private fun BookmarkRow(bookmark: BookmarkEntity, onOpen: () -> Unit, onDelete: () -> Unit) {
+    val openLabel = stringResource(R.string.action_open)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(CharcoalSurface)
-            .clickable(onClick = onOpen)
+            // The on-click label supplements the row's own text; the leading glyph is decorative
+            // so the title and URL are not read twice.
+            .clickable(role = Role.Button, onClickLabel = openLabel, onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

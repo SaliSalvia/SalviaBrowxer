@@ -2,6 +2,7 @@ package com.salvia.salviabrowxer.data.repository
 
 import com.salvia.salviabrowxer.core.database.dao.DownloadDao
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
+import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import io.mockk.coEvery
@@ -97,6 +98,37 @@ class DownloadRepositoryTest {
         repository.updateDownloadState("1", DownloadState.PAUSED)
 
         coVerify { mockDownloadDao.updateStatus("1", DownloadState.PAUSED, any()) }
+    }
+
+    /**
+     * The downloader has always measured the rate and estimated the time left, but only the byte
+     * counters used to reach the database — which is why the task list could show progress and
+     * nothing about how long it would take. This pins all five values to the DAO call so the two
+     * can never silently part company again.
+     */
+    @Test
+    fun `updateDownloadProgress persists the rate and the estimate, not just the counters`() = runTest {
+        coEvery { mockDownloadDao.updateProgressColumns(any(), any(), any(), any(), any(), any()) } returns Unit
+        val progress = DownloadProgress(
+            downloadedBytes = 2_048,
+            totalBytes = 8_192,
+            percentage = 25f,
+            speed = 512,
+            eta = 12
+        )
+
+        repository.updateDownloadProgress("1", progress)
+
+        coVerify {
+            mockDownloadDao.updateProgressColumns(
+                id = "1",
+                downloadedBytes = 2_048,
+                totalBytes = 8_192,
+                bytesPerSecond = 512,
+                etaSeconds = 12,
+                updatedAt = any()
+            )
+        }
     }
 
     @Test

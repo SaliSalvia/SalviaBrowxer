@@ -21,6 +21,7 @@ import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
+import com.salvia.salviabrowxer.core.model.PastedLink
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.service.DownloadService
 import com.salvia.salviabrowxer.ui.utils.AddressBarResolver
@@ -625,6 +626,24 @@ class BrowserViewModel @Inject constructor(
      * current tab, which is what a browser does when you tap a bookmark.
      */
     fun openInCurrentTab(url: String) { navigate(url) }
+
+    /**
+     * A link the user pasted on the home screen.
+     *
+     * A URL that already names its own container goes straight to the quality sheet and is also
+     * added to the tray, so closing the sheet does not lose the file. Anything else is a page, and
+     * the app deliberately has no site-specific extractors, so the page has to be loaded for the
+     * media tray to find what it exposes. This is the single place that tells the two apart.
+     */
+    fun openPastedLink(url: String) {
+        val candidate = PastedLink.mediaCandidate(url)
+        if (candidate == null) {
+            navigate(url)
+            return
+        }
+        mergeCandidates(listOf(candidate))
+        openQualitySheetFor(candidate)
+    }
 
     /** Opens a URL handed to the app by ACTION_VIEW or ACTION_SEND in its own tab. */
     fun openExternalUrl(url: String) {

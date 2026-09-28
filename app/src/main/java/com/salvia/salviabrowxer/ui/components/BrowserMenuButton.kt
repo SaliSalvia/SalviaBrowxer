@@ -3,7 +3,7 @@ package com.salvia.salviabrowxer.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
@@ -59,12 +60,15 @@ fun BrowserMenuButton(
     Box(modifier = modifier) {
         Box(
             modifier = Modifier
-                .height(54.dp)
+                .heightIn(min = 54.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .clickable { expanded = true },
+                .clickable(role = Role.Button, onClickLabel = contentDescription) { expanded = true },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.MoreVert, contentDescription, tint = PearlWhite, modifier = Modifier.size(22.dp))
+            // No size override: the default IconButton-equivalent target stays 48 dp tall.
+            Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.MoreVert, contentDescription, tint = PearlWhite, modifier = Modifier.size(22.dp))
+            }
         }
 
         DropdownMenu(

@@ -24,8 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
@@ -74,7 +76,6 @@ import com.salvia.salviabrowxer.ui.components.FloatingDownloadButton
 import com.salvia.salviabrowxer.ui.components.MediaQualitySelectionSheet
 import com.salvia.salviabrowxer.ui.components.MediaTraySheet
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
-import com.salvia.salviabrowxer.ui.components.SignatureWordmark
 import com.salvia.salviabrowxer.ui.components.TabSwitcher
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
@@ -94,6 +95,11 @@ fun BrowserScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToBookmarks: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    /** The app's own home screen (paste link), not the browsable homepage. */
+    onNavigateToHome: (() -> Unit)? = null,
+    /** A link submitted on the home screen: it becomes a download or a page load. */
+    submittedLink: String? = null,
+    onSubmittedLinkConsumed: () -> Unit = {},
     /** A URL picked inside the app (bookmark, history entry): it loads in the current tab. */
     inAppUrl: String? = null,
     onInAppUrlConsumed: () -> Unit = {},
@@ -153,8 +159,11 @@ fun BrowserScreen(
     val onUrlSubmit = remember(viewModel) { { input: String -> viewModel.loadFromAddressBar(input) } }
     val onBackClick = remember(viewModel) { { viewModel.goBack() } }
     val onForwardClick = remember(viewModel) { { viewModel.goForward() } }
-    val onRefreshClick = remember(viewModel) { { viewModel.reload() } }
-    val onStopClick = remember(viewModel) { { viewModel.stopLoading() } }
+    // One control, two honest states: the bottom bar reloads a settled page and stops a loading
+    // one. The glyph and the label both follow the state.
+    val onReloadStopClick = remember(viewModel, state.isLoading) {
+        { if (state.isLoading) viewModel.stopLoading() else viewModel.reload() }
+    }
     // Both the pill and the optional draggable button lead to the tray, which lists every
     // candidate; the quality sheet is one step further in, per item.
     val onFabClick = remember(viewModel, isMediaDetected) {
@@ -182,6 +191,14 @@ fun BrowserScreen(
         val url = externalUrl ?: return@LaunchedEffect
         viewModel.openExternalUrl(url)
         onExternalUrlConsumed()
+    }
+
+    // A link pasted on the home screen. A direct media URL opens its quality sheet here; a page is
+    // loaded and detected like any other. Both decisions live in the view model.
+    LaunchedEffect(submittedLink) {
+        val url = submittedLink ?: return@LaunchedEffect
+        viewModel.openPastedLink(url)
+        onSubmittedLinkConsumed()
     }
 
     LaunchedEffect(store, viewModel) {
@@ -212,6 +229,9 @@ fun BrowserScreen(
     }
 
     val menuItems = listOf(
+        // Two different things share the word "home" and both have to stay reachable: the browsable
+        // homepage (below) and the app's own start screen with the paste field (further down).
+        BrowserMenuItem(stringResource(R.string.home), Icons.Default.Home, onClick = { viewModel.goHome() }, isEnabled = hasPage),
         BrowserMenuItem(stringResource(R.string.new_tab), Icons.Default.Add, onClick = { viewModel.createNewTab() }),
         BrowserMenuItem(stringResource(R.string.new_private_tab), Icons.Default.Lock, onClick = { viewModel.createNewTab(isPrivate = true) }),
         BrowserMenuItem(stringResource(R.string.tabs), Icons.Default.Tab, onClick = { viewModel.openTabSwitcher() }),
@@ -229,6 +249,7 @@ fun BrowserScreen(
             showsCheck = true
         ),
         BrowserMenuItem(stringResource(R.string.downloads), Icons.Default.Download, onClick = onNavigateToDownloads),
+        BrowserMenuItem(stringResource(R.string.home_start_screen), Icons.Default.Dashboard, onClick = { onNavigateToHome?.invoke() }, isEnabled = onNavigateToHome != null),
         BrowserMenuItem(stringResource(R.string.settings), Icons.Default.Settings, onClick = onNavigateToSettings)
     )
 
@@ -249,8 +270,6 @@ fun BrowserScreen(
                 onUrlSubmit = onUrlSubmit,
                 onBackClick = onBackClick,
                 onForwardClick = onForwardClick,
-                onRefreshClick = onRefreshClick,
-                onStopClick = onStopClick,
                 mediaCount = mediaCount,
                 onMediaClick = onMediaClick
             )
@@ -280,15 +299,19 @@ fun BrowserScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        OrbitalBrandMark(size = 108.dp)
-                        Spacer(Modifier.height(18.dp))
-                        SignatureWordmark(width = 240.dp)
-                        Spacer(Modifier.height(6.dp))
+                        OrbitalBrandMark(size = 112.dp)
+                        Spacer(Modifier.height(20.dp))
                         Text(
                             text = stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             color = PearlWhite,
                             letterSpacing = 3.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.brand_tagline),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SilverMid
                         )
                     }
                 }
@@ -385,11 +408,12 @@ fun BrowserScreen(
             }
 
             BrowserBottomBar(
-                onHomeClick = remember(viewModel) { { viewModel.goHome() } },
+                onReloadStopClick = onReloadStopClick,
                 onDownloadsClick = onNavigateToDownloads,
                 onSettingsClick = onNavigateToSettings,
                 onTabsClick = remember(viewModel) { { viewModel.openTabSwitcher() } },
                 menuItems = menuItems,
+                isLoading = state.isLoading,
                 activeDownloadCount = state.activeDownloadCount,
                 tabsCount = state.tabs.size,
                 menuContentDescription = stringResource(R.string.menu)

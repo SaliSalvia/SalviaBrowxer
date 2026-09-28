@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -32,7 +34,6 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Icon
@@ -209,7 +210,7 @@ fun MediaPlayerScreen(
     Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
         // ── Top bar with brand mark ──
         Row(
-            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
@@ -234,7 +235,8 @@ fun MediaPlayerScreen(
             }
             if (queue.size > 1) {
                 IconButton(onClick = { showQueue = !showQueue }) {
-                    Icon(Icons.Default.Sort, stringResource(R.string.player_playlist), tint = SilverMid)
+                    // AutoMirrored: the queue glyph lists items, and a list runs the other way in RTL.
+                    Icon(Icons.AutoMirrored.Filled.Sort, stringResource(R.string.player_queue_toggle), tint = SilverMid)
                 }
             }
             IconButton(onClick = { isFullscreen = !isFullscreen }) {
@@ -280,7 +282,7 @@ fun MediaPlayerScreen(
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = { loadEntry(displayIndex) }) {
-                            Icon(Icons.Default.PlayArrow, stringResource(R.string.player_playlist), tint = if (isActive) BlushPink else SilverMid)
+                            Icon(Icons.Default.PlayArrow, stringResource(R.string.player_play), tint = if (isActive) BlushPink else SilverMid)
                         }
                     }
                 }
@@ -348,8 +350,10 @@ fun MediaPlayerScreen(
                     leadingIcon = {
                         Icon(
                             when (order) {
-                                PlaybackOrder.SEQUENTIAL -> Icons.Default.Sort
+                                PlaybackOrder.SEQUENTIAL -> Icons.AutoMirrored.Filled.Sort
                                 PlaybackOrder.LOOP_ALL -> Icons.Default.Repeat
+                                // Not mirrored: play order is media order, not reading direction, so
+                                // an RTL user still means "reverse the playlist" by this arrow.
                                 PlaybackOrder.REVERSE -> Icons.Default.FastForward
                                 PlaybackOrder.SHUFFLE -> Icons.Default.Shuffle
                             },
@@ -449,7 +453,7 @@ fun MediaPlayerScreen(
 private fun UnplayableMedia(title: String, message: String, onDelete: () -> Unit, onBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {

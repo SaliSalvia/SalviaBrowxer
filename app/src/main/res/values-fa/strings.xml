@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SalviaBrowxer</string>
+    <string name="app_description">یک مرورگر اندروید سریع، مدرن و حرفه‌ای با شناسایی هوشمند رسانه و امکان دانلود.</string>
+
+    <!-- Browser -->
+    <string name="browser_title">مرورگر</string>
+    <string name="new_tab">زبانهٔ جدید</string>
+    <string name="close_tab">بستن زبانه</string>
+    <string name="private_browsing">مرور خصوصی</string>
+    <string name="desktop_site">نسخهٔ رایانه</string>
+    <string name="reload">بازخوانی</string>
+    <string name="stop">توقف</string>
+    <string name="go_back">بازگشت</string>
+    <string name="go_forward">جلو</string>
+    <string name="home">خانه</string>
+    <string name="tabs">زبانه‌ها</string>
+    <string name="downloads">دانلودها</string>
+    <string name="bookmark_added">نشانک افزوده شد</string>
+    <string name="bookmark_add">افزودن نشانک</string>
+    <string name="bookmarks">نشانک‌ها</string>
+    <string name="bookmarks_search_hint">جست‌وجوی نشانک‌ها</string>
+    <string name="history_search_hint">جست‌وجوی تاریخچه</string>
+    <string name="no_bookmarks">هنوز نشانکی نیست. برای ذخیرهٔ صفحه از منو استفاده کنید.</string>
+    <string name="no_bookmarks_match">هیچ نشانکی با این جست‌وجو همخوان نیست.</string>
+    <string name="no_history">هنوز تاریخچه‌ای نیست. صفحه‌هایی که بازدید می‌کنید اینجا می‌آیند.</string>
+    <string name="no_history_match">هیچ صفحهٔ بازدیدشده‌ای با این جست‌وجو همخوان نیست.</string>
+    <string name="clear_history_confirm">همهٔ صفحه‌های بازدیدشده از این دستگاه پاک می‌شوند.</string>
+    <string name="menu">منو</string>
+    <string name="new_private_tab">زبانهٔ خصوصی جدید</string>
+    <string name="tab_hibernated">خواب</string>
+    <string name="share_page">هم‌رسانی صفحه</string>
+    <string name="copy_link">رونوشت پیوند</string>
+    <string name="link_copied">پیوند رونوشت شد</string>
+    <string name="find_in_page">جست‌وجو در صفحه</string>
+    <string name="find_in_page_hint">جست‌وجو در صفحه</string>
+    <string name="find_no_matches">بی‌همخوان</string>
+    <string name="find_match_counter">%1$d/%2$d</string>
+    <string name="find_next">همخوان بعدی</string>
+    <string name="find_previous">همخوان پیشین</string>
+    <string name="find_close">بستن نوار جست‌وجو</string>
+    <string name="external_scheme_unavailable">هیچ برنامه‌ای نمی‌تواند این پیوند را باز کند</string>
+    <string name="history">تاریخچه</string>
+    <string name="settings">تنظیمات</string>
+    <string name="search_or_type_url">جست‌وجو یا نشانی</string>
+    <string name="address_field">نوار نشانی و جست‌وجو</string>
+    <string name="address_go">بارگذاری این نشانی یا جست‌وجوی آن</string>
+    <string name="address_clear">پاک کردن نوار نشانی</string>
+    <string name="tab_open">گشودن این زبانه</string>
+    <string name="find_query_field">متنی که در صفحه جست‌وجو می‌شود</string>
+    <string name="download_enqueued">به صف دانلود افزوده شد</string>
+    <string name="download_waiting_for_wifi">در انتظار Wi-Fi</string>
+    <string name="notifications_denied_downloads_anyway">دانلود ادامه می‌یابد — اعلان‌ها خاموش می‌مانند</string>
+
+    <!-- Downloads -->
+    <string name="downloads_title">دانلودها</string>
+    <string name="download_queue">صف</string>
+    <string name="download_active">فعال</string>
+    <string name="download_completed">کامل‌شده</string>
+    <string name="download_failed">ناموفق</string>
+    <string name="download_pause">توقف</string>
+    <string name="download_resume">ادامه</string>
+    <string name="download_cancel">لغو</string>
+    <string name="download_retry">تلاش دوباره</string>
+    <string name="download_open">باز کردن</string>
+    <string name="download_share">هم‌رسانی</string>
+    <string name="download_not_ready">این دانلود هنوز تمام نشده است</string>
+    <string name="download_file_missing">این پرونده روی حافظه نیست</string>
+    <string name="download_open_failed">هیچ برنامه‌ای نمی‌تواند این پرونده را باز کند</string>
+    <string name="download_share_failed">چیزی برای هم‌رسانی این پرونده نیست</string>
+    <string name="download_delete">حذف</string>
+    <string name="no_active_downloads">دانلود فعالی نیست</string>
+    <string name="no_queued_downloads">دانلودی در صف نیست</string>
+    <string name="no_completed_downloads">دانلود کامل‌شده‌ای نیست</string>
+    <string name="no_failed_downloads">دانلود ناموفقی نیست</string>
+
+    <!-- Media Detection -->
+    <string name="media_detected">%d رسانه یافت شد</string>
+    <string name="no_media_detected">رسانهٔ قابل‌دانلودی یافت نشد</string>
+    <string name="select_quality">انتخاب کیفیت</string>
+    <string name="download_start">آغاز دانلود</string>
+    <string name="media_pill_description">%1$d رسانه در این صفحه</string>
+    <string name="media_button_description">%1$d رسانه در این صفحه. سینی رسانه را می‌گشاید.</string>
+    <string name="media_button_description_empty">رسانهٔ این صفحه. سینی رسانه را می‌گشاید.</string>
+    <string name="media_tray_title">رسانه‌های این صفحه</string>
+    <string name="media_tray_count">%1$d یافت شد</string>
+    <string name="media_tray_empty">رسانه‌ای در این صفحه یافت نشد.</string>
+    <string name="media_open_quality">انتخاب کیفیت</string>
+    <string name="media_kind_video">ویدیو</string>
+    <string name="media_kind_audio">صدا</string>
+    <string name="media_kind_playlist">فهرست پخش</string>
+    <string name="quality_checking">بررسی کیفیت‌های موجود…</string>
+    <string name="quality_options">%1$d کیفیت</string>
+
+    <!-- Settings -->
+    <string name="settings_floating_button_always">دکمهٔ کشیدنی دانلود</string>
+    <string name="player_speed">سرعت</string>
+    <string name="player_order">ترتیب پخش</string>
+    <string name="player_order_sequential">به ترتیب</string>
+    <string name="player_order_loop">تکرار همه</string>
+    <string name="player_order_reverse">وارون</string>
+    <string name="player_order_shuffle">درهم</string>
+    <string name="player_previous">پیشین</string>
+    <string name="player_next">بعدی</string>
+    <string name="player_playlist">فهرست پخش %1$d / %2$d</string>
+    <string name="player_play">پخش</string>
+    <string name="player_pause">توقف</string>
+    <string name="player_fullscreen">تمام‌صفحه</string>
+    <string name="player_exit_fullscreen">خروج از تمام‌صفحه</string>
+    <string name="player_mute">بی‌صدا</string>
+    <string name="player_unmute">باصدا</string>
+    <string name="player_file_missing">این پرونده نیست یا خالی است. شاید حذف شده باشد.</string>
+    <string name="player_playback_failed">این پرونده پخش نمی‌شود.</string>
+    <string name="player_queue_toggle">نمایش یا پنهان کردن فهرست پخش</string>
+    <string name="player_delete_download">حذف از دانلودها</string>
+    <string name="player_retry">تلاش دوباره</string>
+    <string name="media_fallback_title">پروندهٔ رسانه</string>
+    <string name="settings_browser">مرورگر</string>
+    <string name="settings_downloads">دانلودها</string>
+    <string name="settings_appearance">ظاهر</string>
+    <string name="settings_privacy">حریم خصوصی</string>
+    <string name="settings_about">درباره</string>
+    <string name="settings_search_engine">موتور جست‌وجو</string>
+    <string name="settings_homepage">صفحهٔ خانه</string>
+    <string name="settings_javascript">جاوااسکریپت</string>
+    <string name="settings_javascript_hint">صفحه‌ها می‌توانند اسکریپت اجرا کنند و رسانه شناسایی شود</string>
+    <string name="settings_desktop_site">نسخهٔ رایانه</string>
+    <string name="settings_desktop_site_hint">از شناسهٔ کاربری نسخهٔ رایانه استفاده کن</string>
+    <string name="settings_cookies">کوکی‌ها</string>
+    <string name="settings_cookies_hint">سایت‌ها می‌توانند روی این دستگاه کوکی ذخیره کنند</string>
+    <string name="settings_language">زبان</string>
+    <string name="settings_language_hint">زبان سیستم، یا در اندروید ۱۳ و بالاتر زبانی جدا برای برنامه</string>
+    <string name="settings_cache">حافظهٔ نهان</string>
+    <string name="settings_clear_browsing_data">پاک کردن داده‌های مرور</string>
+    <string name="settings_download_directory">پوشهٔ دانلود</string>
+    <string name="settings_simultaneous_downloads">دانلودهای هم‌زمان</string>
+    <string name="settings_wifi_only">دانلود فقط با Wi-Fi</string>
+    <string name="settings_wifi_only_hint">به‌طور پیش‌فرض خاموش. تا وقتی این را روشن نکنید، دانلودها با هر اتصالی انجام می‌شوند، از جمله دادهٔ همراه</string>
+    <string name="settings_connection_label">اتصال کنونی</string>
+    <string name="settings_connection_wifi">Wi-Fi · دانلودها بدون محدودیت اجرا می‌شوند</string>
+    <string name="settings_connection_mobile">دادهٔ همراه · دانلودها عادی اجرا می‌شوند</string>
+    <string name="settings_connection_other">متصل · دانلودها عادی اجرا می‌شوند</string>
+    <string name="settings_connection_offline">بی‌اتصال · دانلودها در انتظار اتصال می‌مانند</string>
+    <string name="settings_allow_cleartext">اجازهٔ سایت‌های ناامن http://</string>
+    <string name="settings_allow_cleartext_hint">به‌طور پیش‌فرض خاموش. تنها برای سایتی که به آن اعتماد دارید روشن کنید</string>
+    <string name="settings_download_directory_hint">حافظهٔ خصوصی این برنامه</string>
+    <string name="settings_downloads_at_a_time">%1$d هم‌زمان</string>
+    <string name="settings_dp_value">%1$d dp</string>
+    <string name="settings_floating_button_position_hint">دکمه را هر جای صفحه بکشید</string>
+    <string name="settings_floating_button_always_hint">پیشرفته، به‌طور پیش‌فرض خاموش. قرص رسانه در نوار نشانی راه معمول رسیدن به سینی است</string>
+    <string name="settings_clear_browsing_data_hint">تاریخچه، کوکی‌ها و داده‌های نشست پاک می‌شوند.</string>
+    <string name="settings_homepage_updated">صفحهٔ خانه به‌روز شد</string>
+    <string name="settings_history_cleared">تاریخچه پاک شد</string>
+    <string name="settings_cookies_cleared">کوکی‌ها پاک شدند</string>
+    <string name="settings_browsing_data_cleared">داده‌های مرور پاک شد</string>
+    <string name="settings_notifications">اعلان‌ها</string>
+    <string name="settings_floating_button_size">اندازهٔ دکمهٔ شناور</string>
+    <string name="settings_floating_button_position">جای دکمهٔ شناور</string>
+    <string name="settings_private_browsing">مرور خصوصی</string>
+    <string name="settings_clear_history">پاک کردن تاریخچه</string>
+    <string name="settings_clear_cookies">پاک کردن کوکی‌ها</string>
+    <string name="settings_clear_cache">پاک کردن حافظهٔ نهان</string>
+
+    <!-- Errors -->
+    <string name="error_connection_unavailable">ارتباط در دسترس نیست</string>
+    <string name="error_cleartext_blocked">http:// مسدود است. در تنظیمات سایت‌های ناامن را اجازه دهید و سپس دوباره بارگذاری کنید.</string>
+    <string name="error_unable_to_resolve_media">این رسانه قابل تشخیص نیست</string>
+    <string name="error_unsupported_media">این رسانه قابل دانلود نیست</string>
+    <string name="error_dash_unsupported">MPEG-DASH پشتیبانی نمی‌شود، پس این جریان ذخیره نمی‌شود</string>
+    <string name="error_live_unsupported">جریان‌های زنده دانلود نمی‌شوند</string>
+    <string name="error_drm_protected">رسانهٔ محافظت‌شده دانلود نمی‌شود</string>
+    <string name="error_size_unavailable">اندازه نامعلوم</string>
+    <string name="error_disk_full">فضای ذخیره‌سازی کافی نیست</string>
+    <string name="error_permission_required">دسترسی حافظه لازم است</string>
+
+    <!-- Actions -->
+    <string name="action_open">باز کردن</string>
+    <string name="action_ok">تأیید</string>
+    <string name="action_cancel">لغو</string>
+    <string name="action_yes">بله</string>
+    <string name="action_no">نه</string>
+    <string name="action_delete">حذف</string>
+    <string name="action_clear">پاک کردن</string>
+    <string name="action_allow">اجازه</string>
+    <string name="action_dismiss">بستن</string>
+
+    <!-- About -->
+    <string name="about_title">دربارهٔ SalviaBrowxer</string>
+    <string name="about_version">نگارش %s</string>
+    <string name="about_description">%s مرورگری سریع و خصوصی برای اندروید است که رسانه‌ای را که یک صفحه خودش عرضه می‌کند ذخیره می‌کند.</string>
+    <string name="about_license">پروانه</string>
+    <string name="about_privacy_policy">سیاست حریم خصوصی</string>
+    <string name="about_source_code">کد منبع</string>
+    <string name="brand_tagline">سریع، خصوصی، و دقیق در رسانه</string>
+
+    <!-- Task list: rate and estimate, reported by the transfer itself -->
+    <string name="download_speed">%1$s بر ثانیه</string>
+    <string name="download_eta_left">%1$s باقی‌مانده</string>
+
+    <!-- Home / paste link -->
+    <string name="home_paste_title">چسباندن لینک</string>
+    <string name="home_paste_hint">https://…</string>
+    <string name="home_paste_from_clipboard">چسباندن از کلیپ‌بورد</string>
+    <string name="home_clear_input">پاک کردن</string>
+    <string name="home_open_link">باز کردن لینک</string>
+    <string name="home_download_file">دانلود این فایل</string>
+    <string name="home_clipboard_media">فایل رسانه‌ای در کلیپ‌بورد پیدا شد</string>
+    <string name="home_clipboard_page">لینک در کلیپ‌بورد پیدا شد</string>
+    <string name="home_clipboard_use">استفاده</string>
+    <string name="home_clipboard_dismiss">بستن</string>
+    <string name="home_invalid_link">این یک لینک وب نیست</string>
+    <string name="home_empty_clipboard">چیزی برای چسباندن نیست — کلیپ‌بورد خالی است</string>
+    <string name="home_active_title">در حال دانلود</string>
+    <string name="home_active_see_all">مشاهدهٔ همه</string>
+    <string name="home_active_empty">هیچ انتقالی در جریان نیست. لینکی را بالا بچسبانید، یا مرور کنید تا ترِی رسانه آن را پیدا کند.</string>
+    <string name="home_open_browser">مرورگر</string>
+    <string name="home_how_it_works">SalviaBrowxer رسانه‌ای را ذخیره می‌کند که خودِ صفحه ارائه می‌دهد. لینک را بچسبانید تا باز شود، و ترِی رسانه هرچه آن صفحه ارائه می‌دهد را برمی‌دارد.</string>
+    <string name="home_start_screen">صفحهٔ شروع</string>
+
+    <!-- Accessibility -->
+    <string name="downloads_badge_description">%1$d دانلود فعال</string>
+</resources>

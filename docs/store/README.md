@@ -47,8 +47,7 @@ Capture on a real device with a real page. No mockups, no invented thumbnails, n
 
 ## Release checklist
 
-1. `versionCode` incremented; `versionName` bumped from `0.9.0` only when the definition of done in
-   `docs/prompts/01-world-class-v1-execution-prompt.md` is met.
+1. `versionCode` incremented and `versionName` bumped to match the shipped release.
 2. `./gradlew :app:bundleRelease` produces a signed `app-release.aab` (or upload the unsigned AAB and
    let Play signing apply).
 3. `docs/privacy-policy.md` placeholders replaced and hosted at a public URL.

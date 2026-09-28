@@ -47,7 +47,9 @@ import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.utils.formatDuration
 import com.salvia.salviabrowxer.ui.utils.formatFileSize
+import com.salvia.salviabrowxer.ui.utils.formatTransferRate
 
 @Composable
 fun DownloadItem(
@@ -83,6 +85,18 @@ fun DownloadItem(
                 DownloadState.DOWNLOADING, DownloadState.RESOLVING, DownloadState.PREPARING, DownloadState.PROCESSING -> {
                     LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)), color = AuroraTeal, trackColor = CharcoalBorder)
                     Spacer(Modifier.height(4.dp))
+                    // Rate and estimate get their own line, above the byte counters, because they are
+                    // what someone watching a transfer is actually reading. They come from the
+                    // transfer itself, and a row that is not moving reports neither.
+                    val speedLabel = download.bytesPerSecond.takeIf { it > 0L }?.let { rate ->
+                        val speed = stringResource(R.string.download_speed, formatTransferRate(rate))
+                        val eta = download.etaSeconds?.let { stringResource(R.string.download_eta_left, formatDuration(it)) }
+                        if (eta != null) "$speed · $eta" else speed
+                    }
+                    if (speedLabel != null) {
+                        Text(text = speedLabel, style = MaterialTheme.typography.bodySmall, color = AuroraTeal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(2.dp))
+                    }
                     // An unknown total is stated, not rendered as a question mark.
                     Text(
                         text = "${formatFileSize(download.downloadedBytes)} / ${download.totalBytes?.let { formatFileSize(it) } ?: stringResource(R.string.error_size_unavailable)}",

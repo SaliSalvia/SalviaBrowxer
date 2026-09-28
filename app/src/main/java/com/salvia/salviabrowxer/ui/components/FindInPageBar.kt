@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -54,6 +56,7 @@ fun FindInPageBar(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val findFieldLabel = stringResource(R.string.find_query_field)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -73,6 +76,8 @@ fun FindInPageBar(
             if (query.isEmpty()) {
                 Text(stringResource(R.string.find_in_page_hint), style = MaterialTheme.typography.bodyMedium, color = SilverMid)
             }
+            // The placeholder disappears as soon as the field has text, so the field carries a
+            // label of its own rather than relying on the hint to name it.
             BasicTextField(
                 value = query,
                 onValueChange = onQueryChange,
@@ -80,7 +85,9 @@ fun FindInPageBar(
                 textStyle = TextStyle(color = PearlWhite),
                 cursorBrush = SolidColor(AuroraTeal),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = findFieldLabel }
             )
         }
         Spacer(Modifier.width(8.dp))

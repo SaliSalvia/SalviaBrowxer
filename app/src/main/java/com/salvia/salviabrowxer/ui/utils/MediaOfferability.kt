@@ -1,5 +1,7 @@
 package com.salvia.salviabrowxer.ui.utils
 
+import com.salvia.salviabrowxer.core.model.MediaUrlRules
+
 /** What a detected candidate is, for the tray's kind label. `null` when it cannot be told. */
 enum class MediaKind { VIDEO, AUDIO, PLAYLIST }
 
@@ -13,32 +15,28 @@ enum class UnsupportedMedia { DASH, LIVE }
  * The single place that decides whether a detected URL is something this app can save.
  *
  * MPEG-DASH is segmented from a manifest the app cannot parse, and a live playlist has no end, so
- * neither is offered anywhere — not in the tray, not in the quality sheet, not in the queue. Both
- * checks live here so detection, interception and the UI cannot drift apart again.
+ * neither is offered anywhere — not in the tray, not in the quality sheet, not in the queue. The
+ * URL-shape half of that now lives in [MediaUrlRules], which every detection layer shares, so this
+ * object is only the rule as the UI asks for it.
  */
 object MediaOfferability {
 
-    private val PLAYLIST_EXTENSIONS = setOf("m3u8", "ts")
-
     /** Classifies a candidate from whatever the page told us about it. */
     fun kindOf(mimeType: String?, extension: String?): MediaKind? {
-        val mime = mimeType?.lowercase().orEmpty()
-        val ext = extension?.lowercase().orEmpty()
+        val mime = MediaUrlRules.normalizeMime(mimeType)
+        val ext = extension?.lowercase()
         return when {
-            ext in PLAYLIST_EXTENSIONS || "mpegurl" in mime -> MediaKind.PLAYLIST
-            mime.startsWith("video/") || ext in Constants.SUPPORTED_VIDEO_EXTENSIONS -> MediaKind.VIDEO
-            mime.startsWith("audio/") || ext in Constants.SUPPORTED_AUDIO_EXTENSIONS -> MediaKind.AUDIO
+            ext in MediaUrlRules.PLAYLIST_EXTENSIONS || MediaUrlRules.isPlaylistMime(mime) -> MediaKind.PLAYLIST
+            MediaUrlRules.isVideoMime(mime) || ext in MediaUrlRules.VIDEO_EXTENSIONS -> MediaKind.VIDEO
+            MediaUrlRules.isAudioMime(mime) || ext in MediaUrlRules.AUDIO_EXTENSIONS -> MediaKind.AUDIO
             else -> null
         }
     }
 
     /** True when the URL or its headers describe an MPEG-DASH manifest. */
-    fun isDash(url: String, mimeType: String?, extension: String?): Boolean {
-        val path = url.substringBefore('#').substringBefore('?').lowercase()
-        return extension?.equals("mpd", true) == true ||
-            mimeType?.contains("dash+xml", true) == true ||
-            path.endsWith(".mpd")
-    }
+    fun isDash(url: String, mimeType: String?, extension: String?): Boolean =
+        extension?.equals(MediaUrlRules.DASH_EXTENSION, ignoreCase = true) == true ||
+            MediaUrlRules.isDashUrl(url, mimeType)
 
     /**
      * The reason this candidate cannot be offered, or `null` when it can be downloaded.

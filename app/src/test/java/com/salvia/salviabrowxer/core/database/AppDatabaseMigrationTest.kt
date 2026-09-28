@@ -25,4 +25,26 @@ class AppDatabaseMigrationTest {
         }
         verify(exactly = 2) { database.execSQL(any<String>()) }
     }
+
+    /**
+     * The v2 -> v3 upgrade adds the transfer rate and the remaining time to `downloads`. Additive
+     * for the same reason as the first: an installed user's queue has to survive the upgrade.
+     *
+     * The column declarations here also have to match the entity exactly — Room compares the
+     * migrated schema against the expected one and refuses to open the database on any difference.
+     * That is why `bytesPerSecond` carries an explicit default and `etaSeconds`, being nullable,
+     * carries none.
+     */
+    @Test
+    fun `migration 2 to 3 only adds the two transfer columns`() {
+        val database: SupportSQLiteDatabase = mockk(relaxed = true)
+
+        AppDatabase.MIGRATION_2_3.migrate(database)
+
+        verifyOrder {
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `bytesPerSecond` INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `etaSeconds` INTEGER")
+        }
+        verify(exactly = 2) { database.execSQL(any<String>()) }
+    }
 }

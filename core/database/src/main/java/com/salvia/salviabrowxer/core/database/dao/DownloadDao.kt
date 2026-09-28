@@ -38,21 +38,41 @@ interface DownloadDao {
     /** Single-statement progress write: avoids a SELECT + full-row UPDATE per progress tick. */
     @Query(
         "UPDATE downloads SET downloadedBytes = :downloadedBytes, totalBytes = :totalBytes, " +
+            "bytesPerSecond = :bytesPerSecond, etaSeconds = :etaSeconds, " +
             "updatedAt = :updatedAt WHERE id = :id"
     )
-    suspend fun updateProgressColumns(id: String, downloadedBytes: Long, totalBytes: Long?, updatedAt: Long)
+    suspend fun updateProgressColumns(
+        id: String,
+        downloadedBytes: Long,
+        totalBytes: Long?,
+        bytesPerSecond: Long,
+        etaSeconds: Long?,
+        updatedAt: Long
+    )
 
-    /** Single-statement status write for state transitions (pause/resume/queue/retry). */
-    @Query("UPDATE downloads SET status = :status, updatedAt = :updatedAt WHERE id = :id")
+    /**
+     * Single-statement status write for state transitions (pause/resume/queue/retry).
+     *
+     * The rate and the estimate are cleared here as well: the transfer that measured them is no
+     * longer running, and a paused row showing `8 MB/s` would be a plain lie.
+     */
+    @Query(
+        "UPDATE downloads SET status = :status, bytesPerSecond = 0, etaSeconds = NULL, " +
+            "updatedAt = :updatedAt WHERE id = :id"
+    )
     suspend fun updateStatus(id: String, status: DownloadState, updatedAt: Long)
 
-    /** Single-statement outcome write; COALESCE keeps existing values for null inputs. */
+    /**
+     * Single-statement outcome write; COALESCE keeps existing values for null inputs. The rate and
+     * the estimate are always cleared: the transfer is over, whatever the outcome.
+     */
     @Query(
         "UPDATE downloads SET status = :status, " +
             "downloadedBytes = COALESCE(:downloadedBytes, downloadedBytes), " +
             "totalBytes = COALESCE(:totalBytes, totalBytes), " +
             "finalPath = COALESCE(:finalPath, finalPath), " +
             "mimeType = COALESCE(:mimeType, mimeType), " +
+            "bytesPerSecond = 0, etaSeconds = NULL, " +
             "error = :error, updatedAt = :updatedAt WHERE id = :id"
     )
     suspend fun updateResult(

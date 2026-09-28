@@ -49,8 +49,8 @@ android {
         applicationId = "com.salvia.salviabrowxer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.9.0"
+        versionCode = 2
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -86,6 +86,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    androidResources {
+        // locales_config.xml is hand-written and referenced from the manifest. Turning the
+        // generator off keeps AGP from writing a second, competing file from the res/values-*
+        // folders — the declared list is the only source of truth for supported locales.
+        generateLocaleConfig = false
     }
 
     packaging {

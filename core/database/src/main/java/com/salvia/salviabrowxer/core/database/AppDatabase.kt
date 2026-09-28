@@ -15,7 +15,7 @@ import com.salvia.salviabrowxer.core.model.DownloadState
 
 @Database(
     entities = [DownloadEntity::class, BookmarkEntity::class, HistoryEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -36,6 +36,19 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloads_status` ON `downloads` (`status`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloads_createdAt` ON `downloads` (`createdAt`)")
+            }
+        }
+
+        /**
+         * v2 -> v3 adds the transfer rate and the remaining time to `downloads`, so the task list
+         * can show them. The declarations here have to match the entity exactly — Room compares the
+         * migrated schema against the expected one and fails loudly on a difference, which is the
+         * behaviour we want and the reason `bytesPerSecond` carries an explicit default.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `bytesPerSecond` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `etaSeconds` INTEGER")
             }
         }
     }

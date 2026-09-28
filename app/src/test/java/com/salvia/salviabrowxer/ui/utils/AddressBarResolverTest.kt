@@ -68,7 +68,10 @@ class AddressBarResolverTest {
 
     @Test
     fun `persian query searches google`() {
-        assertEquals("https://www.google.com/search?q=%D8%B3%D8%A7%D9%84%D8%A7%D8%B1", AddressBarResolver.resolve("سالار"))
+        assertEquals(
+            "https://www.google.com/search?q=%D9%85%D8%B1%D9%88%D8%B1%DA%AF%D8%B1",
+            AddressBarResolver.resolve("مرورگر")
+        )
     }
 
     @Test

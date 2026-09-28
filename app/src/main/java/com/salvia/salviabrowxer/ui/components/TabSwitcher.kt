@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
@@ -81,7 +83,7 @@ fun TabSwitcher(
             .padding(horizontal = 14.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -165,14 +167,18 @@ private fun TabCard(
     val accent = if (tab.isPrivate) NebulaViolet else AuroraTeal
     val title = tab.title.takeIf { it.isNotBlank() && it != "New Tab" } ?: hostLabel(tab.url).ifBlank { stringResource(R.string.new_tab) }
 
+    val openLabel = stringResource(R.string.tab_open)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1.05f)
+            // Slightly taller than wide: a title that wraps to two lines at a 1.3x font scale
+            // still has room above the close button instead of clipping under it.
+            .aspectRatio(0.95f)
             .clip(RoundedCornerShape(16.dp))
             .background(CharcoalSurface)
             .border(if (isCurrent) 1.4.dp else 0.8.dp, if (isCurrent) accent else CharcoalBorder, RoundedCornerShape(16.dp))
-            .clickable(onClick = onSelect)
+            .clickable(role = Role.Button, onClickLabel = openLabel, onClick = onSelect)
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -217,9 +223,11 @@ private fun TabCard(
             }
         }
 
+        // TopEnd is layout-direction aware, so the close control moves to the top-left in RTL
+        // where that is the trailing edge. No size override keeps the target 48 dp.
         IconButton(
             onClick = onClose,
-            modifier = Modifier.align(Alignment.TopEnd).size(34.dp)
+            modifier = Modifier.align(Alignment.TopEnd)
         ) {
             Icon(Icons.Default.Close, stringResource(R.string.close_tab), tint = SilverMid, modifier = Modifier.size(16.dp))
         }

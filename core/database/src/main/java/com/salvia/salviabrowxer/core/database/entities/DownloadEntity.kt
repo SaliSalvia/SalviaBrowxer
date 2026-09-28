@@ -1,5 +1,6 @@
 package com.salvia.salviabrowxer.core.database.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -23,6 +24,16 @@ data class DownloadEntity(
     val destination: String,
     val totalBytes: Long? = null,
     val downloadedBytes: Long = 0,
+    /**
+     * The rate the transfer measured itself, and the seconds it estimates are left.
+     *
+     * The downloader has always reported both (`DownloadSnapshot`), but only the byte counters were
+     * persisted, so the task list could show progress and nothing about how long it would take.
+     * Both are zero/null whenever nothing is moving, so a paused or finished row never shows a
+     * stale speed.
+     */
+    @ColumnInfo(defaultValue = "0") val bytesPerSecond: Long = 0,
+    val etaSeconds: Long? = null,
     val status: DownloadState = DownloadState.QUEUED,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
