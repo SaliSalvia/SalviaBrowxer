@@ -1,13 +1,18 @@
 package com.salvia.salviabrowxer.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -16,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -69,6 +75,9 @@ fun BrowserTopBar(
     onForwardClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onStopClick: () -> Unit,
+    /** Detected media on this page. Zero hides the pill entirely. */
+    mediaCount: Int = 0,
+    onMediaClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -144,6 +153,9 @@ fun BrowserTopBar(
                     }
                 }
             }
+            if (mediaCount > 0) {
+                MediaPill(count = mediaCount, onClick = onMediaClick)
+            }
             IconButton(onClick = { submit() }, modifier = Modifier.size(40.dp)) {
                 Icon(imageVector = Icons.Default.Search, contentDescription = stringResource(R.string.settings_search_engine), tint = PearlWhite)
             }
@@ -155,6 +167,40 @@ fun BrowserTopBar(
                 modifier = Modifier.fillMaxWidth().height(2.dp),
                 color = NebulaVioletLight,
                 trackColor = NebulaEdge
+            )
+        }
+    }
+}
+
+/**
+ * The media affordance: a quiet pill that appears only when the page exposed something, showing
+ * how many. It replaces the draggable floating button as the default way into the media tray.
+ */
+@Composable
+private fun MediaPill(count: Int, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(40.dp)
+            .widthIn(min = 48.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(CharcoalSurface)
+            .border(1.dp, AuroraTeal.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.Download,
+                contentDescription = stringResource(R.string.media_pill_description, count),
+                tint = AuroraTeal,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                color = PearlWhite
             )
         }
     }

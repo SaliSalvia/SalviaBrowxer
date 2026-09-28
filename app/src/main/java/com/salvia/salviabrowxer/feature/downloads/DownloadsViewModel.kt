@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
@@ -77,15 +78,42 @@ class DownloadsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val download = downloadRepository.getDownloadById(downloadId)
             val path = download?.finalPath
-            if (download == null || path.isNullOrBlank()) { _messages.trySend("File is not ready yet"); return@launch }
+            if (download == null || path.isNullOrBlank()) { _messages.trySend(context.getString(R.string.download_not_ready)); return@launch }
             val file = File(path)
-            if (!file.exists()) { _messages.trySend("File is missing on disk"); return@launch }
+            if (!file.exists()) { _messages.trySend(context.getString(R.string.download_file_missing)); return@launch }
             val launched = runCatching {
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                 val intent = Intent(Intent.ACTION_VIEW).apply { setDataAndType(uri, download.mimeType ?: getMimeTypeFromExtension(file.extension)); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
                 context.startActivity(intent)
             }
-            if (launched.isFailure) _messages.trySend("No app can open this file")
+            if (launched.isFailure) _messages.trySend(context.getString(R.string.download_open_failed))
+        }
+    }
+
+    /**
+     * Shares a finished file through FileProvider. A missing file says so instead of opening a
+     * chooser that would hand the other app a dead uri.
+     */
+    fun shareDownload(downloadId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val download = downloadRepository.getDownloadById(downloadId)
+            val path = download?.finalPath
+            if (download == null || path.isNullOrBlank()) { _messages.trySend(context.getString(R.string.download_not_ready)); return@launch }
+            val file = File(path)
+            if (!file.exists() || file.length() == 0L) { _messages.trySend(context.getString(R.string.download_file_missing)); return@launch }
+            val shared = runCatching {
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = download.mimeType ?: getMimeTypeFromExtension(file.extension)
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, download.mediaTitle ?: download.filename)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(
+                    Intent.createChooser(send, context.getString(R.string.download_share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+            if (shared.isFailure) _messages.trySend(context.getString(R.string.download_share_failed))
         }
     }
 
@@ -94,8 +122,9 @@ class DownloadsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val download = downloadRepository.getDownloadById(downloadId)
             val path = download?.finalPath
-            if (download == null || path.isNullOrBlank()) { _messages.trySend("File is not ready yet"); return@launch }
-            if (!File(path).exists()) { _messages.trySend("File is missing on disk"); return@launch }
+            if (download == null || path.isNullOrBlank()) { _messages.trySend(context.getString(R.string.download_not_ready)); return@launch }
+            // A missing file still opens the player: it explains the problem there and offers to
+            // clear the dead row, which a snackbar on a list screen cannot do.
             playRequest.trySend(path to (download.mediaTitle?.ifBlank { null } ?: download.filename))
         }
     }

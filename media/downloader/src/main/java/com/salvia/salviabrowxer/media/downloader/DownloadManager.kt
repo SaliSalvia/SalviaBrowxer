@@ -79,7 +79,7 @@ class DownloadManager(
         onProgress: suspend (DownloadSnapshot) -> Unit = {},
         shouldAbort: suspend () -> AbortReason? = { null }
     ): DownloadResult {
-        // HLS / DASH playlists need segment downloading — for now delegate to single-file download
+        // HLS playlists need segment downloading — for now delegate to single-file download
         // if the URL is an m3u8 we still download the playlist file itself (user can choose quality)
         // Full segment muxing is handled by MediaProcessor; here we ensure playlist is fetched intact.
         return try {

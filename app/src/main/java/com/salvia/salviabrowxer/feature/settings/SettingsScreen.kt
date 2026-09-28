@@ -148,7 +148,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 SwitchSettingsItem(
                     Icons.Default.TouchApp,
                     stringResource(R.string.settings_floating_button_always),
-                    "The download button stays pinned on every page",
+                    stringResource(R.string.settings_floating_button_always_hint),
                     state.isFloatingButtonAlwaysVisible
                 ) { viewModel.updateFloatingButtonAlwaysVisible(it) }
                 SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_floating_button_size), stringResource(R.string.settings_dp_value, state.floatingButtonSize)) { dialog = SettingsDialog.ButtonSize }

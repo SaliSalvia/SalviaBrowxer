@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -56,7 +57,8 @@ fun DownloadItem(
     onResumeClick: () -> Unit,
     onCancelClick: () -> Unit,
     onRetryClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onShareClick: () -> Unit = {}
 ) {
     val totalBytes = download.totalBytes
     val progress = if (totalBytes != null && totalBytes > 0) (download.downloadedBytes.toFloat() / totalBytes) else 0f
@@ -81,7 +83,12 @@ fun DownloadItem(
                 DownloadState.DOWNLOADING, DownloadState.RESOLVING, DownloadState.PREPARING, DownloadState.PROCESSING -> {
                     LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)), color = AuroraTeal, trackColor = CharcoalBorder)
                     Spacer(Modifier.height(4.dp))
-                    Text(text = "${formatFileSize(download.downloadedBytes)} / ${download.totalBytes?.let { formatFileSize(it) } ?: "?"}", style = MaterialTheme.typography.bodySmall, color = SilverMid)
+                    // An unknown total is stated, not rendered as a question mark.
+                    Text(
+                        text = "${formatFileSize(download.downloadedBytes)} / ${download.totalBytes?.let { formatFileSize(it) } ?: stringResource(R.string.error_size_unavailable)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SilverMid
+                    )
                 }
                 DownloadState.QUEUED, DownloadState.RETRYING -> Text(text = stringResource(R.string.download_queue), style = MaterialTheme.typography.bodySmall, color = SilverMid)
                 DownloadState.PAUSED -> Text(text = stringResource(R.string.download_pause), style = MaterialTheme.typography.bodySmall, color = SilverMid)
@@ -97,6 +104,7 @@ fun DownloadItem(
             DownloadState.FAILED, DownloadState.CANCELLED -> IconButton(onClick = onRetryClick) { Icon(Icons.Default.Refresh, stringResource(R.string.download_retry), tint = AuroraTeal) }
             DownloadState.COMPLETED -> {
                 IconButton(onClick = onOpenClick) { Icon(Icons.AutoMirrored.Filled.OpenInNew, stringResource(R.string.download_open), tint = PearlWhite) }
+                IconButton(onClick = onShareClick) { Icon(Icons.Default.Share, stringResource(R.string.download_share), tint = PearlWhite) }
                 IconButton(onClick = onDeleteClick) { Icon(Icons.Default.Close, stringResource(R.string.download_delete), tint = SilverMid) }
             }
         }

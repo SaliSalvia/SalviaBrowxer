@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -40,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -58,12 +60,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
+import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
@@ -85,12 +90,18 @@ fun MediaPlayerScreen(
     mediaTitle: String,
     playlist: List<PlaylistEntry> = emptyList(),
     startIndex: Int = 0,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /** Called after the file and its queue entry were removed, so the screen can leave. */
+    onDeleted: () -> Unit = {},
+    viewModel: MediaPlayerViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val playerState by viewModel.uiState.collectAsStateWithLifecycle()
     val queue = remember(mediaUrl, playlist) {
         if (playlist.isEmpty()) listOf(PlaylistEntry(mediaUrl, mediaTitle)) else playlist
     }
+
+    LaunchedEffect(mediaUrl) { viewModel.check(mediaUrl) }
 
     var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -136,7 +147,9 @@ fun MediaPlayerScreen(
         loadEntry(next)
     }
 
-    DisposableEffect(mediaUrl, queue) {
+    DisposableEffect(mediaUrl, queue, playerState.isChecking, playerState.fileMissing) {
+        // A player built for a file that is not on disk can only produce a Media3 error.
+        if (playerState.isChecking || playerState.fileMissing) return@DisposableEffect onDispose { }
         val player = ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.parse(queue[orderedIndexOf(currentIndex)].url)))
             prepare()
@@ -148,6 +161,9 @@ fun MediaPlayerScreen(
                     if (state == Player.STATE_ENDED) {
                         if (queue.size > 1) advance(1) else if (order == PlaybackOrder.LOOP_ALL) { seekTo(0); play() } else isPlaying = false
                     }
+                }
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    viewModel.onPlaybackFailed()
                 }
             })
         }
@@ -174,6 +190,18 @@ fun MediaPlayerScreen(
         }
     }
 
+    // Nothing to play: the file disappeared behind the queue's back. Say so and offer the only
+    // two things that can help — leave, or clear the dead row.
+    if (!playerState.isChecking && playerState.fileMissing) {
+        UnplayableMedia(
+            title = mediaTitle,
+            message = stringResource(R.string.player_file_missing),
+            onDelete = { viewModel.deleteDownload(mediaUrl, onDeleted) },
+            onBack = onBack
+        )
+        return
+    }
+
     val sliderPosition = if (isUserSeeking) seekPreview.toFloat() else currentPosition.toFloat()
     val sliderRange = 0f..(duration.coerceAtLeast(1L).toFloat())
     val currentEntry = queue[orderedIndexOf(currentIndex)]
@@ -191,7 +219,7 @@ fun MediaPlayerScreen(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = currentEntry.title.ifBlank { "Media" },
+                    text = currentEntry.title.ifBlank { stringResource(R.string.media_fallback_title) },
                     style = MaterialTheme.typography.titleMedium,
                     color = PearlWhite,
                     maxLines = 1
@@ -212,7 +240,7 @@ fun MediaPlayerScreen(
             IconButton(onClick = { isFullscreen = !isFullscreen }) {
                 Icon(
                     if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    if (isFullscreen) "Exit fullscreen" else "Fullscreen",
+                    if (isFullscreen) stringResource(R.string.player_exit_fullscreen) else stringResource(R.string.player_fullscreen),
                     tint = PearlWhite
                 )
             }
@@ -277,12 +305,32 @@ fun MediaPlayerScreen(
                     modifier = Modifier.fillMaxSize()
                 )
             }
-            if (!isPlaying) {
+            if (playerState.playbackFailed) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = stringResource(R.string.player_playback_failed),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PearlWhite,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = {
+                            viewModel.clearPlaybackFailure()
+                            exoPlayer?.prepare()
+                            exoPlayer?.playWhenReady = true
+                        }) { Text(stringResource(R.string.player_retry), color = AuroraTeal) }
+                        TextButton(onClick = { viewModel.deleteDownload(mediaUrl, onDeleted) }) {
+                            Text(stringResource(R.string.player_delete_download), color = SilverMid)
+                        }
+                    }
+                }
+            } else if (!isPlaying) {
                 IconButton(
                     onClick = { exoPlayer?.play(); isPlaying = true },
                     modifier = Modifier.size(72.dp)
                 ) {
-                    Icon(Icons.Default.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(56.dp))
+                    Icon(Icons.Default.PlayArrow, stringResource(R.string.player_play), tint = Color.White, modifier = Modifier.size(56.dp))
                 }
             }
         }
@@ -366,7 +414,7 @@ fun MediaPlayerScreen(
                 }) {
                     Icon(
                         if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        if (isPlaying) "Pause" else "Play",
+                        if (isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
                         tint = PearlWhite,
                         modifier = Modifier.size(32.dp)
                     )
@@ -383,11 +431,51 @@ fun MediaPlayerScreen(
                 }) {
                     Icon(
                         if (volume > 0f) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
-                        if (volume > 0f) "Mute" else "Unmute",
+                        if (volume > 0f) stringResource(R.string.player_mute) else stringResource(R.string.player_unmute),
                         tint = SilverMid
                     )
                 }
                 Text(formatDuration(duration), style = MaterialTheme.typography.bodySmall, color = SilverMid, modifier = Modifier.padding(start = 4.dp))
+            }
+        }
+    }
+}
+
+/**
+ * Shown when the queued file no longer exists on disk. It states what happened and offers the one
+ * useful action — removing the dead row — instead of a blank black screen or a fake spinner.
+ */
+@Composable
+private fun UnplayableMedia(title: String, message: String, onDelete: () -> Unit, onBack: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
+            }
+            Text(
+                text = title.ifBlank { stringResource(R.string.media_fallback_title) },
+                style = MaterialTheme.typography.titleMedium,
+                color = PearlWhite,
+                maxLines = 1
+            )
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(28.dp)) {
+                Icon(Icons.Default.ErrorOutline, null, tint = SilverMid, modifier = Modifier.size(44.dp))
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PearlWhite,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(14.dp))
+                TextButton(onClick = onDelete) {
+                    Text(stringResource(R.string.player_delete_download), color = AuroraTeal)
+                }
             }
         }
     }

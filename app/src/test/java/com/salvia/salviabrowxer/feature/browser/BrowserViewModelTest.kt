@@ -5,12 +5,14 @@ import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
+import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
+import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -322,7 +324,7 @@ class BrowserViewModelTest {
     }
 
     @Test
-    fun `quality sheet can be opened for the detected media and closed again`() {
+    fun `the tray opens for the page's media and a row fills the quality sheet`() {
         viewModel.onMediaIntercepted(
             MediaCandidate(
                 pageUrl = "https://example.com",
@@ -333,14 +335,79 @@ class BrowserViewModelTest {
             )
         )
 
-        viewModel.openQualitySheet()
+        viewModel.openMediaTray()
+        assertTrue(viewModel.uiState.value.isMediaTrayVisible)
+
+        val candidate = viewModel.uiState.value.detectedMedia.first()
+        viewModel.openQualitySheetFor(candidate)
+
+        // The tray hands over to the sheet rather than stacking two modals.
+        assertFalse(viewModel.uiState.value.isMediaTrayVisible)
         val sheet = viewModel.uiState.value.qualitySheet
         assertNotNull(sheet)
         assertEquals("Example video", sheet?.mediaInfo?.title)
+        assertNull(sheet?.unsupported)
         assertTrue(sheet?.mediaInfo?.combinedFormats?.isNotEmpty() == true)
 
         viewModel.closeQualitySheet()
         assertNull(viewModel.uiState.value.qualitySheet)
+    }
+
+    @Test
+    fun `an empty page opens no tray`() {
+        viewModel.openMediaTray()
+
+        assertFalse(viewModel.uiState.value.isMediaTrayVisible)
+    }
+
+    @Test
+    fun `an mpeg-dash candidate is explained and never probed or queued`() {
+        val dash = MediaCandidate(
+            pageUrl = "https://example.com/watch",
+            mediaUrl = "https://example.com/manifest.mpd",
+            mimeType = "application/dash+xml",
+            extension = "mpd",
+            source = MediaSource.DOM
+        )
+        viewModel.onMediaIntercepted(dash)
+
+        viewModel.openQualitySheetFor(dash)
+
+        val sheet = viewModel.uiState.value.qualitySheet
+        assertEquals(UnsupportedMedia.DASH, sheet?.unsupported)
+        assertFalse(sheet?.isResolving == true)
+        assertTrue(sheet?.mediaInfo?.combinedFormats.isNullOrEmpty())
+        // Nothing to probe: the sheet must not wait on a network call to say no.
+        coVerify(exactly = 0) { mediaResolver.resolve(any()) }
+
+        viewModel.handleFormatSelected(
+            MediaFormat(id = dash.mediaUrl, format = "MPD", url = dash.mediaUrl, mimeType = "application/dash+xml", extension = "mpd", isVideo = true)
+        )
+        coVerify(exactly = 0) { downloadRepository.addDownload(any()) }
+    }
+
+    @Test
+    fun `a live stream is refused before it reaches the resolver`() {
+        val live = MediaCandidate(
+            pageUrl = "https://example.com/live",
+            mediaUrl = "https://example.com/live.m3u8",
+            mimeType = "application/vnd.apple.mpegurl",
+            extension = "m3u8",
+            isLive = true,
+            source = MediaSource.DOM
+        )
+        viewModel.onMediaIntercepted(live)
+
+        assertEquals(UnsupportedMedia.LIVE, viewModel.unsupportedReasonFor(live))
+
+        viewModel.openQualitySheetFor(live)
+        assertEquals(UnsupportedMedia.LIVE, viewModel.uiState.value.qualitySheet?.unsupported)
+        coVerify(exactly = 0) { mediaResolver.resolve(any()) }
+    }
+
+    @Test
+    fun `the draggable download button is off until the user turns it on`() {
+        assertFalse(viewModel.uiState.value.isFabAlwaysVisible)
     }
 
     @Test

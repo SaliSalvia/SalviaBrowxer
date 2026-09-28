@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
@@ -60,6 +61,7 @@ import com.salvia.salviabrowxer.ui.theme.NebulaVioletContainer
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 import com.salvia.salviabrowxer.ui.utils.formatFileSize
 
 @Composable
@@ -67,9 +69,11 @@ fun MediaQualitySelectionSheet(
     mediaInfo: MediaInfo,
     isResolving: Boolean,
     onDismiss: () -> Unit,
-    onQualitySelected: (MediaFormat) -> Unit
+    onQualitySelected: (MediaFormat) -> Unit,
+    /** Set when this stream cannot be saved at all, so the sheet explains instead of offering. */
+    unsupported: UnsupportedMedia? = null
 ) {
-    val formats = mediaInfo.combinedFormats.ifEmpty { mediaInfo.formats }
+    val formats = if (unsupported != null) emptyList() else mediaInfo.combinedFormats.ifEmpty { mediaInfo.formats }
     var selectedFormat by remember(mediaInfo.title, formats.size) { mutableStateOf<MediaFormat?>(formats.firstOrNull()) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -100,16 +104,34 @@ fun MediaQualitySelectionSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = mediaInfo.title, style = MaterialTheme.typography.titleMedium, color = PearlWhite, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         mediaInfo.duration?.let { Text(text = formatDuration(it), style = MaterialTheme.typography.bodySmall, color = SilverMid) }
-                        if (!isResolving && formats.isNotEmpty()) Text(text = "${formats.size} quality option${if (formats.size > 1) "s" else ""}", style = MaterialTheme.typography.labelSmall, color = AuroraTeal)
+                        when {
+                            unsupported != null -> Text(text = stringResource(reasonLabelRes(unsupported)), style = MaterialTheme.typography.labelSmall, color = SilverMid)
+                            // Rows are already usable while the probe runs; the count only firms up.
+                            isResolving -> Text(text = stringResource(R.string.quality_checking), style = MaterialTheme.typography.labelSmall, color = SilverMid)
+                            formats.isNotEmpty() -> Text(text = stringResource(R.string.quality_options, formats.size), style = MaterialTheme.typography.labelSmall, color = AuroraTeal)
+                        }
                     }
                 }
                 Spacer(Modifier.height(14.dp))
                 HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.7f))
                 Spacer(Modifier.height(8.dp))
-                if (isResolving && formats.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(modifier = Modifier.size(28.dp), color = AuroraTeal, strokeWidth = 2.dp) }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().height(204.dp)) {
+                when {
+                    unsupported != null -> Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Block, null, tint = SilverMid, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = stringResource(reasonLabelRes(unsupported)),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = PearlWhite,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                    isResolving && formats.isEmpty() -> Box(modifier = Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), color = AuroraTeal, strokeWidth = 2.dp)
+                    }
+                    else -> LazyColumn(modifier = Modifier.fillMaxWidth().height(204.dp)) {
                         items(formats.size, key = { formats[it].id }) { index ->
                             val format = formats[index]
                             QualityOptionItem(format = format, isSelected = selectedFormat?.id == format.id, onClick = { selectedFormat = format })
@@ -120,7 +142,8 @@ fun MediaQualitySelectionSheet(
                 Spacer(Modifier.height(14.dp))
                 Button(
                     onClick = { selectedFormat?.let { onQualitySelected(it) } },
-                    enabled = selectedFormat != null && !isResolving,
+                    // A probe still running never blocks a download the page already exposed.
+                    enabled = selectedFormat != null,
                     modifier = Modifier.fillMaxWidth().height(48.dp).background(DownloadCtaBrush, RoundedCornerShape(14.dp)),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White, disabledContainerColor = CharcoalSurface, disabledContentColor = SilverMid.copy(alpha = 0.5f))
@@ -140,8 +163,14 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
         Column(modifier = Modifier.weight(1f)) {
             Text(text = format.format, style = MaterialTheme.typography.bodyLarge, color = if (isSelected) PearlWhite else SilverMid)
             Row {
-                format.size?.let { Text(text = formatFileSize(it), style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.85f)) }
+                // Size is stated when it is known and admitted when it is not — never guessed.
+                Text(
+                    text = format.size?.let { formatFileSize(it) } ?: stringResource(R.string.error_size_unavailable),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SilverMid.copy(alpha = 0.85f)
+                )
                 if (format.width != null && format.height != null) Text(text = " · ${format.width}x${format.height}", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.7f))
+                format.bitrate?.takeIf { it > 0 }?.let { Text(text = " · $it kbps", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.7f)) }
                 if (format.mimeType.isNotBlank()) Text(text = " · ${format.mimeType}", style = MaterialTheme.typography.bodySmall, color = SilverMid.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -152,6 +181,11 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
 private fun formatDuration(milliseconds: Long): String {
     val seconds = milliseconds / 1000; val minutes = seconds / 60; val hours = minutes / 60
     return when { hours > 0 -> String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60); minutes > 0 -> String.format("%02d:%02d", minutes, seconds % 60); else -> String.format("00:%02d", seconds) }
+}
+
+private fun reasonLabelRes(reason: UnsupportedMedia): Int = when (reason) {
+    UnsupportedMedia.DASH -> R.string.error_dash_unsupported
+    UnsupportedMedia.LIVE -> R.string.error_live_unsupported
 }
 
 

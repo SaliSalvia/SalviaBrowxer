@@ -160,7 +160,9 @@ fun SalviaBrowxerAppContent(
             MediaPlayerScreen(
                 mediaUrl = URLDecoder.decode(url, "UTF-8"),
                 mediaTitle = URLDecoder.decode(title, "UTF-8"),
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                // Deleting a dead file from the player returns to the queue it came from.
+                onDeleted = { navController.popBackStack() }
             )
         }
     }

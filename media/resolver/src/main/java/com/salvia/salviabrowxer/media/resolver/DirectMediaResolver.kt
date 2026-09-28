@@ -47,13 +47,14 @@ class DirectMediaResolver(
         val title = name.substringBeforeLast('.', name).ifEmpty { "Media" }
         val isHls = extension.equals("m3u8", true) || mimeType.contains("mpegurl", true)
         val isDash = extension.equals("mpd", true) || mimeType.contains("dash+xml", true)
-        // MPEG-DASH cannot be segmented without a manifest parser, so it is reported as
-        // unsupported instead of being offered as a file that would always fail.
+        // MPEG-DASH cannot be segmented without a manifest parser, so a .mpd resolves to no
+        // formats at all. Nothing downstream may turn that into a download of the raw manifest;
+        // the UI refuses the candidate before it ever reaches this call.
         if (isDash) {
             return@withContext MediaInfo(
                 title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
                 formats = emptyList(), audioFormats = emptyList(), videoFormats = emptyList(),
-                combinedFormats = emptyList(), source = url, extractor = "unsupported-dash", webpageUrl = url
+                combinedFormats = emptyList(), source = url, extractor = null, webpageUrl = url
             )
         }
 
