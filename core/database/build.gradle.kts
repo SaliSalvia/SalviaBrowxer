@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.salvia.salviabrowxer.core.database"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24

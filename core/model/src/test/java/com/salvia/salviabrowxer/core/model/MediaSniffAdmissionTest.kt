@@ -13,6 +13,21 @@ class MediaSniffAdmissionTest {
     // The whole reason the sniffer was rewritten: a URL that says nothing about being media, on a
     // CDN path with no extension, is admitted because the server named the type.
     @Test
+    fun `all detection origins reject bare TS segments and web manifests even with player evidence`() {
+        for (origin in SniffOrigin.entries) {
+            assertNull(MediaSniffAdmission.admit(page, "https://cdn.example/seg.ts", null, origin))
+            assertNull(MediaSniffAdmission.admit(page, "https://cdn.example/site.webmanifest", null, origin))
+        }
+    }
+
+    @Test
+    fun `declared manifest source preserves DASH identity`() {
+        val candidate = MediaSniffAdmission.admit(page, "https://cdn.example/file.mpd", null, SniffOrigin.ELEMENT_SOURCE)
+        assertNotNull(candidate)
+        assertEquals("mpd", candidate!!.extension)
+    }
+
+    @Test
     fun `an extension-less CDN video is admitted from the response header`() {
         val candidate = MediaSniffAdmission.admit(
             pageUrl = page,

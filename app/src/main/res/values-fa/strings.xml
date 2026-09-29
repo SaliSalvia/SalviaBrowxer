@@ -219,4 +219,6 @@
 
     <!-- Accessibility -->
     <string name="downloads_badge_description">%1$d دانلود فعال</string>
+    <string name="media_on_screen">در صفحه</string>
+    <string name="error_blob_stream_unsupported">این پخش‌کننده نشانی یک جریان را ارائه می‌کند، نه فایل قابل دانلود؛ اگر فایل یا فهرست پخشی ظاهر شد، آن را انتخاب کنید.</string>
 </resources>

@@ -42,10 +42,13 @@ class TabWebViewStore(
     interface Callbacks {
         fun onPageStarted(tabId: String, url: String)
         fun onPageFinished(tabId: String, url: String, title: String?)
+        fun onHistoryUrlChanged(tabId: String, url: String)
         fun onProgress(tabId: String, progress: Int)
         fun onNavigationState(tabId: String, canGoBack: Boolean, canGoForward: Boolean)
         fun onPageHtml(tabId: String, pageUrl: String, html: String)
-        fun onMediaDetected(candidate: MediaCandidate)
+        fun onMediaDetected(tabId: String, candidate: MediaCandidate)
+        fun onVisibleMedia(tabId: String, pageUrl: String, mediaUrl: String)
+        fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String)
         fun onBlobCaptured(pageUrl: String, blobUrl: String, file: File, mimeType: String)
         fun onTabHibernated(tabId: String, url: String, title: String)
         fun onFindResult(tabId: String, matches: Int, activeMatch: Int)
@@ -65,14 +68,6 @@ class TabWebViewStore(
         onBlobCaptured = { pageUrl, blobUrl, file, mime -> callbacks.onBlobCaptured(pageUrl, blobUrl, file, mime) },
         // Blob staging gets its own cache subdirectory so FileProvider only exposes that folder.
         cacheDirProvider = { File(context.cacheDir, "blob") }
-    )
-
-    /**
-     * Where [MediaSniffer]'s script reports what the page actually fetched. The previous sniffer
-     * had no listener on this side at all, which is why its findings were never used.
-     */
-    private val snifferBridge = MediaSnifferBridge(
-        onAdmitted = { candidate -> callbacks.onMediaDetected(candidate) }
     )
 
     /** Document-start injection needs a WebView new enough to have the feature. */
@@ -238,7 +233,12 @@ class TabWebViewStore(
         WebViewSetup.apply(view, javaScriptEnabled, desktopMode)
         if (defaultUserAgent == null) defaultUserAgent = view.settings.userAgentString
         view.addJavascriptInterface(blobBridge, BRIDGE_NAME)
-        view.addJavascriptInterface(snifferBridge, MediaSniffer.BRIDGE_NAME)
+        // A bridge per WebView keeps sightings from a background tab out of the foreground tray.
+        view.addJavascriptInterface(MediaSnifferBridge(
+            onAdmitted = { candidate -> callbacks.onMediaDetected(tabId, candidate) },
+            onVisible = { pageUrl, mediaUrl -> callbacks.onVisibleMedia(tabId, pageUrl, mediaUrl) },
+            onExpired = { pageUrl, mediaUrl -> callbacks.onMediaExpired(tabId, pageUrl, mediaUrl) }
+        ), MediaSniffer.BRIDGE_NAME)
         installSniffer(view)
         view.webViewClient = WebViewClientWrapper(
             onPageStartedHook = { _, url, _ ->
@@ -248,15 +248,25 @@ class TabWebViewStore(
                 // start injection is not available.
                 view.evaluateJavascript(MediaSniffer.script, null)
             },
+            onHistoryUrlChangedHook = { url ->
+                callbacks.onHistoryUrlChanged(tabId, url)
+                view.evaluateJavascript("window.__salviaScan && window.__salviaScan();", null)
+                // pushState on a feed does not fire onPageFinished. Re-read only the DOM already
+                // in this WebView; the view model checks tab and URL before merging.
+                view.evaluateJavascript(MEDIA_DETECTION_JS) { rawHtml ->
+                    decodeJavascriptString(rawHtml)?.let { html -> callbacks.onPageHtml(tabId, url, html) }
+                }
+            },
             onPageFinishedHook = { web, url ->
                 val pageUrl = web.url ?: url.orEmpty()
+                web.evaluateJavascript(MediaSniffer.script, null)
                 callbacks.onPageFinished(tabId, pageUrl, web.title)
                 callbacks.onNavigationState(tabId, web.canGoBack(), web.canGoForward())
                 web.evaluateJavascript(MEDIA_DETECTION_JS) { rawHtml ->
                     if (pageUrl.isNotBlank()) decodeJavascriptString(rawHtml)?.let { html -> callbacks.onPageHtml(tabId, pageUrl, html) }
                 }
             },
-            onMediaDetectedHook = { candidate -> callbacks.onMediaDetected(candidate) },
+            onMediaDetectedHook = { candidate -> callbacks.onMediaDetected(tabId, candidate) },
             onExternalSchemeHook = { url -> callbacks.onExternalScheme(url) }
         )
         view.webChromeClient = object : WebChromeClient() {
@@ -385,46 +395,42 @@ private const val BLOB_FETCH_JS = """
  */
 private val MEDIA_DETECTION_JS: String = """
     (function () {
-        if(window.__salviaFound && window.__salviaFound.length){
-            var out='<html><body>';
-            for(var i=0;i<window.__salviaFound.length;i++){
-                var u=window.__salviaFound[i];
-                var esc=u.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-                out+='<a href="'+esc+'"></a>';
-            }
-            try{
-                var nodes=document.querySelectorAll('video,audio,source,a[href]');
-                var mediaPath=/\.(__MEDIA_EXT__)(\?|#|$)/i;
-                for(var j=0;j<nodes.length&&out.length<58000;j++){
-                    var n=nodes[j];
-                    if(n.tagName==='A' && !mediaPath.test(n.getAttribute('href')||'')) continue;
-                    var h=n.outerHTML;
-                    if(out.length+h.length>62000) break;
-                    out+=h;
-                }
-            }catch(e){}
-            return out+'</body></html>';
-        }
         var maxCharacters = 62000;
         var mediaPath = /\.(__MEDIA_EXT__)(\?|#|$)/i;
-        var nodes = Array.prototype.slice.call(
-            document.querySelectorAll('video, audio, source, a[href], [src]')
-        );
         var html = '<html><body>';
-        nodes.sort(function(a,b){
-            var aP = (a.tagName==='VIDEO'||a.tagName==='AUDIO')?0:1;
-            var bP = (b.tagName==='VIDEO'||b.tagName==='AUDIO')?0:1;
-            return aP-bP;
-        });
-        for (var i = 0; i < nodes.length && html.length < maxCharacters; i++) {
-            var node = nodes[i];
-            if(node.tagName==='A' && !mediaPath.test(node.getAttribute('href')||'')) continue;
+        function append(node) {
             var outer = node.outerHTML || '';
-            if(!outer) continue;
-            if(outer.length>8000) continue;
-            if (html.length + outer.length > maxCharacters) break;
+            if (outer.length > 8000 || html.length + outer.length > maxCharacters) return;
             html += outer;
         }
-        return html + '</body></html>';
+        // Metadata describes the post's video even while a pre-roll owns the player. This is
+        // markup the page already exposed; no requests, page-specific parsing or URL guessing.
+        try {
+            var metas = document.querySelectorAll(
+                'meta[property="og:video"],meta[property="og:video:url"],'+
+                'meta[property="og:video:secure_url"],meta[property="og:audio"],'+
+                'meta[name="twitter:player:stream"],link[rel="preload"][as="video"]'
+            );
+            for (var m=0; m<metas.length && html.length<maxCharacters; m++) append(metas[m]);
+        } catch(e) {}
+        // Response-backed extension-less media already crossed the sniffer bridge. Do not
+        // serialise its lifetime-wide URL log here: on a SPA transition those URLs may belong
+        // to the previous post, not the current DOM.
+        try {
+            var nodes = Array.prototype.slice.call(
+                document.querySelectorAll('video,audio,source,a[href],[src]')
+            );
+            nodes.sort(function(a,b){
+                var aP = (a.tagName==='VIDEO'||a.tagName==='AUDIO')?0:1;
+                var bP = (b.tagName==='VIDEO'||b.tagName==='AUDIO')?0:1;
+                return aP-bP;
+            });
+            for (var j=0; j<nodes.length && html.length<maxCharacters; j++) {
+                var n=nodes[j];
+                if(n.tagName==='A' && !mediaPath.test(n.getAttribute('href')||'')) continue;
+                append(n);
+            }
+        } catch(e) {}
+        return html+'</body></html>';
     })();
 """.replace("__MEDIA_EXT__", MediaUrlRules.EXTENSION_ALTERNATION)

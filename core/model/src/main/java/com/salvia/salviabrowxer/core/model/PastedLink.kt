@@ -1,6 +1,8 @@
 package com.salvia.salviabrowxer.core.model
 
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
+import java.net.URI
+import java.util.Locale
 
 /** What a pasted link is: a file that can be fetched now, or a page that has to be opened first. */
 enum class PastedLinkKind {
@@ -27,19 +29,32 @@ object PastedLink {
 
     /** Returns `null` when [url] is not an `http`/`https` address at all. */
     fun classify(url: String): PastedLinkKind? {
-        val trimmed = url.trim()
-        if (trimmed.isEmpty()) return null
-        val scheme = trimmed.substringBefore(':').lowercase()
-        if (scheme != "http" && scheme != "https") return null
-        // A bare "https://" is a scheme, not a link.
-        if (trimmed.length <= scheme.length + 3) return null
-        return if (isMediaFile(trimmed)) PastedLinkKind.MEDIA_FILE else PastedLinkKind.WEB_PAGE
+        val parsed = webUri(url) ?: return null
+        return if (isMediaFile(parsed.toString())) PastedLinkKind.MEDIA_FILE else PastedLinkKind.WEB_PAGE
     }
 
-    fun isMediaFile(url: String): Boolean =
-        MediaUrlRules.hasMediaExtension(url) ||
-            MediaUrlRules.isDashUrl(url) ||
-            MediaUrlRules.isPlaylistUrl(url)
+    // This is paste routing only, not a sniffer denylist: media actually loaded by a page can
+    // still be admitted by MediaSniffAdmission. Match host boundaries, never URL substrings.
+    private val pageHosts = setOf(
+        "instagram.com", "tiktok.com", "youtube.com", "youtu.be", "facebook.com", "x.com"
+    )
+
+    private fun webUri(url: String): URI? {
+        val parsed = runCatching { URI(url.trim()) }.getOrNull() ?: return null
+        if (parsed.scheme?.lowercase(Locale.ROOT) !in setOf("http", "https")) return null
+        if (parsed.host.isNullOrBlank() || parsed.rawUserInfo != null) return null
+        if (parsed.port != -1 && parsed.port !in 1..65535) return null
+        return parsed
+    }
+
+    fun isMediaFile(url: String): Boolean {
+        val parsed = webUri(url) ?: return false
+        val host = parsed.host.lowercase(Locale.ROOT).trimEnd('.')
+        if (pageHosts.any { host == it || host.endsWith(".$it") }) return false
+        val normalized = parsed.toString()
+        return MediaUrlRules.hasMediaExtension(normalized) ||
+            MediaUrlRules.isDashUrl(normalized) || MediaUrlRules.isPlaylistUrl(normalized)
+    }
 
     /**
      * A candidate for a [PastedLinkKind.MEDIA_FILE] URL, so the quality sheet can open on it

@@ -9,6 +9,16 @@ import org.junit.Test
 class MediaOfferabilityTest {
 
     @Test
+    fun `only proven blob files can be offered and MSE always wins over conflicting evidence`() {
+        val url = "blob:https://example.com/player"
+        assertEquals(UnsupportedMedia.BLOB_STREAM, MediaOfferability.unsupportedReason(url, "video/mp4", "mp4"))
+        assertEquals(UnsupportedMedia.BLOB_STREAM, MediaOfferability.unsupportedReason(url, "video/mp4", "mp4", isMediaSource = true))
+        assertNull(MediaOfferability.unsupportedReason(url, "video/mp4", "mp4", isBlobFile = true))
+        assertEquals(UnsupportedMedia.BLOB_STREAM,
+            MediaOfferability.unsupportedReason(url, "video/mp4", "mp4", isMediaSource = true, isBlobFile = true))
+    }
+
+    @Test
     fun `a plain mp4 is a video that can be offered`() {
         assertEquals(MediaKind.VIDEO, MediaOfferability.kindOf("video/mp4", "mp4"))
         assertNull(MediaOfferability.unsupportedReason("https://example.com/a.mp4", "video/mp4", "mp4"))

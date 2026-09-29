@@ -9,7 +9,7 @@ enum class MediaKind { VIDEO, AUDIO, PLAYLIST }
  * Why a candidate cannot be offered. Both reasons are features the app does not have, so the
  * honest answer is a message, never a download that is guaranteed to fail.
  */
-enum class UnsupportedMedia { DASH, LIVE }
+enum class UnsupportedMedia { DASH, LIVE, BLOB_STREAM }
 
 /**
  * The single place that decides whether a detected URL is something this app can save.
@@ -42,9 +42,13 @@ object MediaOfferability {
      * The reason this candidate cannot be offered, or `null` when it can be downloaded.
      * [isLive] comes from detection; an unknown value means "not known to be live".
      */
-    fun unsupportedReason(url: String, mimeType: String?, extension: String?, isLive: Boolean = false): UnsupportedMedia? = when {
+    fun unsupportedReason(
+        url: String, mimeType: String?, extension: String?, isLive: Boolean = false,
+        isMediaSource: Boolean = false, isBlobFile: Boolean = false
+    ): UnsupportedMedia? = when {
         isDash(url, mimeType, extension) -> UnsupportedMedia.DASH
         isLive -> UnsupportedMedia.LIVE
+        url.startsWith("blob:") && (isMediaSource || !isBlobFile) -> UnsupportedMedia.BLOB_STREAM
         else -> null
     }
 }

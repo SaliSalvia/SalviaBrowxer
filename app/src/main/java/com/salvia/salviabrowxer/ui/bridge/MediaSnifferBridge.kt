@@ -19,7 +19,9 @@ import com.salvia.salviabrowxer.core.model.SniffOrigin
  * [MediaSniffAdmission], which is pure and tested.
  */
 class MediaSnifferBridge(
-    private val onAdmitted: (MediaCandidate) -> Unit
+    private val onAdmitted: (MediaCandidate) -> Unit,
+    private val onVisible: (String, String) -> Unit = { _, _ -> },
+    private val onExpired: (String, String) -> Unit = { _, _ -> }
 ) {
 
     @JavascriptInterface
@@ -30,6 +32,7 @@ class MediaSnifferBridge(
         origin: String,
         elementKind: String
     ) {
+        if (pageUrl.length > 4096 || url.length > 8192 || mimeType.length > 256) return
         try {
             val candidate = MediaSniffAdmission.admit(
                 pageUrl = pageUrl,
@@ -43,6 +46,29 @@ class MediaSnifferBridge(
             if (error is Error && error !is StackOverflowError) throw error
             Log.w(TAG, "onMediaUrlFound failed for $url", error)
         }
+    }
+
+    /** Provenance is page evidence, not a reason to bypass MIME admission. */
+    @JavascriptInterface
+    fun onMediaObjectUrl(pageUrl: String, url: String, mimeType: String, objectKind: String) {
+        if (pageUrl.length > 4096 || url.length > 8192 || mimeType.length > 256 || !url.startsWith("blob:")) return
+        if (objectKind != "mse" && objectKind != "file") return
+        val candidate = MediaSniffAdmission.admit(pageUrl, url, mimeType, SniffOrigin.ELEMENT_METADATA)
+            ?: return
+        onAdmitted(candidate.copy(isMediaSource = objectKind == "mse", isBlobFile = objectKind == "file"))
+    }
+
+    @JavascriptInterface
+    fun onMediaUrlExpired(pageUrl: String, url: String) {
+        if (pageUrl.length > 4096 || url.length > 8192 || !url.startsWith("blob:")) return
+        onExpired(pageUrl, url)
+    }
+
+    /** Relevance only. Never manufactures a candidate from a page-provided URL. */
+    @JavascriptInterface
+    fun onVisibleMedia(pageUrl: String, url: String) {
+        if (pageUrl.length > 4096 || url.length > 8192) return
+        onVisible(pageUrl, url)
     }
 
     companion object {

@@ -14,7 +14,11 @@ versionName `1.0.0`.
   overwriting something already typed, and never offered twice. A URL that names its own container
   (`…/clip.mp4`, `…/master.m3u8`, `…/stream.mpd`) opens its quality sheet straight away; anything
   else is a page, so it is opened and the media tray finds what that page exposes. There is no
-  third behaviour, and no pretending a page link can be turned into a file on its own. The same
+  third behaviour, and no pretending a page link can be turned into a file on its own. Pasted
+  Instagram, TikTok, YouTube, Facebook and X hosts (including subdomains and `youtu.be`) always
+  open as pages, even when their paths end in a media extension; this does not block media
+  actually observed by the page sniffer. Malformed and credential-bearing URLs are not accepted
+  by paste classification. The same
   screen lists the transfers in progress with their rate and the time left, and leads to the queue.
 - **Browsing** — a real multi-tab browser: up to eight live WebViews, one per tab, and beyond that
   the least recently used tab is hibernated and restored by URL. The chrome is split so every
@@ -31,10 +35,17 @@ versionName `1.0.0`.
     the media elements themselves, and reads the **response** `Content-Type` rather than guessing
     from the URL. That is what finds media on an extension-less CDN path, which is the normal shape
     on social sites. It reports over a `JavascriptInterface` bridge, so a sighting becomes a
-    candidate immediately instead of travelling through serialised HTML.
-  - **request interception** in the WebView client covers the same-origin and extension-bearing
-    cases plus `blob:` URLs. It is handed request headers only, never a response, so it does not
-    pretend to cover the rest.
+    candidate immediately instead of travelling through serialised HTML. In dynamic feeds the
+    sniffer re-checks source changes, including nested video elements inserted after load, and
+    associates an *already admitted* URL with the visible player. The media tray puts that URL
+    first and labels it “On screen”; this is a relevance hint, not a guarantee of “main content”
+    (a pre-roll can occupy that same player). SPA address changes drop the previous page's rows.
+    Page-provided metadata is included in DOM snapshots even when other media was discovered;
+    the previous page's lifetime-wide sniffer log is not reintroduced on a SPA transition.
+  - **request interception** admits explicit HTTP(S) media/playlist GET URLs, not blobs or API
+    guesses from outgoing headers. Only an absent Range or `bytes=0-` is considered whole-file
+    evidence. Fetch/XHR observation rejects partial responses; segments and web manifests are
+    excluded from DOM and request candidates too.
   - a **DOM scan** of the loaded page (`media`, `source`, anchors, meta tags, JSON and plain-text
     URLs) for whatever the markup itself states.
   - **blob reassembly** through the bridge, in Binder-safe 480 KiB chunks.
@@ -81,6 +92,17 @@ versionName `1.0.0`.
   single focus target each, every interactive control is at least 48 dp, and the type scale
   survives a 1.3x font scale because the bars grow instead of clipping.
 
+### Feed detection limitation
+
+On X and other dynamic feeds, the app does not request a hidden media URL, extract a social post
+through a site-specific API, or promise that the first/biggest video is the main one. When the page
+actually reveals a candidate, the tray can highlight a candidate associated with the on-screen
+player; the pill still shows the count of all detected candidates. If X serves only fragments,
+keeps the source in a worker, or delays it until a post opens, the pill may not appear in the feed.
+A real-device X feed / post / pre-roll comparison is still required before making a coverage claim.
+
+See [`docs/world-class-roadmap.md`](docs/world-class-roadmap.md) for unshipped release gates.
+
 ## What it deliberately does not do
 
 SalviaBrowxer is **not** a YouTube, Instagram or TikTok downloader, and it does not defeat
@@ -94,8 +116,9 @@ protection:
 - no native FFmpeg binary and no audio/video muxing
 - no worker or service-worker sniffing: the injected script runs in the document, so a player that
   fetches its media from a worker stays invisible
-- no end-of-stream knowledge for an MSE-backed blob — it is offered as the stream it is, not as a
-  fixed-length file
+- MSE-backed and unproven blob URLs are refused, not offered as downloadable files. Only a
+  witnessed real Blob with media evidence can use the existing page-owned blob save path.
+  Revoked object URLs are removed from candidates; there is no MSE recording or manifest mapping
 - no analytics SDK, no ad SDK, no account system, and no network call other than a page load, a
   media probe, or a download the user started. Detection adds none: it reads response headers the
   page already received rather than probing URLs itself

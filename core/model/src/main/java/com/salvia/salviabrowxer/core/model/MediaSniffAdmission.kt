@@ -107,7 +107,7 @@ object MediaSniffAdmission {
             // The player loaded it. There may be no header and no extension worth trusting.
             SniffOrigin.ELEMENT_METADATA -> true
 
-            SniffOrigin.ELEMENT_SOURCE -> hasExtension
+            SniffOrigin.ELEMENT_SOURCE -> hasExtension || isPlaylist || isDash
         }
         if (!admitted) return null
 
