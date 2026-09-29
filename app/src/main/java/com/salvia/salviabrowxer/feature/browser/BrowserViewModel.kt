@@ -13,6 +13,7 @@ import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.model.MediaCandidate
+import com.salvia.salviabrowxer.core.model.MediaCandidateIndex
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
 import com.salvia.salviabrowxer.core.model.Tab
@@ -84,6 +85,8 @@ data class BrowserUiState(
     val blockedCleartextUrl: String? = null,
     val activeDownloadCount: Int = 0,
     val detectedMedia: List<MediaCandidate> = emptyList(),
+    /** An admitted URL currently associated with the visible player, not proof of main content. */
+    val visibleMediaUrl: String? = null,
     val fabPosition: FabPosition = FabPosition(),
     val floatingButtonSize: Int = 56,
     /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
@@ -202,7 +205,7 @@ class BrowserViewModel @Inject constructor(
 
     private fun openTab(url: String, isPrivate: Boolean, navigate: Boolean) {
         val tab = Tab(title = if (url.isEmpty()) "New Tab" else url, url = url, isPrivate = isPrivate || _uiState.value.isPrivateMode)
-        _uiState.update { state -> state.copy(tabs = state.tabs + tab.copy(position = state.tabs.size), currentTabId = tab.id, url = url.ifEmpty { state.url }, addressBarInput = url.ifEmpty { state.addressBarInput }, detectedMedia = emptyList()) }
+        _uiState.update { state -> state.copy(tabs = state.tabs + tab.copy(position = state.tabs.size), currentTabId = tab.id, url = url.ifEmpty { state.url }, addressBarInput = url.ifEmpty { state.addressBarInput }, detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null) }
         if (navigate && url.isNotEmpty()) _commands.trySend(BrowserCommand.Load(url))
     }
 
@@ -211,13 +214,14 @@ class BrowserViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 currentTabId = tab.id, url = tab.url, addressBarInput = tab.url, title = tab.title,
-                isPrivateMode = tab.isPrivate, detectedMedia = emptyList(),
+                isPrivateMode = tab.isPrivate, detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null,
                 isTabSwitcherVisible = false,
                 // A hibernated tab restores the last committed URL; the store reloads it.
                 canGoBack = false, canGoForward = false
             )
         }
-        if (tab.url.isNotEmpty()) _commands.trySend(BrowserCommand.Load(tab.url))
+        // TabWebViewStore.attach restores a hibernated view; a live view must not reload on
+        // selection. The sniffer heartbeat re-admits its current player after the tray reset.
     }
 
     fun closeTab(tabId: String) {
@@ -230,6 +234,10 @@ class BrowserViewModel @Inject constructor(
             state.copy(
                 tabs = remaining, currentTabId = current, url = currentTab?.url ?: "",
                 addressBarInput = currentTab?.url ?: "", title = currentTab?.title ?: "",
+                isPrivateMode = currentTab?.isPrivate == true,
+                detectedMedia = if (state.currentTabId == current) state.detectedMedia else emptyList(),
+                visibleMediaUrl = if (state.currentTabId == current) state.visibleMediaUrl else null,
+                qualitySheet = if (state.currentTabId == current) state.qualitySheet else null,
                 hibernatedTabIds = state.hibernatedTabIds - tabId
             )
         }
@@ -276,7 +284,7 @@ class BrowserViewModel @Inject constructor(
             _messages.trySend(context.getString(R.string.error_cleartext_blocked))
             return
         }
-        _uiState.update { state -> state.copy(url = target, addressBarInput = target, isLoading = true, progress = 0, isSecure = target.startsWith("https://"), detectedMedia = emptyList(), tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = target, lastVisited = System.currentTimeMillis()) else tab }) }
+        _uiState.update { state -> state.copy(url = target, addressBarInput = target, isLoading = true, progress = 0, isSecure = target.startsWith("https://"), detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = target, lastVisited = System.currentTimeMillis()) else tab }) }
         _commands.trySend(BrowserCommand.Load(target))
     }
 
@@ -312,8 +320,22 @@ class BrowserViewModel @Inject constructor(
                 addressBarInput = if (isCurrent) safeUrl else state.addressBarInput,
                 isLoading = if (isCurrent) true else state.isLoading,
                 isSecure = if (isCurrent) safeUrl.startsWith("https://") else state.isSecure,
+                detectedMedia = if (isCurrent) emptyList() else state.detectedMedia,
+                visibleMediaUrl = if (isCurrent) null else state.visibleMediaUrl,
+                qualitySheet = if (isCurrent) null else state.qualitySheet,
                 tabs = state.tabs.map { tab -> if (tab.id == target) tab.copy(url = safeUrl) else tab }
             )
+        }
+    }
+
+    /** SPA pushState/replaceState changes page identity without an onPageStarted callback. */
+    fun onHistoryUrlChanged(tabId: String, url: String) {
+        _uiState.update { state ->
+            if (tabId != state.currentTabId || url == state.url) return@update state
+            state.copy(url = url, addressBarInput = url, detectedMedia = emptyList(),
+                visibleMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab ->
+                    if (tab.id == tabId) tab.copy(url = url) else tab
+                })
         }
     }
 
@@ -365,7 +387,7 @@ class BrowserViewModel @Inject constructor(
     /** Media found in a background tab belongs to that tab, not to the one on screen. */
     fun onPageHtml(tabId: String?, pageUrl: String, html: String) {
         if (tabId != null && tabId != _uiState.value.currentTabId) return
-        detectMediaInPage(pageUrl, html)
+        detectMediaInPage(pageUrl, html, tabId)
     }
 
     // region find in page
@@ -386,27 +408,50 @@ class BrowserViewModel @Inject constructor(
     // endregion
 
     // region media detection & quality sheet
-    fun detectMediaInPage(pageUrl: String, html: String?) {
+    fun detectMediaInPage(pageUrl: String, html: String?, tabId: String? = _uiState.value.currentTabId) {
         // Debounce: cancel previous detection if page re-loaded quickly
         detectJob?.cancel()
         detectJob = viewModelScope.launch(Dispatchers.IO) {
             delay(120)
             val candidates = runCatching { mediaDetector.detect(pageUrl, html) }.getOrNull().orEmpty()
-            if (_uiState.value.url == pageUrl) mergeCandidates(candidates)
+            mergeCandidates(tabId, pageUrl, candidates)
         }
     }
 
-    fun onMediaIntercepted(candidate: MediaCandidate) { mergeCandidates(listOf(candidate)) }
+    fun onMediaIntercepted(tabId: String?, candidate: MediaCandidate) {
+        mergeCandidates(tabId, candidate.pageUrl, listOf(candidate))
+    }
 
-    private fun mergeCandidates(candidates: List<MediaCandidate>) {
+    fun onVisibleMedia(tabId: String, pageUrl: String, mediaUrl: String) {
+        _uiState.update { state ->
+            if (tabId != state.currentTabId || pageUrl != state.url) return@update state
+            // Only a previously admitted candidate may become the selected on-screen item.
+            val selected = mediaUrl.takeIf { url -> state.detectedMedia.any { it.mediaUrl == url } }
+            if (selected == state.visibleMediaUrl) state else state.copy(
+                visibleMediaUrl = selected,
+                detectedMedia = state.detectedMedia.sortedWith(
+                    compareByDescending<MediaCandidate> { it.mediaUrl == selected }
+                        .thenByDescending { it.confidence }
+                )
+            )
+        }
+    }
+
+    fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String) {
+        _uiState.update { state ->
+            if (tabId != state.currentTabId || pageUrl != state.url) return@update state
+            state.copy(detectedMedia = state.detectedMedia.filterNot { it.mediaUrl == mediaUrl },
+                visibleMediaUrl = state.visibleMediaUrl.takeUnless { it == mediaUrl },
+                qualitySheet = state.qualitySheet.takeUnless { it?.candidate?.mediaUrl == mediaUrl })
+        }
+    }
+
+    private fun mergeCandidates(tabId: String?, pageUrl: String, candidates: List<MediaCandidate>) {
         if (candidates.isEmpty()) return
         _uiState.update { state ->
-            val merged = (state.detectedMedia + candidates).distinctBy { it.mediaUrl }
-                .sortedByDescending { it.confidence }
-                .take(24) // cap to prevent FAB badge overflow + list bloat
-            // Only update if actually new items
-            if (merged.size == state.detectedMedia.size && merged.toSet() == state.detectedMedia.toSet()) state
-            else state.copy(detectedMedia = merged)
+            if (tabId != state.currentTabId || pageUrl != state.url) return@update state
+            val merged = MediaCandidateIndex.merge(state.detectedMedia, candidates, state.visibleMediaUrl)
+            if (merged == state.detectedMedia) state else state.copy(detectedMedia = merged)
         }
     }
 
@@ -467,11 +512,13 @@ class BrowserViewModel @Inject constructor(
 
     /** Null when the candidate can be downloaded; otherwise the honest reason it cannot. */
     fun unsupportedReasonFor(candidate: MediaCandidate): UnsupportedMedia? =
-        MediaOfferability.unsupportedReason(candidate.mediaUrl, candidate.mimeType, candidate.extension, candidate.isLive)
+        MediaOfferability.unsupportedReason(candidate.mediaUrl, candidate.mimeType, candidate.extension,
+            candidate.isLive, candidate.isMediaSource, candidate.isBlobFile)
 
     private fun messageFor(reason: UnsupportedMedia): Int = when (reason) {
         UnsupportedMedia.DASH -> R.string.error_dash_unsupported
         UnsupportedMedia.LIVE -> R.string.error_live_unsupported
+        UnsupportedMedia.BLOB_STREAM -> R.string.error_blob_stream_unsupported
     }
 
     private fun mediaInfoFrom(candidate: MediaCandidate): MediaInfo {
@@ -531,6 +578,14 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun handleFormatSelected(format: MediaFormat) {
+        val sheet = _uiState.value.qualitySheet ?: return
+        val unsupported = sheet.unsupported ?: unsupportedReasonFor(sheet.candidate)
+        if (unsupported != null) {
+            _messages.trySend(context.getString(messageFor(unsupported)))
+            return
+        }
+        if (format.url.startsWith("blob:") &&
+            (format.url != sheet.candidate.mediaUrl || !sheet.candidate.isBlobFile)) return
         if (format.url.startsWith("blob:")) {
             val pageUrl = _uiState.value.url
             _commands.trySend(BrowserCommand.FetchBlob(format.url, pageUrl))
@@ -541,6 +596,8 @@ class BrowserViewModel @Inject constructor(
 
     // region downloads
     fun enqueueDownload(format: MediaFormat) {
+        // Blob reads must stay inside the owning WebView and only follow an explicit selection.
+        if (format.url.startsWith("blob:", ignoreCase = true)) return
         val sheet = _uiState.value.qualitySheet ?: return
         val candidate = sheet.candidate
         // Defence in depth: an unsupported stream must never reach the queue, even if a future
@@ -564,7 +621,7 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun clearDetectedMedia() { _uiState.update { it.copy(detectedMedia = emptyList()) } }
+    fun clearDetectedMedia() { _uiState.update { it.copy(detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null) } }
     // endregion
 
     // region browser settings & data
@@ -641,7 +698,9 @@ class BrowserViewModel @Inject constructor(
             navigate(url)
             return
         }
-        mergeCandidates(listOf(candidate))
+        // A deliberate pasted file is not a WebView sighting; it need not match the page URL.
+        _uiState.update { state -> state.copy(detectedMedia =
+            MediaCandidateIndex.merge(state.detectedMedia, listOf(candidate), state.visibleMediaUrl)) }
         openQualitySheetFor(candidate)
     }
 

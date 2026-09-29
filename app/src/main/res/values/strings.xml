@@ -218,4 +218,6 @@
 
     <!-- Accessibility -->
     <string name="downloads_badge_description">%1$d active downloads</string>
+    <string name="media_on_screen">On screen</string>
+    <string name="error_blob_stream_unsupported">This player exposes a streaming handle, not a downloadable file; choose a file or playlist if one appears.</string>
 </resources>

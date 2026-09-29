@@ -15,6 +15,10 @@ data class MediaCandidate(
     val source: MediaSource = MediaSource.UNKNOWN,
     val confidence: Float = 0f,
     val isLive: Boolean = false,
+    /** MediaSource object URLs are streaming handles, not fetchable Blob files. */
+    val isMediaSource: Boolean = false,
+    /** True only when createObjectURL received a real Blob/File, not inferred from its URL. */
+    val isBlobFile: Boolean = false,
     val requiresResolver: Boolean = false,
     val requiresAuthentication: Boolean = false
 ) {

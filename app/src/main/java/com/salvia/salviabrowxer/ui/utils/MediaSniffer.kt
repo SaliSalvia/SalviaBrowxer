@@ -52,11 +52,29 @@ object MediaSniffer {
     var SEGMENT_MIME = /^video\/mp2t/i;
     var LIMIT = 60;
 
+    // A response can arrive before the element is visible. Let stronger player evidence upgrade
+    // that URL later instead of discarding it forever as a duplicate.
     var reported = {};
+    var focused = '';
+    var lastFocusAt = 0;
+    var lastPage = location.href;
+    var mediaObjects = Object.create(null);
+    var objectOrder = [];
+    var sourceObjects = new WeakMap();
+
+    function resetForPage() {
+        if (lastPage === location.href) return;
+        lastPage = location.href;
+        reported = {};
+        order.length = 0;
+        focused = '';
+        objectOrder.forEach(function(u) { if (mediaObjects[u]) mediaObjects[u].sent = false; });
+    }
     var order = window.__salviaFound;
     if (!order || !order.length) { order = []; window.__salviaFound = order; }
 
     function absolute(u) {
+        if (!u) return '';
         try { return new URL(u, location.href).href; } catch (e) { return ''; }
     }
 
@@ -79,18 +97,17 @@ object MediaSniffer {
         if (!value) return false;
         var v = String(value).toLowerCase().replace(/\s/g, '');
         if (v.indexOf('bytes=') !== 0) return true;
-        var first = v.substring(6).split(',')[0];
-        var dash = first.indexOf('-');
-        if (dash <= 0) return true;
-        return !(dash === first.length - 1 && first.charAt(0) === '0');
+        if (v.indexOf(',') !== -1) return true;
+        return v !== 'bytes=0-';
     }
 
     // Prefilter only: the Kotlin side decides. Called for anything the page fetched, including
     // HLS fragments, so the checks that keep fragments out of the tray live here too.
     function report(rawUrl, rawMime, origin, ranged, kind) {
         try {
+            resetForPage();
             var u = absolute(rawUrl);
-            if (u.length < 12) return;
+            if (u.length < 12 || u.length > 8192 || location.href.length > 4096) return;
             var blob = u.indexOf('blob:') === 0;
             if (!blob && u.indexOf('http') !== 0) return;
 
@@ -99,19 +116,31 @@ object MediaSniffer {
             var meta = origin === 'element-metadata';
 
             if (blob) {
-                if (!strong && window.__salviaMseMime) { mime = window.__salviaMseMime; strong = isMediaMime(mime); }
+                var objectInfo = mediaObjects[u];
+                if (!strong && objectInfo) { mime = objectInfo.mime; strong = isMediaMime(mime); }
                 if (!strong) return;
             } else {
                 if (NON_MEDIA_EXT.test(u)) return;
                 if (SEGMENT_EXT.test(u)) return;
-                if (ranged) return;
+                if (ranged || /[?&](bytestart|byteend)=/i.test(u)) return;
                 if (!strong && !meta && !MEDIA_EXT.test(u)) return;
             }
 
-            if (reported[u]) return;
-            reported[u] = true;
-            order.push(u);
-            if (order.length > LIMIT) order.shift();
+            if (blob && mediaObjects[u]) {
+                var obj = mediaObjects[u], bridge = window.SalviaMedia;
+                if (bridge && bridge.onMediaObjectUrl && !obj.sent) {
+                    obj.sent = true;
+                    try { bridge.onMediaObjectUrl(location.href, u, mime, obj.kind); } catch(e) {}
+                }
+            }
+            var strength = meta ? 3 : (strong ? 2 : 1);
+            var previous = reported[u];
+            if (previous && previous.strength >= strength && (!mime || previous.mime === mime)) return;
+            if (!reported[u]) {
+                order.push(u);
+                if (order.length > LIMIT) { delete reported[order.shift()]; }
+            }
+            reported[u] = {strength: strength, mime: mime, origin: origin, kind: kind};
             tell(u, mime, origin, kind);
         } catch (e) {}
     }
@@ -121,7 +150,7 @@ object MediaSniffer {
     try {
         var xhrOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function (method, url) {
-            try { this.__salviaUrl = url; this.__salviaRange = null; } catch (e) {}
+            try { this.__salviaUrl = url; this.__salviaRange = null; this.__salviaPage = location.href; } catch (e) {}
             return xhrOpen.apply(this, arguments);
         };
         var xhrHeader = XMLHttpRequest.prototype.setRequestHeader;
@@ -134,10 +163,11 @@ object MediaSniffer {
             try {
                 var self = this;
                 self.addEventListener('loadend', function () {
+                    if (self.__salviaPage !== location.href) return;
                     var mime = '';
                     try { mime = self.getResponseHeader('Content-Type') || ''; } catch (e) {}
                     if (!mime) { try { if (self.response && self.response.type) mime = self.response.type; } catch (e) {} }
-                    report(self.__salviaUrl, mime, 'xhr', isPartialRange(self.__salviaRange), '');
+                    report(self.responseURL || self.__salviaUrl, mime, 'xhr', self.status === 206 || isPartialRange(self.__salviaRange), '');
                 });
             } catch (e) {}
             return xhrSend.apply(this, arguments);
@@ -154,19 +184,18 @@ object MediaSniffer {
                 var url = (typeof input === 'string') ? input : (input && input.url);
                 var rangeValue = null;
                 try {
-                    var h = init && init.headers;
-                    if (h) {
-                        if (typeof h.get === 'function') rangeValue = h.get('range');
-                        else for (var k in h) { if (String(k).toLowerCase() === 'range') rangeValue = h[k]; }
-                    }
+                    var h = (init && init.headers !== undefined) ? init.headers : (input && input.headers);
+                    if (h) rangeValue = new Headers(h).get('range');
                 } catch (e) {}
+                var requestPage = location.href;
                 var p = fetchOrig.apply(this, arguments);
                 try {
                     p.then(function (res) {
                         try {
+                            if (requestPage !== location.href) return;
                             var mime = '';
                             if (res && res.headers && res.headers.get) mime = res.headers.get('content-type') || '';
-                            report(url, mime, 'fetch', isPartialRange(rangeValue), '');
+                            report((res && res.url) || url, mime, 'fetch', (res && res.status === 206) || isPartialRange(rangeValue), '');
                         } catch (e) {}
                     }).catch(function () {});
                 } catch (e) {}
@@ -175,38 +204,68 @@ object MediaSniffer {
         }
     } catch (e) {}
 
-    // 3. MediaSource. A player that feeds encoded data to a SourceBuffer never exposes a file, and
-    //    the type it declares is the only thing that says what the blob URL actually contains.
+    // 3. Object URL provenance. A MediaSource is NOT a fetchable Blob, even with video/mp4
+    // SourceBuffers. Keep type evidence per object, never in a page-wide "last MIME" variable.
+    function rememberObject(url, kind, mime) {
+        mediaObjects[url] = {kind: kind, mime: mime || '', sent: false};
+        objectOrder.push(url);
+        if (objectOrder.length > LIMIT) delete mediaObjects[objectOrder.shift()];
+    }
     try {
         var createOrig = window.URL && window.URL.createObjectURL;
-        var blobSources = [];
         if (createOrig) {
             window.URL.createObjectURL = function (obj) {
                 var url = createOrig.apply(this, arguments);
                 try {
                     if (window.MediaSource && obj instanceof window.MediaSource) {
-                        blobSources.push({ src: obj, url: url });
-                        if (blobSources.length > 4) blobSources.shift();
+                        var info = sourceObjects.get(obj) || {urls: [], mime: ''};
+                        info.urls.push(url);
+                        if (info.urls.length > LIMIT) info.urls.shift();
+                        sourceObjects.set(obj, info);
+                        rememberObject(url, 'mse', info.mime);
+                        if (info.mime) report(url, info.mime, 'element-metadata', false, '');
+                    } else if (window.Blob && obj instanceof window.Blob) {
+                        rememberObject(url, 'file', obj.type);
+                        // Wait until a player uses it; not every generated Blob is a download.
                     }
                 } catch (e) {}
                 return url;
+            };
+        }
+        var revokeOrig = window.URL && window.URL.revokeObjectURL;
+        if (revokeOrig) {
+            window.URL.revokeObjectURL = function (url) {
+                var result = revokeOrig.apply(this, arguments);
+                delete mediaObjects[url];
+                delete reported[url];
+                var bridge = window.SalviaMedia;
+                if (bridge && bridge.onMediaUrlExpired) {
+                    try { bridge.onMediaUrlExpired(location.href, url); } catch(e) {}
+                }
+                var index = objectOrder.indexOf(url);
+                if (index >= 0) objectOrder.splice(index, 1);
+                return result;
             };
         }
         var msProto = window.MediaSource && window.MediaSource.prototype;
         if (msProto && msProto.addSourceBuffer) {
             var addOrig = msProto.addSourceBuffer;
             msProto.addSourceBuffer = function (mime) {
+                var result = addOrig.apply(this, arguments); // do not report a rejected codec
                 try {
                     var clean = (mime || '').split(';')[0].trim().toLowerCase();
-                    if (clean) window.__salviaMseMime = clean;
-                    for (var i = 0; i < blobSources.length; i++) {
-                        if (blobSources[i].src === this) {
-                            report(blobSources[i].url, clean, 'element-metadata', false, '');
-                            break;
+                    var info = sourceObjects.get(this) || {urls: [], mime: ''};
+                    // Prefer video when separate audio/video SourceBuffers share one MediaSource.
+                    if (!info.mime || clean.indexOf('video/') === 0) info.mime = clean;
+                    sourceObjects.set(this, info);
+                    info.urls.forEach(function(url) {
+                        if (mediaObjects[url]) {
+                            mediaObjects[url].mime = info.mime;
+                            report(url, info.mime, 'element-metadata', false, '');
                         }
-                    }
+                    });
                 } catch (e) {}
-                return addOrig.apply(this, arguments);
+                return result;
             };
         }
     } catch (e) {}
@@ -229,9 +288,59 @@ object MediaSniffer {
             var kind = owner ? owner.tagName.toLowerCase() : (player ? n.tagName.toLowerCase() : '');
             var loaded = false;
             try {
-                if (owner) loaded = owner.readyState > 0 || owner.duration > 0 || owner.videoWidth > 0;
+                if (owner) loaded = owner.readyState > 0 && absolute(owner.currentSrc) === absolute(url);
             } catch (e) {}
             report(url, '', loaded ? 'element-metadata' : 'element-source', false, kind);
+        } catch (e) {}
+    }
+
+    // An *observed* source in the visible player is more relevant than a background fetch. This
+    // never admits media or starts a download: Kotlin only uses it if the URL was already admitted.
+    // No site-specific selectors, no forced playback, no network requests.
+    function focusVisiblePlayer() {
+        try {
+            resetForPage();
+            if (window !== window.top) return;
+            if (document.visibilityState === 'hidden') {
+                focused = '';
+                var hiddenBridge = window.SalviaMedia;
+                if (hiddenBridge && hiddenBridge.onVisibleMedia) hiddenBridge.onVisibleMedia(location.href, '');
+                return;
+            }
+            var nodes = document.querySelectorAll('video,audio');
+            var best = null, bestArea = 0;
+            for (var i = 0; i < nodes.length; i++) {
+                var n = nodes[i], u = absolute(n.currentSrc || n.src || '');
+                if (!u || !reported[u] || !n.getBoundingClientRect) continue;
+                var style = window.getComputedStyle(n);
+                if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) continue;
+                var r = n.getBoundingClientRect();
+                var w = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
+                var h = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
+                var area = w * h;
+                if (area < 48 * 48) continue;
+                // Playback breaks ties; area is only a viewport relevance signal, not proof that
+                // this is the main video (a pre-roll can occupy the same element).
+                var score = area * (n.paused ? 1 : 1.25);
+                if (score > bestArea) { best = u; bestArea = score; }
+            }
+            if (best && (best !== focused || Date.now() - lastFocusAt > 1500)) {
+                focused = best;
+                lastFocusAt = Date.now();
+                var b = window.SalviaMedia;
+                // The native bounded feed index may have evicted this old URL. Re-announce its
+                // stored evidence on focus so scrolling back works without reloading the page.
+                var evidence = reported[best], objectInfo = mediaObjects[best];
+                if (objectInfo && b && b.onMediaObjectUrl) {
+                    b.onMediaObjectUrl(location.href, best, objectInfo.mime, objectInfo.kind);
+                }
+                tell(best, evidence.mime, evidence.origin, evidence.kind);
+                if (b && b.onVisibleMedia) b.onVisibleMedia(location.href, best);
+            } else if (!best && focused) {
+                focused = '';
+                var bridge = window.SalviaMedia;
+                if (bridge && bridge.onVisibleMedia) bridge.onVisibleMedia(location.href, '');
+            }
         } catch (e) {}
     }
 
@@ -239,35 +348,51 @@ object MediaSniffer {
         try {
             var nodes = document.querySelectorAll('video,audio,source');
             for (var i = 0; i < nodes.length; i++) scanElement(nodes[i]);
+            focusVisiblePlayer();
         } catch (e) {}
     }
 
     try {
         document.addEventListener('loadedmetadata', function (ev) {
             if (ev && ev.target) scanElement(ev.target);
+            focusVisiblePlayer();
         }, true);
+        document.addEventListener('play', function(ev) {
+            if (ev && ev.target) scanElement(ev.target);
+            focusVisiblePlayer();
+        }, true);
+        document.addEventListener('emptied', scan, true);
+        document.addEventListener('scroll', scheduleScan, {passive: true, capture: true});
+        document.addEventListener('visibilitychange', scan, true);
+        window.addEventListener('resize', scheduleScan);
         document.addEventListener('DOMContentLoaded', scan, true);
+        window.addEventListener('popstate', scheduleScan);
+        window.addEventListener('pageshow', scheduleScan);
         window.addEventListener('load', scan, true);
     } catch (e) {}
 
+    // Batch bursts from virtualized feeds and scrolling; no layout pass per mutation/event.
+    var scanPending = false;
+    function scheduleScan() {
+        if (scanPending) return;
+        scanPending = true;
+        setTimeout(function() { scanPending = false; scan(); }, 120);
+    }
     try {
-        var obs = new MutationObserver(function (mutations) {
-            for (var i = 0; i < mutations.length; i++) {
-                var added = mutations[i].addedNodes;
-                for (var j = 0; j < added.length; j++) {
-                    var n = added[j];
-                    if (!n || !n.tagName) continue;
-                    var t = n.tagName.toLowerCase();
-                    if (t === 'video' || t === 'audio' || t === 'source') scanElement(n);
-                }
-            }
+        var obs = new MutationObserver(scheduleScan);
+        obs.observe(document.documentElement || document, {
+            childList: true, subtree: true, attributes: true,
+            attributeFilter: ['src', 'data-src', 'type']
         });
-        obs.observe(document.documentElement || document, { childList: true, subtree: true });
     } catch (e) {}
+
+    // Native history callbacks can request a batched refresh after pushState/replaceState.
+    window.__salviaScan = scheduleScan;
 
     // Last resort for a player that swaps currentSrc without firing anything useful. Bounded by the
     // dedupe set and the report cap, so a page with no media costs one querySelectorAll every 2s.
     setInterval(scan, 2000);
+    scan();
 })();
 """
 }

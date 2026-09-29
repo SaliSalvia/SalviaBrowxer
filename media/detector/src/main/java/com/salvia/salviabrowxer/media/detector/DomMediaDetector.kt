@@ -37,7 +37,12 @@ class DomMediaDetector : MediaDetector {
         detectPlainUrls(safeHtml, pageUrl, candidates)
 
         // Final dedupe: exact mediaUrl
-        return candidates.distinctBy { it.mediaUrl }.take(24)
+        return candidates.filter { candidate ->
+            val url = candidate.mediaUrl
+            (url.startsWith("https://") || url.startsWith("http://") || url.startsWith("blob:")) &&
+                !MediaUrlRules.looksLikeNonMedia(url) && !MediaUrlRules.looksLikeSegment(url) &&
+                !MediaUrlRules.isSegmentMime(candidate.mimeType)
+        }.distinctBy { it.mediaUrl }.take(24)
     }
 
     private fun detectVideoAudio(doc: Document, pageUrl: String, out: MutableList<MediaCandidate>) {

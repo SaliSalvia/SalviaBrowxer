@@ -16,6 +16,27 @@ class DomMediaDetectorTest {
     }
 
     @Test
+    fun `DOM cannot reintroduce web manifests or media fragments rejected by sniffer`() = runTest {
+        val html = """
+            <video src="https://cdn.example.org/seg.ts"></video>
+            <video><source src="https://cdn.example.org/part.m4s" type="video/mp4"></video>
+            <meta property="og:video" content="https://cdn.example.org/site.webmanifest">
+            <a href="https://cdn.example.org/part.mp4?bytestart=10">fragment</a>
+        """.trimIndent()
+        assertEquals(emptyList<Any>(), detector.detect("https://example.org/feed", html))
+    }
+
+    @Test
+    fun `page metadata can reveal main file while the player shows an ad`() = runTest {
+        val html = """
+            <meta property="og:video" content="https://cdn.example.org/main.mp4">
+            <video src="https://cdn.example.org/ad.mp4"></video>
+        """.trimIndent()
+        val urls = detector.detect("https://example.org/post", html).map { it.mediaUrl }.toSet()
+        assertEquals(setOf("https://cdn.example.org/ad.mp4", "https://cdn.example.org/main.mp4"), urls)
+    }
+
+    @Test
     fun `detect finds video elements`() = runTest {
         val html = """
             <html>

@@ -54,6 +54,23 @@ jobs:
       - name: Print Gradle version
         run: ./gradlew --version --no-daemon
 
+      - name: Test embedded media sniffer against synthetic feed
+        run: node --test scripts/test-media-sniffer.cjs
+
+      - name: Run required unit tests from clean outputs
+        run: |
+          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          if-no-files-found: ignore
+
       - name: Build Debug APK
         run: |
           set -o pipefail

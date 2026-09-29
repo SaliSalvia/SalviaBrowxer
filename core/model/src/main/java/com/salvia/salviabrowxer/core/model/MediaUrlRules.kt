@@ -45,7 +45,7 @@ object MediaUrlRules {
     val SEGMENT_MIME_TYPES: Set<String> = setOf("video/mp2t")
 
     /** `m4s`/`cmfv`/`cmfa` are MSE and DASH fragments for the same reason. */
-    val SEGMENT_EXTENSIONS: Set<String> = setOf("m4s", "cmfv", "cmfa", "cmft", "mp4a")
+    val SEGMENT_EXTENSIONS: Set<String> = setOf("ts", "m4s", "cmfv", "cmfa", "cmft", "mp4a")
 
     /**
      * CDNs routinely serve real video as `application/octet-stream`. It is therefore evidence
@@ -57,7 +57,7 @@ object MediaUrlRules {
     /** Requests the browser makes for itself that are never media. */
     val NON_MEDIA_EXTENSIONS: Set<String> = setOf(
         "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "ico", "avif", "heic",
-        "css", "js", "mjs", "map", "json", "xml", "txt", "html", "htm",
+        "css", "js", "mjs", "map", "json", "webmanifest", "xml", "txt", "html", "htm",
         "woff", "woff2", "ttf", "otf", "eot", "pdf", "zip", "gz", "vtt", "srt"
     )
 
@@ -137,7 +137,9 @@ object MediaUrlRules {
     }
 
     /** A request the browser makes for itself that cannot be media. */
-    fun looksLikeNonMedia(url: String): Boolean = pathExtension(url) in NON_MEDIA_EXTENSIONS
+    fun looksLikeNonMedia(url: String): Boolean =
+        pathExtension(url) in NON_MEDIA_EXTENSIONS ||
+            url.substringBefore('#').substringBefore('?').endsWith(".webmanifest", ignoreCase = true)
 
     /** One fragment of a manifest, not a file: a segment or an explicit byte range. */
     fun looksLikeSegment(url: String): Boolean {

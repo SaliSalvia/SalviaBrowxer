@@ -309,7 +309,103 @@ class BrowserViewModelTest {
     }
 
     @Test
+    fun `unknown and MSE object URLs never reach the resolver or download queue`() {
+        for (mse in listOf(false, true)) {
+            val candidate = MediaCandidate(pageUrl = "https://example.com/feed",
+                mediaUrl = "blob:https://example.com/player", mimeType = "video/mp4", isMediaSource = mse)
+            viewModel.openQualitySheetFor(candidate)
+            assertEquals(UnsupportedMedia.BLOB_STREAM, viewModel.uiState.value.qualitySheet?.unsupported)
+            viewModel.handleFormatSelected(MediaFormat(id = "blob", format = "MP4", url = candidate.mediaUrl,
+                mimeType = "video/mp4", extension = "mp4", isVideo = true))
+        }
+        coVerify(exactly = 0) { mediaResolver.resolve(any()) }
+        coVerify(exactly = 0) { downloadRepository.addDownload(any()) }
+    }
+
+    @Test
+    fun `revoked blob is removed from foreground detection and quality selection`() {
+        val page = "https://example.com/feed"
+        viewModel.navigate(page)
+        val tab = viewModel.uiState.value.currentTabId!!
+        val candidate = MediaCandidate(pageUrl = page, mediaUrl = "blob:https://example.com/one", isMediaSource = true)
+        viewModel.onMediaIntercepted(tab, candidate)
+        viewModel.onVisibleMedia(tab, page, candidate.mediaUrl)
+        viewModel.openQualitySheetFor(candidate)
+        viewModel.onMediaExpired("background", page, candidate.mediaUrl)
+        assertNotNull(viewModel.uiState.value.qualitySheet)
+        viewModel.onMediaExpired(tab, page, candidate.mediaUrl)
+        assertNull(viewModel.uiState.value.qualitySheet)
+        assertNull(viewModel.uiState.value.visibleMediaUrl)
+        assertTrue(viewModel.uiState.value.detectedMedia.isEmpty())
+    }
+
+    @Test
+    fun `reload clears media and selection even when page URL is unchanged`() {
+        val page = "https://example.com/feed"
+        viewModel.navigate(page)
+        val tab = viewModel.uiState.value.currentTabId!!
+        val candidate = MediaCandidate(pageUrl = page, mediaUrl = "https://cdn.example/one.mp4")
+        viewModel.onMediaIntercepted(tab, candidate)
+        viewModel.onVisibleMedia(tab, page, candidate.mediaUrl)
+        viewModel.onPageStarted(tab, page)
+        assertNull(viewModel.uiState.value.visibleMediaUrl)
+        assertTrue(viewModel.uiState.value.detectedMedia.isEmpty())
+    }
+
+    @Test
+    fun `feed visible player changes without promoting unknown or stale media`() {
+        val page = "https://example.com/feed"
+        viewModel.navigate(page)
+        val tab = viewModel.uiState.value.currentTabId!!
+        val first = MediaCandidate(pageUrl = page, mediaUrl = "https://cdn.example/a.mp4", confidence = 0.8f)
+        val second = first.copy(id = "second", mediaUrl = "https://cdn.example/b.mp4", confidence = 0.7f)
+        viewModel.onVisibleMedia(tab, page, first.mediaUrl)
+        assertNull(viewModel.uiState.value.visibleMediaUrl) // a page cannot invent a download
+        viewModel.onMediaIntercepted(tab, first)
+        viewModel.onMediaIntercepted(tab, second)
+        viewModel.onVisibleMedia(tab, page, second.mediaUrl)
+        assertEquals(second.mediaUrl, viewModel.uiState.value.visibleMediaUrl)
+        assertEquals(second.mediaUrl, viewModel.uiState.value.detectedMedia.first().mediaUrl)
+        viewModel.onVisibleMedia(tab, page, first.mediaUrl)
+        assertEquals(first.mediaUrl, viewModel.uiState.value.visibleMediaUrl)
+        viewModel.navigate("https://example.com/next")
+        assertNull(viewModel.uiState.value.visibleMediaUrl)
+        assertTrue(viewModel.uiState.value.detectedMedia.isEmpty())
+        viewModel.onMediaIntercepted(tab, first)
+        viewModel.onVisibleMedia(tab, page, first.mediaUrl)
+        assertTrue(viewModel.uiState.value.detectedMedia.isEmpty())
+    }
+
+    @Test
+    fun `SPA history change drops media from the previous post`() {
+        val old = "https://example.com/post/one"
+        val next = "https://example.com/post/two"
+        viewModel.navigate(old)
+        val tab = viewModel.uiState.value.currentTabId!!
+        val candidate = MediaCandidate(pageUrl = old, mediaUrl = "https://cdn.example/one.mp4")
+        viewModel.onMediaIntercepted(tab, candidate)
+        viewModel.onVisibleMedia(tab, old, candidate.mediaUrl)
+        viewModel.onHistoryUrlChanged(tab, next)
+        assertEquals(next, viewModel.uiState.value.url)
+        assertTrue(viewModel.uiState.value.detectedMedia.isEmpty())
+        assertNull(viewModel.uiState.value.visibleMediaUrl)
+        viewModel.onMediaIntercepted(tab, candidate)
+        assertTrue(viewModel.uiState.value.detectedMedia.isEmpty())
+    }
+
+    @Test
+    fun `background tab and unrelated page cannot place media in foreground tray`() {
+        viewModel.navigate("https://example.com/feed")
+        val currentTab = viewModel.uiState.value.currentTabId!!
+        val candidate = MediaCandidate(pageUrl = "https://example.com/feed", mediaUrl = "https://cdn.example/a.mp4")
+        viewModel.onMediaIntercepted("other-tab", candidate)
+        viewModel.onMediaIntercepted(currentTab, candidate.copy(pageUrl = "https://example.com/old"))
+        assertTrue(viewModel.uiState.value.detectedMedia.isEmpty())
+    }
+
+    @Test
     fun `detected media is merged without duplicates`() {
+        viewModel.navigate("https://example.com")
         val candidate = MediaCandidate(
             pageUrl = "https://example.com",
             mediaUrl = "https://example.com/video.mp4",
@@ -319,8 +415,8 @@ class BrowserViewModelTest {
 
         assertFalse(viewModel.uiState.value.isMediaDetected)
 
-        viewModel.onMediaIntercepted(candidate)
-        viewModel.onMediaIntercepted(candidate)
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, candidate)
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, candidate)
 
         assertEquals(1, viewModel.uiState.value.detectedMedia.size)
         assertTrue(viewModel.uiState.value.isMediaDetected)
@@ -328,7 +424,8 @@ class BrowserViewModelTest {
 
     @Test
     fun `the tray opens for the page's media and a row fills the quality sheet`() {
-        viewModel.onMediaIntercepted(
+        viewModel.navigate("https://example.com")
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId,
             MediaCandidate(
                 pageUrl = "https://example.com",
                 mediaUrl = "https://example.com/video.mp4",
@@ -365,6 +462,7 @@ class BrowserViewModelTest {
 
     @Test
     fun `an mpeg-dash candidate is explained and never probed or queued`() {
+        viewModel.navigate("https://example.com/watch")
         val dash = MediaCandidate(
             pageUrl = "https://example.com/watch",
             mediaUrl = "https://example.com/manifest.mpd",
@@ -372,7 +470,7 @@ class BrowserViewModelTest {
             extension = "mpd",
             source = MediaSource.DOM
         )
-        viewModel.onMediaIntercepted(dash)
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, dash)
 
         viewModel.openQualitySheetFor(dash)
 
@@ -391,6 +489,7 @@ class BrowserViewModelTest {
 
     @Test
     fun `a live stream is refused before it reaches the resolver`() {
+        viewModel.navigate("https://example.com/live")
         val live = MediaCandidate(
             pageUrl = "https://example.com/live",
             mediaUrl = "https://example.com/live.m3u8",
@@ -399,7 +498,7 @@ class BrowserViewModelTest {
             isLive = true,
             source = MediaSource.DOM
         )
-        viewModel.onMediaIntercepted(live)
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, live)
 
         assertEquals(UnsupportedMedia.LIVE, viewModel.unsupportedReasonFor(live))
 

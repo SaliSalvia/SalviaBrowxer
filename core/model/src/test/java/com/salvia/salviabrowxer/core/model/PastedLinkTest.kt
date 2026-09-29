@@ -9,6 +9,40 @@ import org.junit.Test
 class PastedLinkTest {
 
     @Test
+    fun `social hosts are pages even when their paths name a container`() {
+        for (host in listOf("instagram.com", "tiktok.com", "youtube.com", "youtu.be", "facebook.com", "x.com")) {
+            for (prefix in listOf("", "www.", "m.")) {
+                val url = "https://$prefix$host/clip.mp4"
+                assertEquals(url, PastedLinkKind.WEB_PAGE, PastedLink.classify(url))
+                assertNull(url, PastedLink.mediaCandidate(url))
+                assertTrue(url, !PastedLink.isMediaFile(url))
+            }
+        }
+        assertEquals(PastedLinkKind.WEB_PAGE, PastedLink.classify("https://YouTube.COM./clip.mp4"))
+    }
+
+    @Test
+    fun `social names in an unrelated host path or query do not block real files`() {
+        for (url in listOf(
+            "https://notyoutube.com/clip.mp4",
+            "https://youtube.com.example.org/clip.mp4",
+            "https://cdn.example.org/youtube.com/clip.mp4?source=instagram.com"
+        )) assertEquals(url, PastedLinkKind.MEDIA_FILE, PastedLink.classify(url))
+    }
+
+    @Test
+    fun `malformed and credential bearing links do not become candidates`() {
+        for (url in listOf(
+            "https:clip.mp4", "https:///clip.mp4", "https://bad host/clip.mp4",
+            "https://youtube.com@cdn.example.org/clip.mp4", "https://example.org:99999/clip.mp4"
+        )) {
+            assertNull(url, PastedLink.classify(url))
+            assertNull(url, PastedLink.mediaCandidate(url))
+            assertTrue(url, !PastedLink.isMediaFile(url))
+        }
+    }
+
+    @Test
     fun `only web links are classified`() {
         assertNull(PastedLink.classify(""))
         assertNull(PastedLink.classify("   "))

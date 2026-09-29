@@ -207,6 +207,7 @@ private fun formatDuration(milliseconds: Long): String {
 private fun reasonLabelRes(reason: UnsupportedMedia): Int = when (reason) {
     UnsupportedMedia.DASH -> R.string.error_dash_unsupported
     UnsupportedMedia.LIVE -> R.string.error_live_unsupported
+    UnsupportedMedia.BLOB_STREAM -> R.string.error_blob_stream_unsupported
 }
 
 

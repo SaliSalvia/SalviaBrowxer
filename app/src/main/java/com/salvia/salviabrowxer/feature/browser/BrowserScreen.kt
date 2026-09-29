@@ -124,10 +124,13 @@ fun BrowserScreen(
             callbacks = object : TabWebViewStore.Callbacks {
                 override fun onPageStarted(tabId: String, url: String) = viewModel.onPageStarted(tabId, url)
                 override fun onPageFinished(tabId: String, url: String, title: String?) = viewModel.onPageFinished(tabId, url, title)
+                override fun onHistoryUrlChanged(tabId: String, url: String) = viewModel.onHistoryUrlChanged(tabId, url)
                 override fun onProgress(tabId: String, progress: Int) = viewModel.onProgressChanged(tabId, progress)
                 override fun onNavigationState(tabId: String, canGoBack: Boolean, canGoForward: Boolean) = viewModel.updateNavigationState(tabId, canGoBack, canGoForward)
                 override fun onPageHtml(tabId: String, pageUrl: String, html: String) = viewModel.onPageHtml(tabId, pageUrl, html)
-                override fun onMediaDetected(candidate: MediaCandidate) = viewModel.onMediaIntercepted(candidate)
+                override fun onMediaDetected(tabId: String, candidate: MediaCandidate) = viewModel.onMediaIntercepted(tabId, candidate)
+                override fun onVisibleMedia(tabId: String, pageUrl: String, mediaUrl: String) = viewModel.onVisibleMedia(tabId, pageUrl, mediaUrl)
+                override fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String) = viewModel.onMediaExpired(tabId, pageUrl, mediaUrl)
                 override fun onBlobCaptured(pageUrl: String, blobUrl: String, file: File, mimeType: String) = viewModel.onBlobCaptured(pageUrl, blobUrl, file, mimeType)
                 override fun onTabHibernated(tabId: String, url: String, title: String) = viewModel.onTabHibernated(tabId, url, title)
                 override fun onFindResult(tabId: String, matches: Int, activeMatch: Int) = viewModel.onFindResult(tabId, matches, activeMatch)
@@ -423,6 +426,7 @@ fun BrowserScreen(
         if (state.isMediaTrayVisible) {
             MediaTraySheet(
                 candidates = state.detectedMedia,
+                visibleMediaUrl = state.visibleMediaUrl,
                 unsupportedReason = remember(viewModel) { { candidate -> viewModel.unsupportedReasonFor(candidate) } },
                 onSelect = remember(viewModel) { { candidate -> viewModel.openQualitySheetFor(candidate) } },
                 onDismiss = remember(viewModel) { { viewModel.closeMediaTray() } }

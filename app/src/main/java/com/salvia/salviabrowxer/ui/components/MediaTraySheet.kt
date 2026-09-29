@@ -68,6 +68,7 @@ import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 @Composable
 fun MediaTraySheet(
     candidates: List<MediaCandidate>,
+    visibleMediaUrl: String?,
     unsupportedReason: (MediaCandidate) -> UnsupportedMedia?,
     onSelect: (MediaCandidate) -> Unit,
     onDismiss: () -> Unit
@@ -119,9 +120,11 @@ fun MediaTraySheet(
                             contentPadding = PaddingValues(vertical = 2.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            items(candidates, key = { it.id }) { candidate ->
+                            items(candidates.sortedWith(compareByDescending<MediaCandidate> { it.mediaUrl == visibleMediaUrl }
+                                .thenByDescending { it.confidence }), key = { it.id }) { candidate ->
                                 MediaTrayRow(
                                     candidate = candidate,
+                                    isVisible = candidate.mediaUrl == visibleMediaUrl,
                                     reason = unsupportedReason(candidate),
                                     onSelect = { onSelect(candidate) }
                                 )
@@ -135,7 +138,7 @@ fun MediaTraySheet(
 }
 
 @Composable
-private fun MediaTrayRow(candidate: MediaCandidate, reason: UnsupportedMedia?, onSelect: () -> Unit) {
+private fun MediaTrayRow(candidate: MediaCandidate, isVisible: Boolean, reason: UnsupportedMedia?, onSelect: () -> Unit) {
     val kind = MediaOfferability.kindOf(candidate.mimeType, candidate.extension)
     val title = candidate.title?.takeIf { it.isNotBlank() } ?: filenameOf(candidate.mediaUrl)
     val extension = candidate.extension?.takeIf { it.isNotBlank() }?.uppercase()
@@ -168,6 +171,9 @@ private fun MediaTrayRow(candidate: MediaCandidate, reason: UnsupportedMedia?, o
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
+            if (isVisible) {
+                Text(stringResource(R.string.media_on_screen), style = MaterialTheme.typography.labelSmall, color = AuroraTeal)
+            }
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
@@ -218,6 +224,7 @@ private fun kindLabelRes(kind: MediaKind): Int = when (kind) {
 private fun reasonLabelRes(reason: UnsupportedMedia): Int = when (reason) {
     UnsupportedMedia.DASH -> R.string.error_dash_unsupported
     UnsupportedMedia.LIVE -> R.string.error_live_unsupported
+    UnsupportedMedia.BLOB_STREAM -> R.string.error_blob_stream_unsupported
 }
 
 private fun filenameOf(url: String): String =
