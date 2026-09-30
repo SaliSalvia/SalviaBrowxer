@@ -4,11 +4,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 // ── Core Neutrals ──
-val MatteCharcoal = Color(0xFF0A0A0C)       // مشکی زغالی عمیق
-val DeepCharcoal = Color(0xFF141418)       // ذغال نیمه‌روشن
-val CharcoalSurface = Color(0xFF1C1C20)    // سطح کارت
-val CharcoalElevated = Color(0xFF26262C)   // سطح برجسته
-val CharcoalBorder = Color(0xFF2E2E34)     // مرزبندی
+val MatteCharcoal = Color(0xFF0B0B0F)       // مشکی زغالی عمیق
+val DeepCharcoal = Color(0xFF15151A)       // ذغال نیمه‌روشن
+val CharcoalSurface = Color(0xFF1D1D22)    // سطح کارت
+val CharcoalElevated = Color(0xFF232329)   // سطح برجسته
+val CharcoalBorder = Color(0xFF2D2D34)     // مرزبندی
 
 // ── Pearl White (سفید صدفی ۷ رنگ) ──
 val PearlWhite = Color(0xFFF8F7F4)
@@ -60,6 +60,11 @@ val BlushPinkContainer = Color(0xFF2B1521)
 // ── Nebula surfaces (سطوح بنفش سحابی روی ذغال) ──
 val NebulaMist = Color(0xFF241A3E)
 val NebulaEdge = Color(0xFF3B2A66)
+
+// ── Surface micro-contrast (refinement layer, kept subtle) ──
+val SurfaceField = Color(0xFF26262D)        // inside paste / search fields
+val SurfaceRow = Color(0xFF1A1A20)          // 목록 행 안쪽 면
+val SurfaceInk = SilverMid                  // 보조 텍스트의 실제 조도 기준
 
 // ── Semantic Mappings ──
 val Primary = AuroraTeal
@@ -183,3 +188,15 @@ val SplashNebulaBrush = Brush.radialGradient(
     colors = listOf(NebulaMist, DeepCharcoal, MatteCharcoal),
     radius = 900f
 )
+
+// ── Micro-animations ──
+// A field border does not jump between neutral and focused; it breathes there, which is what makes
+// focus feel like a surface change instead of a state machine.
+val AuroraTealFieldFocus = AuroraTeal.copy(alpha = 0.85f)
+val AuroraTealFieldRest = AuroraTeal.copy(alpha = 0.18f)
+val AuroraTealSurface = AuroraTeal.copy(alpha = 0.10f)
+val AuroraTealRing = AuroraTeal.copy(alpha = 0.40f)
+val NebulaVioletSurface = NebulaViolet.copy(alpha = 0.10f)
+val PearlFieldHint = SilverDeep.copy(alpha = 0.85f)
+val EmptySurface = CharcoalSurface.copy(alpha = 0.75f)
+
