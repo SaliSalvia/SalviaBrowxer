@@ -69,30 +69,36 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.components.DownloadItem
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.AuroraTealFieldFocus
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
+import com.salvia.salviabrowxer.ui.theme.EmptySurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletContainer
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
+import com.salvia.salviabrowxer.ui.theme.PearlFieldHint
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverDeep
 import com.salvia.salviabrowxer.ui.theme.SilverMid
+import com.salvia.salviabrowxer.ui.theme.SurfaceField
 import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * The home screen: paste a link, and watch what is downloading.
+ * The home screen: the product's front door.
  *
- * The paste field is deliberately the first thing on the screen and there is exactly one decision
- * behind it. A URL that already names a file (`…/clip.mp4`, `…/master.m3u8`) goes straight to the
- * quality sheet, because there is nothing to discover. Anything else is a page, and this app has no
- * site-specific extractors by design, so the honest thing is to open it and let the media tray find
- * what the page exposes — which is why the button's label changes with the link instead of
- * promising a download that a page cannot produce.
+ * A downloader's entry point is the link, so the paste card is the first and loudest thing on the
+ * screen and every other element on it is there to answer three questions: what was pasted, what
+ * the app will do about it, and whether anything is already downloading. There is exactly one
+ * decision behind the primary action: a URL that already names a file (`…/clip.mp4`,
+ * `…/master.m3u8`) goes straight to the quality sheet, because there is nothing to discover. Anything
+ * else is a page, and this app has no site-specific extractors by design, so the honest thing is to
+ * open it and let the media tray find what the page exposes — which is why the button's label changes
+ * with the link instead of promising a download that a page cannot produce.
  */
 @Composable
 fun HomeScreen(
@@ -128,15 +134,14 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
             HomeHeader(onNavigateToBrowser = onNavigateToBrowser)
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-            ) {
-                Spacer(Modifier.height(16.dp))
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Spacer(Modifier.height(20.dp))
                 PasteCard(
                     state = state,
                     fieldLabel = onPasteTitle,
@@ -147,18 +152,19 @@ fun HomeScreen(
                     onDismissSuggestion = viewModel::dismissClipboardSuggestion,
                     onSubmit = submit
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 Text(
                     text = stringResource(R.string.home_how_it_works),
                     style = MaterialTheme.typography.bodySmall,
                     color = SilverDeep
                 )
-                Spacer(Modifier.height(22.dp))
+                Spacer(Modifier.height(24.dp))
                 ActiveDownloads(state = state, viewModel = viewModel, onNavigateToDownloads = onNavigateToDownloads)
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(24.dp))
             }
+            Spacer(Modifier.height(8.dp))
         }
-        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
     }
 }
 
@@ -166,10 +172,10 @@ fun HomeScreen(
 private fun HomeHeader(onNavigateToBrowser: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 16.dp, end = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OrbitalBrandMark(size = 34.dp, animate = false)
+            OrbitalBrandMark(size = 34.dp, animate = false, glowIntensity = 0.85f)
             Spacer(Modifier.width(10.dp))
             Text(
                 text = stringResource(R.string.app_name),
@@ -182,7 +188,12 @@ private fun HomeHeader(onNavigateToBrowser: () -> Unit) {
                 Icon(Icons.Default.Public, stringResource(R.string.home_open_browser), tint = PearlWhite)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 1.dp, max = 1.dp)
+                .background(PearlEdgeBrush)
+        )
     }
 }
 
@@ -199,16 +210,16 @@ private fun PasteCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val borderColor by animateColorAsState(
-        targetValue = if (focused) AuroraTeal else CharcoalBorder,
+        targetValue = if (focused) AuroraTealFieldFocus else CharcoalBorder,
         label = "pasteFieldBorder"
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(CharcoalElevated)
-            .padding(16.dp)
+            .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Link, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
@@ -220,15 +231,15 @@ private fun PasteCard(
                 letterSpacing = 0.6.sp
             )
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(DeepCharcoal)
+                .background(SurfaceField)
                 .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-                .padding(start = 12.dp, end = 4.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.weight(1f)) {
@@ -250,7 +261,7 @@ private fun PasteCard(
                                 Text(
                                     text = stringResource(R.string.home_paste_hint),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = SilverDeep
+                                    color = PearlFieldHint
                                 )
                             }
                             inner()
@@ -277,10 +288,10 @@ private fun PasteCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp)
+                    .padding(top = 14.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(NebulaVioletContainer)
-                    .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Default.ContentPaste, contentDescription = null, tint = NebulaVioletLight, modifier = Modifier.size(18.dp))
@@ -312,11 +323,14 @@ private fun PasteCard(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
         Button(
             onClick = onSubmit,
             enabled = state.input.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(14.dp)),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = AuroraTeal,
@@ -368,22 +382,12 @@ private fun ActiveDownloads(
         Spacer(Modifier.height(8.dp))
 
         if (state.active.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(CharcoalSurface)
-                    .padding(18.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.home_active_empty),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SilverMid
-                )
-            }
+            CardEmpty(
+                text = stringResource(R.string.home_active_empty)
+            )
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                state.active.forEach { download ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.active.take(3).forEach { download ->
                     DownloadItem(
                         download = download,
                         // Only in-flight rows appear here, and a finished row leaves as soon as the
@@ -398,5 +402,22 @@ private fun ActiveDownloads(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CardEmpty(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(EmptySurface)
+            .padding(18.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = SilverMid
+        )
     }
 }

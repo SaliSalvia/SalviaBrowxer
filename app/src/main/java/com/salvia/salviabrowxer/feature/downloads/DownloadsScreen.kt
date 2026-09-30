@@ -139,11 +139,24 @@ private fun DownloadList(items: List<DownloadEntity>, viewModel: DownloadsViewMo
 
 @Composable
 fun EmptyDownloadsState(icon: ImageVector, message: String) {
-    Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(imageVector = icon, contentDescription = null, tint = SilverMid.copy(alpha = 0.6f), modifier = Modifier.size(56.dp))
+    Box(modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(28.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = SilverMid.copy(alpha = 0.55f),
+                modifier = Modifier.size(52.dp)
+            )
             Spacer(Modifier.height(12.dp))
-            Text(text = message, style = MaterialTheme.typography.bodyMedium, color = SilverMid)
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SilverMid
+            )
         }
     }
 }
