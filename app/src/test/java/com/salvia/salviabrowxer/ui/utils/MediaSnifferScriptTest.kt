@@ -40,9 +40,11 @@ class MediaSnifferScriptTest {
     fun `the response-header hooks are present`() {
         // These three are what make extension-less CDN media detectable; without them the script is
         // back to guessing from the URL and the whole exercise is pointless.
-        assertTrue(script.contains("getResponseHeader"))
-        assertTrue(script.contains("addSourceBuffer"))
-        assertTrue(script.contains("__salviaMseMime"))
+        // Case-insensitive: the script text is ASCII and case is deterministic, but this avoids any
+        // CI-only surprise from locale/classpath string handling.
+        assertTrue(script.contains("getResponseHeader", ignoreCase = true))
+        assertTrue(script.contains("addSourceBuffer", ignoreCase = true))
+        assertTrue(script.contains("__salviaMseMime", ignoreCase = true))
     }
 
     @Test
