@@ -40,9 +40,12 @@ class MediaSnifferScriptTest {
     fun `the response-header hooks are present`() {
         // These three are what make extension-less CDN media detectable; without them the script is
         // back to guessing from the URL and the whole exercise is pointless.
+        // One hook per loader: XHR, fetch, and MSE (which learns the codec from the SourceBuffer
+        // it was handed). MSE mime is tracked per MediaSource now, so there is no page global
+        // left to assert on.
         assertTrue(script.contains("getResponseHeader"))
+        assertTrue(script.contains("headers.get"))
         assertTrue(script.contains("addSourceBuffer"))
-        assertTrue(script.contains("__salviaMseMime"))
     }
 
     @Test

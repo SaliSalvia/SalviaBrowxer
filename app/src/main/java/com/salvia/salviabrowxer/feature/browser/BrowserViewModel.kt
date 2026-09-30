@@ -146,6 +146,10 @@ class BrowserViewModel @Inject constructor(
         // The stored homepage may differ from the placeholder. Only follow it while the user has
         // not navigated yet, so a slow settings read can never clobber a page the user opened.
         val startupUrl = Constants.DEFAULT_HOMEPAGE
+        // The values the UI opens with, captured before the read starts. The update below uses
+        // them to tell a field the user has since changed apart from one still holding its
+        // placeholder, so a slow read can never rewind a control the user already moved.
+        val startup = _uiState.value
         viewModelScope.launch(Dispatchers.IO) {
             val homepage = runCatching { settingsDataStore.homepage.first() }.getOrNull()?.takeIf { it.isNotBlank() } ?: Constants.DEFAULT_HOMEPAGE
             val engine = runCatching { settingsDataStore.searchEngine.first() }.getOrNull() ?: Constants.DEFAULT_SEARCH_ENGINE
@@ -157,11 +161,14 @@ class BrowserViewModel @Inject constructor(
             val fabSize = runCatching { settingsDataStore.floatingButtonSize.first() }.getOrNull() ?: 56
             val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: false
             val cleartextAllowed = runCatching { settingsDataStore.isCleartextAllowed.first() }.getOrNull() ?: false
-            _uiState.update {
-                it.copy(
+            _uiState.update { state ->
+                state.copy(
                     homepage = homepage, searchEngine = engine, isJavaScriptEnabled = jsEnabled,
-                    areCookiesEnabled = cookiesEnabled, isDesktopSite = desktop, fabPosition = FabPosition(fabX, fabY), floatingButtonSize = fabSize.coerceIn(40, 72),
-                    isFabAlwaysVisible = fabAlways, isCleartextAllowed = cleartextAllowed
+                    areCookiesEnabled = cookiesEnabled,
+                    isDesktopSite = if (state.isDesktopSite == startup.isDesktopSite) desktop else state.isDesktopSite,
+                    fabPosition = if (state.fabPosition == startup.fabPosition) FabPosition(fabX, fabY) else state.fabPosition,
+                    floatingButtonSize = fabSize.coerceIn(40, 72), isFabAlwaysVisible = fabAlways,
+                    isCleartextAllowed = if (state.isCleartextAllowed == startup.isCleartextAllowed) cleartextAllowed else state.isCleartextAllowed
                 )
             }
             if (homepage != startupUrl && _uiState.value.url == startupUrl) navigate(homepage)
