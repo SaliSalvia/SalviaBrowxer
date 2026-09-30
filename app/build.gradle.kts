@@ -112,6 +112,8 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric needs the merged resources to build its runtime environment.
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -161,6 +163,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.2.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Robolectric runs the real framework code on the JVM at a chosen SDK level, which is the only
+    // way to exercise the API 24–28 media-store export path without a device.
+    testImplementation("org.robolectric:robolectric:4.13")
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("org.mockito:mockito-core:5.3.1")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")

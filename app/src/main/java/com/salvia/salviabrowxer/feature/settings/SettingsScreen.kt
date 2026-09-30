@@ -207,6 +207,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryPath.ifBlank { stringResource(R.string.settings_download_directory_hint) })
                 SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), stringResource(R.string.settings_downloads_at_a_time, state.maxSimultaneousDownloads)) { dialog = SettingsDialog.Downloads }
                 SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint), state.isWifiOnly) { viewModel.updateWifiOnly(it) }
+                SwitchSettingsItem(Icons.Default.Folder, stringResource(R.string.settings_export_to_gallery), stringResource(R.string.settings_export_to_gallery_hint), state.isExportToGallery) { viewModel.updateExportToGallery(it) }
                 SettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_connection_label), connectionLabel(connectionKind))
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Nightlight, stringResource(R.string.settings_appearance))

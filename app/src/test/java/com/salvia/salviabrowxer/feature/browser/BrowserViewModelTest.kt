@@ -461,7 +461,7 @@ class BrowserViewModelTest {
     }
 
     @Test
-    fun `an mpeg-dash candidate is explained and never probed or queued`() {
+    fun `an mpeg-dash candidate is probed, and refused only when nothing can be segmented`() {
         viewModel.navigate("https://example.com/watch")
         val dash = MediaCandidate(
             pageUrl = "https://example.com/watch",
@@ -474,12 +474,16 @@ class BrowserViewModelTest {
 
         viewModel.openQualitySheetFor(dash)
 
+        // A clear, static manifest is segmented by the downloader now, so the sheet probes it
+        // instead of refusing it up front like a live or unproven blob stream.
+        coVerify { mediaResolver.resolve(any()) }
+
+        // The relaxed resolver returns a MediaInfo with no usable formats: that is exactly the
+        // dynamic/DRM/unsupported-manifest case, and it must become the honest refusal.
         val sheet = viewModel.uiState.value.qualitySheet
         assertEquals(UnsupportedMedia.DASH, sheet?.unsupported)
         assertFalse(sheet?.isResolving == true)
         assertTrue(sheet?.mediaInfo?.combinedFormats.isNullOrEmpty())
-        // Nothing to probe: the sheet must not wait on a network call to say no.
-        coVerify(exactly = 0) { mediaResolver.resolve(any()) }
 
         viewModel.handleFormatSelected(
             MediaFormat(id = dash.mediaUrl, format = "MPD", url = dash.mediaUrl, mimeType = "application/dash+xml", extension = "mpd", isVideo = true)

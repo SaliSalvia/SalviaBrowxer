@@ -8,6 +8,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        Only for the explicit "Save to gallery" action on Android 9 and below, which publishes into
+        the public Movies/Music folders. Android 10+ uses MediaStore and needs no permission, and the
+        automatic post-download export never asks: it is skipped when this is not granted.
+        maxSdkVersion keeps the request off modern devices entirely.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <!--
         usesCleartextTraffic is on because the manifest cannot read a user preference: the real

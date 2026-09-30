@@ -42,5 +42,14 @@ data class DownloadEntity(
     val thumbnail: String? = null,
     val selectedQuality: String? = null,
     val temporaryPath: String? = null,
-    val finalPath: String? = null
+    val finalPath: String? = null,
+    /**
+     * Encodes which DASH rendition(s) a queued transfer wants (see `DashRenditionId`). Null for
+     * every direct and HLS download; the manifest itself is re-fetched from `url` at transfer time.
+     */
+    val renditionId: String? = null,
+    /** Content URI in the shared media store once the file has been published to the gallery. */
+    val exportedUri: String? = null,
+    /** Duration read from the finished file, for the library rows. */
+    val durationMs: Long? = null
 )

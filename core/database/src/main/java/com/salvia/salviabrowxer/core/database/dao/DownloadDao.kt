@@ -86,6 +86,32 @@ interface DownloadDao {
         updatedAt: Long
     )
 
+    /**
+     * Writes the artefacts produced after a transfer finishes: the final file, its container, the
+     * duration and thumbnail read from it, and the gallery URI it was published to. COALESCE keeps
+     * whatever was already there for the values a caller does not have.
+     */
+    @Query(
+        "UPDATE downloads SET " +
+            "finalPath = COALESCE(:finalPath, finalPath), " +
+            "filename = COALESCE(:filename, filename), " +
+            "mimeType = COALESCE(:mimeType, mimeType), " +
+            "durationMs = COALESCE(:durationMs, durationMs), " +
+            "thumbnail = COALESCE(:thumbnail, thumbnail), " +
+            "exportedUri = COALESCE(:exportedUri, exportedUri), " +
+            "updatedAt = :updatedAt WHERE id = :id"
+    )
+    suspend fun updateArtifacts(
+        id: String,
+        finalPath: String?,
+        filename: String?,
+        mimeType: String?,
+        durationMs: Long?,
+        thumbnail: String?,
+        exportedUri: String?,
+        updatedAt: Long
+    )
+
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun delete(id: String)
 

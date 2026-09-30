@@ -1,5 +1,7 @@
 package com.salvia.salviabrowxer.feature.downloads
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,6 +73,16 @@ fun DownloadsScreen(
     LaunchedEffect(Unit) {
         viewModel.playRequest.receiveAsFlow().collectLatest { (path, title) -> onPlayInApp(path, title) }
     }
+    // Android 9 and below needs WRITE_EXTERNAL_STORAGE to publish into the public Movies/Music
+    // folders. The view model only asks when a user-initiated export actually requires it.
+    val exportPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        viewModel.onExportPermissionResult(granted)
+    }
+    LaunchedEffect(Unit) {
+        viewModel.exportPermissionRequest.collectLatest { permission ->
+            if (permission.isNotBlank()) exportPermissionLauncher.launch(permission)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -131,7 +143,8 @@ private fun DownloadList(items: List<DownloadEntity>, viewModel: DownloadsViewMo
                 onCancelClick = { viewModel.cancelDownload(download.id) },
                 onRetryClick = { viewModel.retryDownload(download.id) },
                 onDeleteClick = { viewModel.deleteDownload(download.id) },
-                onShareClick = { viewModel.shareDownload(download.id) }
+                onShareClick = { viewModel.shareDownload(download.id) },
+                onExportClick = { viewModel.exportDownload(download.id) }
             )
         }
     }

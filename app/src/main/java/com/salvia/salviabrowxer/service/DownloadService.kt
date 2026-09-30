@@ -19,8 +19,12 @@ import com.salvia.salviabrowxer.MainActivity
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.concurrent.SlotLimiter
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
+import com.salvia.salviabrowxer.core.model.DashRenditionId
+import com.salvia.salviabrowxer.core.model.DashSelection
 import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
+import com.salvia.salviabrowxer.core.model.MediaUrlRules
+import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.media.downloader.AbortReason
@@ -28,7 +32,12 @@ import com.salvia.salviabrowxer.media.downloader.DownloadAbortedException
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
 import com.salvia.salviabrowxer.media.downloader.FileDownload
 import com.salvia.salviabrowxer.media.downloader.DownloadSnapshot
+import com.salvia.salviabrowxer.media.downloader.DashDownloader
+import com.salvia.salviabrowxer.media.downloader.DownloadResult
 import com.salvia.salviabrowxer.media.downloader.HlsDownloader
+import com.salvia.salviabrowxer.media.downloader.MediaMetadataReader
+import com.salvia.salviabrowxer.media.downloader.MediaRemuxer
+import com.salvia.salviabrowxer.media.downloader.TrackMerger
 import com.salvia.salviabrowxer.ui.utils.formatFileSize
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
@@ -51,6 +60,11 @@ class DownloadService : Service() {
     @Inject lateinit var downloadRepository: DownloadRepository
     @Inject lateinit var downloadManager: DownloadManager
     @Inject lateinit var hlsDownloader: HlsDownloader
+    @Inject lateinit var dashDownloader: DashDownloader
+    @Inject lateinit var mediaRemuxer: MediaRemuxer
+    @Inject lateinit var trackMerger: TrackMerger
+    @Inject lateinit var mediaMetadataReader: MediaMetadataReader
+    @Inject lateinit var mediaStoreExporter: MediaStoreExporter
     @Inject lateinit var settingsDataStore: SettingsDataStore
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -192,32 +206,29 @@ class DownloadService : Service() {
                 downloadRepository.updateDownload(preparing)
                 refreshSummaryThrottled(force = true)
 
-                val isHls = finalUrl.contains(".m3u8", ignoreCase = true) ||
-                    (stored.mimeType?.contains("mpegurl", ignoreCase = true) == true)
-
-                val result = if (isHls) {
-                    hlsDownloader.download(
-                        download = FileDownload(id = stored.id, url = finalUrl, directory = stored.destination, filename = stored.filename),
-                        onProgress = { snapshot ->
-                            handleProgress(downloadId, snapshot)
-                            refreshSummaryThrottled()
-                        },
-                        shouldAbort = { abortReasonFor(downloadId) }
-                    )
-                } else {
-                    downloadManager.download(
-                        download = FileDownload(id = stored.id, url = finalUrl, directory = stored.destination, filename = stored.filename),
-                        onProgress = { snapshot ->
-                            handleProgress(downloadId, snapshot)
-                            refreshSummaryThrottled()
-                        },
-                        shouldAbort = { abortReasonFor(downloadId) }
-                    )
+                // Three real paths, chosen by what the row is: a DASH rendition (the manifest is
+                // re-read here), an HLS playlist, or a plain single-file transfer.
+                val dashSelection = DashRenditionId.parse(stored.renditionId)
+                val transfer = when {
+                    dashSelection != null -> downloadDashRendition(stored, downloadId, finalUrl, dashSelection)
+                    isHlsStream(finalUrl, stored.mimeType) -> downloadHlsStream(stored, downloadId, finalUrl)
+                    else -> directTransfer(stored, downloadId, finalUrl)
                 }
-                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.COMPLETED, downloadedBytes = result.bytesWritten, totalBytes = result.totalBytes, finalPath = result.file.absolutePath, mimeType = result.contentType)
+
+                val finalized = finalizeTransfer(stored, transfer)
+                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.COMPLETED, downloadedBytes = finalized.file.length(), totalBytes = finalized.file.length(), finalPath = finalized.file.absolutePath, mimeType = finalized.mimeType)
+                downloadRepository.updateDownloadArtifacts(
+                    id = downloadId,
+                    finalPath = finalized.file.absolutePath,
+                    filename = finalized.file.name,
+                    mimeType = finalized.mimeType,
+                    durationMs = finalized.durationMs,
+                    thumbnail = finalized.thumbnailPath,
+                    exportedUri = finalized.exportedUri
+                )
                 temporaryPathFor(stored).delete()
-                scanFile(result.file)
-                notifyCompleted(stored, result.file)
+                scanFile(finalized.file)
+                notifyCompleted(stored, finalized.file)
             } catch (aborted: DownloadAbortedException) {
                 if (aborted.reason == AbortReason.CANCELLED) { temporaryPathFor(stored).delete(); downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel)) }
                 else downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
@@ -228,6 +239,145 @@ class DownloadService : Service() {
         } finally {
             limiter.release()
         }
+    }
+
+    /** What a transfer produced, and whether a container rewrite is still owed on it. */
+    private class Transfer(val file: File, val contentType: String?, val remuxToMp4: Boolean)
+
+    private class Finalized(
+        val file: File,
+        val mimeType: String?,
+        val durationMs: Long?,
+        val thumbnailPath: String?,
+        val exportedUri: String?
+    )
+
+    private fun baseName(filename: String): String = filename.substringBeforeLast('.', filename).ifBlank { "download" }
+
+    private fun isHlsStream(finalUrl: String, mimeType: String?): Boolean =
+        finalUrl.contains(".m3u8", ignoreCase = true) || mimeType?.contains("mpegurl", ignoreCase = true) == true
+
+    private suspend fun directTransfer(stored: DownloadEntity, downloadId: String, finalUrl: String): Transfer {
+        val result = downloadManager.download(
+            download = FileDownload(id = stored.id, url = finalUrl, directory = stored.destination, filename = stored.filename),
+            onProgress = { snapshot ->
+                handleProgress(downloadId, snapshot)
+                refreshSummaryThrottled()
+            },
+            shouldAbort = { abortReasonFor(downloadId) }
+        )
+        return Transfer(result.file, result.contentType, remuxToMp4 = false)
+    }
+
+    private suspend fun downloadHlsStream(stored: DownloadEntity, downloadId: String, finalUrl: String): Transfer {
+        val base = baseName(stored.filename)
+        // The playlist is assembled as a raw transport stream; it becomes an MP4 in finalizeTransfer.
+        val result = hlsDownloader.download(
+            download = FileDownload(id = stored.id, url = finalUrl, directory = stored.destination, filename = "$base.hls.ts"),
+            onProgress = { snapshot ->
+                handleProgress(downloadId, snapshot)
+                refreshSummaryThrottled()
+            },
+            shouldAbort = { abortReasonFor(downloadId) }
+        )
+        return Transfer(result.file, result.contentType ?: "video/mp2t", remuxToMp4 = true)
+    }
+
+    /** Re-reads the manifest and downloads the chosen DASH representation(s). */
+    private suspend fun downloadDashRendition(
+        stored: DownloadEntity,
+        downloadId: String,
+        manifestUrl: String,
+        selection: DashSelection
+    ): Transfer {
+        val userAgent = FileDownload.DEFAULT_DOWNLOAD_USER_AGENT
+        val manifest = dashDownloader.fetchManifest(manifestUrl, userAgent, null)
+            ?: throw IOException(getString(R.string.error_dash_unsupported))
+        val base = baseName(stored.filename)
+        val directory = File(stored.destination).also { if (!it.exists()) it.mkdirs() }
+        val progress: suspend (DownloadSnapshot) -> Unit = { snapshot ->
+            handleProgress(downloadId, snapshot)
+            refreshSummaryThrottled()
+        }
+        val abort: suspend () -> AbortReason? = { abortReasonFor(downloadId) }
+
+        return when (selection) {
+            is DashSelection.Video -> {
+                val representation = manifest.representationById(selection.videoId)
+                    ?: throw IOException("DASH video rendition is no longer in the manifest")
+                val result = dashDownloader.downloadRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, null, onProgress = progress, shouldAbort = abort)
+                Transfer(result.file, representation.mimeType, remuxToMp4 = true)
+            }
+            is DashSelection.Audio -> {
+                val representation = manifest.representationById(selection.audioId)
+                    ?: throw IOException("DASH audio rendition is no longer in the manifest")
+                val result = dashDownloader.downloadRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, null, onProgress = progress, shouldAbort = abort)
+                Transfer(result.file, representation.mimeType, remuxToMp4 = true)
+            }
+            is DashSelection.Merged -> {
+                val videoRepresentation = manifest.representationById(selection.videoId)
+                    ?: throw IOException("DASH video rendition is no longer in the manifest")
+                val audioRepresentation = manifest.representationById(selection.audioId)
+                    ?: throw IOException("DASH audio rendition is no longer in the manifest")
+                val videoRaw = File(directory, "$base.video.tmp")
+                val audioRaw = File(directory, "$base.audio.tmp")
+                dashDownloader.downloadRepresentation(videoRepresentation, videoRaw, userAgent, null, onProgress = progress, shouldAbort = abort)
+                dashDownloader.downloadRepresentation(audioRepresentation, audioRaw, userAgent, null, onProgress = progress, shouldAbort = abort)
+                val merged = DownloadManager.nonConflicting(File(directory, "$base.mp4"))
+                if (trackMerger.merge(videoRaw, audioRaw, merged)) {
+                    videoRaw.delete(); audioRaw.delete()
+                    // MediaMuxer already wrote a plain MP4, so no further container rewrite is due.
+                    Transfer(merged, "video/mp4", remuxToMp4 = false)
+                } else {
+                    // Honest fallback: keep the picture (renamed to a real container) and drop the
+                    // separate audio track rather than failing the whole download.
+                    audioRaw.delete()
+                    val videoOnly = DownloadManager.nonConflicting(File(directory, "$base.mp4"))
+                    val moved = videoRaw.renameTo(videoOnly) || runCatching {
+                        videoRaw.copyTo(videoOnly, overwrite = true)
+                        videoRaw.delete()
+                        true
+                    }.getOrDefault(false)
+                    Transfer(if (moved) videoOnly else videoRaw, videoRepresentation.mimeType, remuxToMp4 = false)
+                }
+            }
+        }
+    }
+
+    /**
+     * Turns a finished transfer into the file the user actually keeps: a segmented stream is remuxed
+     * into MP4, the duration and a frame are read locally, and the result is published to the shared
+     * media store when the user has that on. Every step is best-effort; none may lose the download.
+     */
+    private suspend fun finalizeTransfer(stored: DownloadEntity, transfer: Transfer): Finalized {
+        val directory = File(stored.destination)
+        val base = baseName(stored.filename)
+        var file = transfer.file
+        var mimeType = transfer.contentType
+
+        if (transfer.remuxToMp4) {
+            downloadRepository.updateDownloadState(stored.id, DownloadState.PROCESSING)
+            refreshSummaryThrottled(force = true)
+            val mp4 = DownloadManager.nonConflicting(File(directory, "$base.mp4"))
+            if (mediaRemuxer.remux(file, mp4)) {
+                runCatching { file.delete() }
+                file = mp4
+                mimeType = if (MediaUrlRules.isAudioMime(transfer.contentType)) "audio/mp4" else "video/mp4"
+            }
+        }
+
+        val durationMs = mediaMetadataReader.durationMs(file)
+        val thumbnailFile = File(cacheDir, "salvia_thumb_${stored.id}.jpg")
+        val thumbnailPath = if (mediaMetadataReader.saveThumbnail(file, thumbnailFile)) android.net.Uri.fromFile(thumbnailFile).toString() else null
+
+        var exportedUri: String? = null
+        val exportEnabled = runCatching { settingsDataStore.isExportToGallery.first() }.getOrDefault(true)
+        if (exportEnabled && mediaStoreExporter.isPermissionFree()) {
+            val isVideo = file.extension.lowercase() in MediaUrlRules.VIDEO_EXTENSIONS || MediaUrlRules.isVideoMime(mimeType)
+            exportedUri = mediaStoreExporter.export(file, file.name, mimeType, isVideo)
+        }
+
+        return Finalized(file, mimeType, durationMs, thumbnailPath, exportedUri)
     }
 
     private suspend fun abortReasonFor(downloadId: String): AbortReason? =

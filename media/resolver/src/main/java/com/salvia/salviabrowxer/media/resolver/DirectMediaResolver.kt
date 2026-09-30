@@ -1,5 +1,7 @@
 package com.salvia.salviabrowxer.media.resolver
 
+import com.salvia.salviabrowxer.core.model.DashManifest
+import com.salvia.salviabrowxer.core.model.DashRenditionId
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
 import kotlinx.coroutines.Dispatchers
@@ -47,10 +49,16 @@ class DirectMediaResolver(
         val title = name.substringBeforeLast('.', name).ifEmpty { "Media" }
         val isHls = extension.equals("m3u8", true) || mimeType.contains("mpegurl", true)
         val isDash = extension.equals("mpd", true) || mimeType.contains("dash+xml", true)
-        // MPEG-DASH cannot be segmented without a manifest parser, so a .mpd resolves to no
-        // formats at all. Nothing downstream may turn that into a download of the raw manifest;
-        // the UI refuses the candidate before it ever reaches this call.
+        // A clear, static, single-period manifest is segmented by the downloader, so it expands
+        // into one selectable rendition per Representation. A manifest this app cannot honestly
+        // save (dynamic, multi-period, DRM, an unknown segment form) still resolves to no formats
+        // at all, and the UI keeps its explanation instead of starting a doomed transfer.
         if (isDash) {
+            val manifest = tryParseDash(url, ua)
+            if (manifest != null) {
+                val dash = dashMediaInfo(title, url, manifest)
+                if (dash.combinedFormats.isNotEmpty() || dash.audioFormats.isNotEmpty()) return@withContext dash
+            }
             return@withContext MediaInfo(
                 title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
                 formats = emptyList(), audioFormats = emptyList(), videoFormats = emptyList(),
@@ -140,6 +148,76 @@ class DirectMediaResolver(
         }
         // Highest quality first — InShot surfaces 1080p at the top
         return formats.sortedByDescending { (it.height ?: 0) * 1000 + (it.bitrate ?: 0) }
+    }
+
+    /** Fetches the manifest body, bounded to 1 MiB, and parses it. Null means "cannot be saved". */
+    private fun tryParseDash(manifestUrl: String, userAgent: String): DashManifest? {
+        val xml = runCatching {
+            val req = Request.Builder().url(manifestUrl).get()
+                .header("User-Agent", userAgent).header("Accept", "*/*").build()
+            okHttpClient.newCall(req).execute().use { r ->
+                if (!r.isSuccessful) return null
+                val bytes = r.body?.bytes() ?: return null
+                (if (bytes.size > 1_048_576) bytes.copyOf(1_048_576) else bytes).toString(Charsets.UTF_8)
+            }
+        }.getOrNull() ?: return null
+        return DashManifestParser.parse(manifestUrl, xml)
+    }
+
+    /**
+     * Turns a parsed manifest into the quality sheet's rows. Video renditions paired with the best
+     * audio become merged download options (that is what "1080p" means on an adaptive page); audio
+     * renditions are offered on their own too.
+     */
+    private fun dashMediaInfo(title: String, sourceUrl: String, manifest: DashManifest): MediaInfo {
+        val videos = manifest.videoRepresentations
+        val audios = manifest.audioRepresentations
+        val bestAudio = audios.firstOrNull()
+        val videoFormats = videos.map { video ->
+            val label = video.height?.let { "${it}p" } ?: video.bandwidth?.let { "${it / 1000} kbps" } ?: "Video"
+            MediaFormat(
+                id = if (bestAudio != null) DashRenditionId.merged(video.id, bestAudio.id) else DashRenditionId.video(video.id),
+                format = if (bestAudio != null) "$label + audio" else label,
+                url = sourceUrl,
+                mimeType = video.mimeType,
+                extension = "mp4",
+                size = estimatedSize(video.bandwidth, manifest.durationSeconds),
+                width = video.width,
+                height = video.height,
+                bitrate = video.bandwidth?.let { (it / 1000).toInt() },
+                isVideo = true,
+                isDash = true
+            )
+        }
+        val audioFormats = audios.map { audio ->
+            val rate = audio.bandwidth?.let { "${it / 1000} kbps" } ?: "Audio"
+            MediaFormat(
+                id = DashRenditionId.audio(audio.id),
+                format = listOfNotNull(rate, audio.language).joinToString(" · "),
+                url = sourceUrl,
+                mimeType = audio.mimeType,
+                extension = "m4a",
+                size = estimatedSize(audio.bandwidth, manifest.durationSeconds),
+                bitrate = audio.bandwidth?.let { (it / 1000).toInt() },
+                isAudio = true,
+                isDash = true
+            )
+        }
+        val combined = videoFormats.ifEmpty { audioFormats }
+        return MediaInfo(
+            title = title.ifEmpty { "Media" }, thumbnail = null,
+            duration = manifest.durationSeconds?.let { (it * 1000).toLong() },
+            formats = combined + audioFormats,
+            audioFormats = audioFormats,
+            videoFormats = videoFormats,
+            combinedFormats = combined,
+            source = sourceUrl, extractor = "direct-dash", webpageUrl = sourceUrl
+        )
+    }
+
+    private fun estimatedSize(bandwidth: Long?, durationSeconds: Double?): Long? {
+        if (bandwidth == null || durationSeconds == null) return null
+        return (bandwidth / 8.0 * durationSeconds).toLong().takeIf { it > 0L }
     }
 
     private fun extractFilename(contentDisposition: String?): String? {

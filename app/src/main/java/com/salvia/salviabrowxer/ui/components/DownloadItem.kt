@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,7 +61,8 @@ fun DownloadItem(
     onCancelClick: () -> Unit,
     onRetryClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onShareClick: () -> Unit = {}
+    onShareClick: () -> Unit = {},
+    onExportClick: () -> Unit = {}
 ) {
     val totalBytes = download.totalBytes
     val progress = if (totalBytes != null && totalBytes > 0) (download.downloadedBytes.toFloat() / totalBytes) else 0f
@@ -118,6 +120,12 @@ fun DownloadItem(
             DownloadState.FAILED, DownloadState.CANCELLED -> IconButton(onClick = onRetryClick) { Icon(Icons.Default.Refresh, stringResource(R.string.download_retry), tint = AuroraTeal) }
             DownloadState.COMPLETED -> {
                 IconButton(onClick = onOpenClick) { Icon(Icons.AutoMirrored.Filled.OpenInNew, stringResource(R.string.download_open), tint = PearlWhite) }
+                // Only offered while the file is not in the shared media store yet: on a modern
+                // Android the automatic export already published it, and on an older one this is
+                // the action that asks for the storage permission and does it by hand.
+                if (download.exportedUri == null) {
+                    IconButton(onClick = onExportClick) { Icon(Icons.Default.SaveAlt, stringResource(R.string.download_export), tint = AuroraTeal) }
+                }
                 IconButton(onClick = onShareClick) { Icon(Icons.Default.Share, stringResource(R.string.download_share), tint = PearlWhite) }
                 IconButton(onClick = onDeleteClick) { Icon(Icons.Default.Close, stringResource(R.string.download_delete), tint = SilverMid) }
             }

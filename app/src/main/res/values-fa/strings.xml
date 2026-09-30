@@ -69,6 +69,9 @@
     <string name="download_open_failed">هیچ برنامه‌ای نمی‌تواند این پرونده را باز کند</string>
     <string name="download_share_failed">چیزی برای هم‌رسانی این پرونده نیست</string>
     <string name="download_delete">حذف</string>
+    <string name="download_export">ذخیره در گالری</string>
+    <string name="download_exported">در گالری ذخیره شد</string>
+    <string name="download_export_failed">انتشار این فایل در گالری ممکن نشد</string>
     <string name="no_active_downloads">دانلود فعالی نیست</string>
     <string name="no_queued_downloads">دانلودی در صف نیست</string>
     <string name="no_completed_downloads">دانلود کامل‌شده‌ای نیست</string>
@@ -136,6 +139,8 @@
     <string name="settings_simultaneous_downloads">دانلودهای هم‌زمان</string>
     <string name="settings_wifi_only">دانلود فقط با Wi-Fi</string>
     <string name="settings_wifi_only_hint">به‌طور پیش‌فرض خاموش. تا وقتی این را روشن نکنید، دانلودها با هر اتصالی انجام می‌شوند، از جمله دادهٔ همراه</string>
+    <string name="settings_export_to_gallery">نمایش دانلودها در گالری</string>
+    <string name="settings_export_to_gallery_hint">به‌طور پیش‌فرض روشن. هر فایل تمام‌شده در رسانهٔ سیستمی هم منتشر می‌شود تا گالری و پخش‌کننده‌های دیگر بتوانند آن را باز کنند</string>
     <string name="settings_connection_label">اتصال کنونی</string>
     <string name="settings_connection_wifi">Wi-Fi · دانلودها بدون محدودیت اجرا می‌شوند</string>
     <string name="settings_connection_mobile">دادهٔ همراه · دانلودها عادی اجرا می‌شوند</string>
@@ -166,7 +171,7 @@
     <string name="error_cleartext_blocked">http:// مسدود است. در تنظیمات سایت‌های ناامن را اجازه دهید و سپس دوباره بارگذاری کنید.</string>
     <string name="error_unable_to_resolve_media">این رسانه قابل تشخیص نیست</string>
     <string name="error_unsupported_media">این رسانه قابل دانلود نیست</string>
-    <string name="error_dash_unsupported">MPEG-DASH پشتیبانی نمی‌شود، پس این جریان ذخیره نمی‌شود</string>
+    <string name="error_dash_unsupported">این جریان DASH ذخیره نمی‌شود — فقط مانیفست‌های پاک، متناهی و تک‌دوره‌ای پشتیبانی می‌شوند</string>
     <string name="error_live_unsupported">جریان‌های زنده دانلود نمی‌شوند</string>
     <string name="error_drm_protected">رسانهٔ محافظت‌شده دانلود نمی‌شود</string>
     <string name="error_size_unavailable">اندازه نامعلوم</string>

@@ -15,7 +15,7 @@ import com.salvia.salviabrowxer.core.model.DownloadState
 
 @Database(
     entities = [DownloadEntity::class, BookmarkEntity::class, HistoryEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -49,6 +49,19 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `downloads` ADD COLUMN `bytesPerSecond` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `downloads` ADD COLUMN `etaSeconds` INTEGER")
+            }
+        }
+
+        /**
+         * v3 -> v4 lets a queued row remember which DASH rendition it wants, where a finished file
+         * was published in the gallery, and how long it runs. All three are nullable, so existing
+         * direct and HLS rows keep working untouched.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `renditionId` TEXT")
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `exportedUri` TEXT")
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `durationMs` INTEGER")
             }
         }
     }

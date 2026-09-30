@@ -37,6 +37,11 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
     override val isWifiOnly: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[IS_WIFI_ONLY] ?: false }
 
+    // On by default: a download that no gallery can see is the surprising outcome, and the export
+    // is permission-free on modern Android.
+    override val isExportToGallery: Flow<Boolean> = dataStore.data
+        .map { preferences -> preferences[EXPORT_TO_GALLERY] ?: true }
+
     override val isCleartextAllowed: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[ALLOW_CLEARTEXT] ?: false }
 
@@ -82,6 +87,10 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         dataStore.edit { preferences -> preferences[IS_WIFI_ONLY] = enabled }
     }
 
+    override suspend fun setExportToGallery(enabled: Boolean) {
+        dataStore.edit { preferences -> preferences[EXPORT_TO_GALLERY] = enabled }
+    }
+
     override suspend fun setCleartextAllowed(enabled: Boolean) {
         dataStore.edit { preferences -> preferences[ALLOW_CLEARTEXT] = enabled }
     }
@@ -109,6 +118,7 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         private val ARE_COOKIES_ENABLED = booleanPreferencesKey("are_cookies_enabled")
         private val MAX_SIMULTANEOUS_DOWNLOADS = intPreferencesKey("max_simultaneous_downloads")
         private val IS_WIFI_ONLY = booleanPreferencesKey("is_wifi_only")
+        private val EXPORT_TO_GALLERY = booleanPreferencesKey("export_to_gallery")
         private val ALLOW_CLEARTEXT = booleanPreferencesKey("allow_cleartext")
         private val FLOATING_BUTTON_ALWAYS_VISIBLE = booleanPreferencesKey("floating_button_always_visible")
         private val FLOATING_BUTTON_SIZE = intPreferencesKey("floating_button_size")

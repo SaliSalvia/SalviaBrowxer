@@ -21,14 +21,20 @@ bypass to make comparison numbers look good.
   item, a deliberate download action can enqueue it without a redundant confirmation sheet.
   Never start a network download from visibility detection alone. Keep the quality picker when
   variants exist. Confirm requests do not falsely promise access to cookies/authenticated pages.
-- **Gallery and Files.** Keep the Room queue and app copy as source of truth; publish finished
-  media using MediaStore pending rows on API 29+, configurable default-on export and explicit
-  per-item action. Track ownership for delete; never delete other apps' media. Give older devices
-  a document-picker export instead of broad legacy storage permission. Bilingual locations and
-  per-item recovery on export failure.
-- **Playable output.** Real local thumbnails from posters or completed file frames; distinguish
-  unavailable from fake images. Test HLS output on the Media3 player; remux clear VOD without
-  re-encoding only where supported, preserving the original on failure. Do not mislabel TS as MP4.
+- **Gallery and Files.** Keep the Room queue and app copy as source of truth; ~~publish finished
+  media using MediaStore pending rows on API 29+, configurable default-on export~~ **Shipped**
+  (`MediaStoreExporter`, Settings → “Show downloads in the gallery”), and ~~an explicit per-item
+  export action~~ **Shipped**: a completed row offers “Save to gallery” while the file is not in the
+  store, and on API 24–28 that action requests `WRITE_EXTERNAL_STORAGE`
+  (`maxSdkVersion="28"`) and publishes into the public `Movies`/`Music` folder instead. Both paths
+  are executed for real by `MediaStoreExporterTest` under Robolectric at SDK 24 and SDK 33. Still
+  open: ownership tracking for delete (never delete other apps' media), and a repeated on-device
+  pass of the instrumented suite.
+- **Playable output.** ~~Real local thumbnails~~ **Shipped** (`MediaMetadataReader` reads duration
+  and a frame from the finished file; unavailable stays unavailable). ~~Remux clear VOD without
+  re-encoding~~ **Shipped** (`MediaRemuxer` copies tracks into MP4; on failure the original stream is
+  kept). Still open: confirming HLS/DASH output on a real device with the Media3 player, and not
+  mislabelling TS as MP4 when a remux fails.
 - **Privacy and workers (Phase 1 gates).** Test actual private cookies as well as history;
   isolate profiles or implement/disclose last-private-tab cleanup without session persistence.
   Assess page-owned worker response observation under the same admission rules, with no added
@@ -36,8 +42,11 @@ bypass to make comparison numbers look good.
   merely because UI polish is deferred.
 - **Reliability.** Pause/resume across process death, missing/corrupt file recovery, disk full,
   cancellations, stalled server, revoked access, network changes, throttled progress persistence,
-  retry without duplicates; explicit errors for unsupported formats. Release gate: the required
-  clean unit tests, assembleDebug, release lint and real-device matrix all pass.
+  retry without duplicates; explicit errors for unsupported formats. Cancellation and HTTP-failure
+  mid-transfer are covered for the DASH and HLS paths by `DashDownloaderTest`/`HlsDownloaderTest`
+  against a local server. Release gate: the required clean unit tests, assembleDebug, release lint
+  and real-device matrix all pass — the last one needs a KVM-capable machine, which is what
+  `.github/workflows/emulator_verification.yml` is for.
 
 ## P1 — quality users notice every day
 
@@ -58,8 +67,11 @@ bypass to make comparison numbers look good.
 
 ## P2 — optional only if proven end-to-end
 
-- Clear finite MPEG-DASH VOD only, bounded parser and a player-openable fixture; otherwise keep
-  the current refusal in the UI, README and store text.
+- ~~Clear finite MPEG-DASH VOD only~~ **Shipped**: `DashManifestParser` accepts a static,
+  single-period, unprotected manifest with `SegmentTemplate`/`SegmentList`/single-file `SegmentBase`,
+  `DashDownloader` segments it, and separated video/audio is muxed with `TrackMerger`. Dynamic,
+  multi-period and protected manifests still get the refusal. Not yet covered: a repeatable on-device
+  fixture comparison, and `SegmentBase` with `indexRange` byte ranges.
 - Worker visibility only when a page-owned worker can be safely observed without extra requests
   or cross-app hooks. Document platform-specific gaps rather than claiming coverage.
 - Release assets, adaptive icon, GPL source offer, privacy policy, accurate bilingual store copy,

@@ -59,7 +59,7 @@ jobs:
 
       - name: Run required unit tests from clean outputs
         run: |
-          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest --stacktrace --no-daemon
+          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --stacktrace --no-daemon
 
       - name: Upload unit test reports
         if: always()
