@@ -70,8 +70,11 @@ versionName `1.0.0`.
   unavailable rather than guessed.
 - **Downloads** — foreground `dataSync` service, Room-backed queue, pause / cancel / retry,
   direct files resume over HTTP Range from a `.part` file (including after process death),
-  non-encrypted VOD HLS playlists are fetched segment by segment and concatenated, DASH
-  representations are fetched segment by segment, blob saves land in the same queue. A segmented
+  VOD HLS playlists are fetched several segments at a time (bounded parallelism) and
+  concatenated, DASH representations are fetched the same way and resume too, blob saves land in
+  the same queue. An **AES-128 encrypted** HLS playlist is decrypted with the key the manifest names,
+  `EXT-X-BYTERANGE` segments are honoured, and a paused or process-killed segmented transfer
+  resumes from the parts it already staged. A segmented
   transfer is then **remuxed into a plain MP4 with `MediaMuxer`** (no re-encode), and a DASH
   video+audio pair is **muxed into one file** — so the saved file plays in any gallery or player,
   not only in this app. The finished file's duration and a frame are read locally for the library
@@ -121,7 +124,8 @@ protection:
 
 - no site-specific extractors or signature/token harvesting
 - no DRM (Widevine / FairPlay / PlayReady) — a manifest carrying `ContentProtection` is refused
-  with an honest error, as is an AES-128 encrypted HLS playlist
+  with an honest error, as is a `SAMPLE-AES` HLS playlist. Standard **AES-128** HLS — the non-DRM
+  scheme whose key the playlist plainly names — is decrypted, not refused
 - no live HLS and no dynamic/multi-period DASH — there is no end to them
 - **no transcoding**: there is no native FFmpeg binary. The app only *remuxes* (copies already
   encoded tracks into an MP4 container) and *muxes* a separate video and audio track together; it
@@ -142,7 +146,7 @@ Claimed behaviour is covered by the cheapest layer that can actually execute it:
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| JVM unit tests | DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`), rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
+| JVM unit tests | DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`) — including AES-128 decryption, `EXT-X-BYTERANGE`, variant selection and resumable staged parts — rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
 | Robolectric | The media-store export executed against the real framework at **API 24** (public-folder copy, media scanner, no-overwrite) and at **API 33** (`MediaStore` pending-flag protocol, byte fidelity) | `:app` `MediaStoreExporterTest` |
 | Instrumented | The real store publish on a device: bytes read back through `ContentResolver`, the row queryable, and the launch smoke check | `.github/workflows/emulator_verification.yml` |
 
@@ -166,7 +170,7 @@ verified on a device — that is the reason the emulator workflow exists.
 | `:core:database` | Room database, DAOs, entities, v1→v4 migrations |
 | `:media:detector` | `DomMediaDetector` behind the `MediaDetector` interface |
 | `:media:resolver` | `DirectMediaResolver` (HEAD, ranged GET, HLS variant parse) and `DashManifestParser` (pure, JVM-tested) |
-| `:media:downloader` | `DownloadManager` (Range resume), `HlsDownloader` (VOD, non-encrypted), `DashDownloader`, `MediaRemuxer`, `TrackMerger`, `MediaMetadataReader` |
+| `:media:downloader` | `DownloadManager` (Range resume), `HlsDownloader` (VOD, AES-128, byte ranges) with the shared `SegmentedFetcher` (bounded-parallel, resumable), `DashDownloader`, `MediaRemuxer`, `TrackMerger`, `MediaMetadataReader` |
 
 A Gradle module only exists here when it has a public API and a caller outside itself.
 
