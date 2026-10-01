@@ -4,14 +4,13 @@ import com.salvia.salviabrowxer.core.model.DashManifest
 import com.salvia.salviabrowxer.core.model.DashRepresentation
 import com.salvia.salviabrowxer.media.resolver.DashManifestParser
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
  * Downloads one MPEG-DASH representation by fetching its initialisation segment and every media
- * segment in order, concatenating them into a single fragmented-MP4 file.
+ * segment, assembling them into a single fragmented-MP4 file.
  *
  * The manifest is re-fetched here rather than stored in the queue: a parsed manifest is derived
  * data that can list thousands of URLs, so the queue keeps the manifest URL and a rendition id and
@@ -19,8 +18,9 @@ import okhttp3.Request
  * and single-period when the quality sheet offered it; a manifest that no longer satisfies that is
  * refused with an [IOException] instead of saving undecodable bytes.
  *
- * Resume is intentionally not supported: a stale `.part` from a segmented transfer has no meaning,
- * so it is dropped and the transfer restarts from the first segment.
+ * Segments are fetched with the shared [SegmentedFetcher], so a DASH transfer is also **parallel**
+ * (several segments in flight) and **resumable** — a paused or process-killed transfer continues
+ * from the parts it already staged instead of restarting from the first segment.
  */
 class DashDownloader(
     private val okHttpClient: OkHttpClient
@@ -53,33 +53,29 @@ class DashDownloader(
         shouldAbort: suspend () -> AbortReason? = { null }
     ): DownloadResult {
         if (representation.segmentUrls.isEmpty()) throw IOException("DASH representation has no segments")
-        val partFile = File(target.parentFile, "${target.name}.${DownloadManager.PART_SUFFIX}")
+        val parent = target.parentFile ?: throw IOException("DASH target has no parent directory")
+        val partFile = File(parent, "${target.name}.${DownloadManager.PART_SUFFIX}")
+        // A `.part` left by an interrupted concatenation is unusable; the staged segments are the
+        // real resume state, so start the assembly output clean.
         if (partFile.exists()) partFile.delete()
 
-        var written = 0L
-        var lastReport = System.currentTimeMillis()
-        var lastReportBytes = 0L
-        var lastReportTime = lastReport
-
-        FileOutputStream(partFile).use { output ->
-            representation.initUrl?.let { downloadTo(it, output, userAgent, referer, shouldAbort) }
-            representation.segmentUrls.forEachIndexed { index, segmentUrl ->
-                shouldAbort()?.let { reason -> output.flush(); throw DownloadAbortedException(reason) }
-                downloadTo(segmentUrl, output, userAgent, referer, shouldAbort)
-                written = partFile.length()
-                val now = System.currentTimeMillis()
-                if (now - lastReport >= progressEveryMillis || index == representation.segmentUrls.lastIndex) {
-                    val elapsed = (now - lastReportTime).coerceAtLeast(1L)
-                    val speed = (written - lastReportBytes) * 1000L / elapsed
-                    lastReport = now; lastReportBytes = written; lastReportTime = now
-                    // Total size is unknown for a segmented stream; progress is real, the estimate is not claimed.
-                    onProgress(DownloadSnapshot(downloadedBytes = written, totalBytes = null, bytesPerSecond = speed))
-                }
-            }
-            output.flush()
+        val parts = buildList {
+            representation.initUrl?.let { add(SegmentPart(url = it)) }
+            representation.segmentUrls.forEach { add(SegmentPart(url = it)) }
         }
 
-        if (written <= 0L || !partFile.exists() || partFile.length() == 0L) {
+        SegmentedFetcher(okHttpClient).fetch(
+            parts = parts,
+            stagingDir = SegmentedFetcher.stagingDirFor(parent, target.name),
+            partFile = partFile,
+            userAgent = userAgent,
+            referer = referer,
+            progressEveryMillis = progressEveryMillis,
+            onProgress = onProgress,
+            shouldAbort = shouldAbort
+        )
+
+        if (!partFile.exists() || partFile.length() == 0L) {
             partFile.delete()
             throw IOException("DASH download produced an empty file")
         }
@@ -90,32 +86,5 @@ class DashDownloader(
         val size = target.length()
         onProgress(DownloadSnapshot(downloadedBytes = size, totalBytes = size, bytesPerSecond = 0L))
         return DownloadResult(file = target, bytesWritten = size, totalBytes = size, contentType = representation.mimeType)
-    }
-
-    @Throws(IOException::class)
-    private suspend fun downloadTo(
-        url: String,
-        output: FileOutputStream,
-        userAgent: String,
-        referer: String?,
-        shouldAbort: suspend () -> AbortReason?
-    ) {
-        val request = Request.Builder().url(url)
-            .header("User-Agent", userAgent)
-            .header("Accept", "*/*")
-            .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
-            .get().build()
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("DASH segment failed HTTP ${response.code} for $url")
-            val body = response.body ?: throw IOException("Empty DASH segment body for $url")
-            val input = body.byteStream()
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                val read = input.read(buffer)
-                if (read == -1) break
-                output.write(buffer, 0, read)
-                shouldAbort()?.let { reason -> throw DownloadAbortedException(reason) }
-            }
-        }
     }
 }

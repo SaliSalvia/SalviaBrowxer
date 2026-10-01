@@ -25,6 +25,8 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":media:resolver"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // SegmentedFetcher runs the segment transfers in parallel with bounded concurrency.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     // DashDownloader and HlsDownloader are pure OkHttp + file IO, so they are exercised against a
     // real local HTTP server here rather than only on a device.

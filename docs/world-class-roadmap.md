@@ -48,6 +48,15 @@ bypass to make comparison numbers look good.
   and real-device matrix all pass — the last one needs a KVM-capable machine, which is what
   `.github/workflows/emulator_verification.yml` is for.
 
+  The HLS path was strengthened to match the alternatives: an **AES-128** (non-DRM) playlist is now
+  **decrypted** with the key the manifest names — key rotation and explicit/default IVs included —
+  instead of refused, `EXT-X-BYTERANGE` segments are honoured, segments are fetched with bounded
+  parallelism, and a paused or process-killed segmented transfer **resumes** from the parts it
+  already staged (`SegmentedFetcher`). `SAMPLE-AES` (DRM-adjacent) and live playlists are still
+  refused with honest errors. DASH segment transfers share the same parallel, resumable fetcher.
+  The unit tests cover decrypt/rotate/range/resume against a real HTTP server; a real encrypted
+  stream still needs the on-device pass.
+
 ## P1 — quality users notice every day
 
 - Simplify home to paste field, one contextual action, live transfers and Library; accessibility

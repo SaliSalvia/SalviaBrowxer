@@ -1,25 +1,28 @@
 package com.salvia.salviabrowxer.media.downloader
 
+import java.io.File
+import java.io.IOException
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 
 /**
- * InShot-style HLS downloader.
- * Unlike the single-file [DownloadManager.transfer], this fetches the media playlist
- * (`.m3u8`), resolves every TS segment URL and concatenates them into the final file.
+ * HLS reassembler.
  *
- * Limitations (identical to InShot's first-gen offline path):
- * - AES-128 encrypted playlists (EXT-X-KEY) are rejected with a clear IO error so the
- *   caller can fall back to a user-visible "DRM/encrypted" failure instead of saving
- *   undecryptable bytes.
- * - LIVE playlists (no EXT-X-ENDLIST) are rejected — same behaviour as InShot which
- *   refuses to archive endless streams.
- * - Resume is intentionally not supported for segmented downloads — a stale .part file
- *   is dropped and the transfer restarts; this matches InShot where HLS reassembly
- *   always starts from the first segment.
+ * Unlike the single-file [DownloadManager.transfer], this fetches the media playlist (`.m3u8`),
+ * resolves every segment URL and assembles them into one file:
+ *
+ * - **AES-128 encrypted** playlists (`EXT-X-KEY:METHOD=AES-128`) are decrypted with the key the
+ *   playlist names. This is the standard, non-DRM HLS encryption — the same scheme VLC and every
+ *   browser handle — and its key is plainly referenced by the manifest, so refusing it only made the
+ *   app weaker than the alternatives. `SAMPLE-AES` (the DRM-adjacent method) is still refused with an
+ *   honest error because it cannot be decrypted from the manifest alone.
+ * - **Byte ranges** (`EXT-X-BYTERANGE`) are honoured, so a single media file addressed by ranges is
+ *   fetched correctly instead of concatenated whole.
+ * - **Parallel** segment fetching (bounded by [SegmentedFetcher.PARALLELISM]) is what makes a
+ *   thousand-segment stream finish quickly, and the staged parts make a paused transfer **resumable**
+ *   across process death instead of restarting from the first segment.
+ * - **Live** playlists (no `EXT-X-ENDLIST`) are refused — there is no end to them, so they cannot be
+ *   saved as a finite file.
  */
 class HlsDownloader(
     private val okHttpClient: OkHttpClient
@@ -44,9 +47,8 @@ class HlsDownloader(
         val targetDir = File(download.directory)
         if (!targetDir.exists() && !targetDir.mkdirs()) throw IOException("Unable to create destination directory: ${targetDir.absolutePath}")
 
-        // Drop any stale single-file .part — segmented streams cannot be resumed that way
-        val partFile = File(download.directory, "${DownloadManager.sanitizeFilename(download.filename)}.${DownloadManager.PART_SUFFIX}")
-        if (partFile.exists()) partFile.delete()
+        val safeName = DownloadManager.sanitizeFilename(download.filename)
+        val partFile = File(download.directory, "$safeName.${DownloadManager.PART_SUFFIX}")
 
         val playlistUrl = download.url
         val userAgent = download.userAgent ?: FileDownload.DEFAULT_DOWNLOAD_USER_AGENT
@@ -67,60 +69,31 @@ class HlsDownloader(
             )
         }
 
-        if ("#EXT-X-KEY" in playlistText && "METHOD=NONE" !in playlistText) {
-            throw IOException("Encrypted HLS streams are not supported (AES-128)")
-        }
-
-        val baseUrl = playlistUrl.substringBeforeLast('/') + "/"
-        val segments = parseSegments(playlistText, playlistUrl, baseUrl)
-        if (segments.isEmpty()) throw IOException("HLS playlist contains no segments")
-
-        // Optional init segment (EXT-X-MAP)
-        val initSegment = parseInitSegment(playlistText, playlistUrl, baseUrl)
-
-        // For LIVE streams InShot shows an error instead of saving infinite data
+        // A live stream has no EXT-X-ENDLIST: it never ends, so it cannot be saved as a file.
         val isLive = "#EXT-X-ENDLIST" !in playlistText
         if (isLive) throw IOException("Live HLS streams cannot be downloaded")
 
-        var written = 0L
-        var lastReport = System.currentTimeMillis()
-        var lastReportBytes = 0L
-        var lastReportTime = lastReport
+        val parts = parseParts(playlistText, playlistUrl)
+        if (parts.isEmpty()) throw IOException("HLS playlist contains no segments")
 
-        // Estimate total bytes if available is not — we use segment count as fallback for progress
-        val estimatedTotal: Long? = null
+        val stagingDir = SegmentedFetcher.stagingDirFor(targetDir, safeName)
+        SegmentedFetcher(okHttpClient).fetch(
+            parts = parts,
+            stagingDir = stagingDir,
+            partFile = partFile,
+            userAgent = userAgent,
+            referer = referer,
+            progressEveryMillis = progressEveryMillis,
+            onProgress = onProgress,
+            shouldAbort = shouldAbort
+        )
 
-        FileOutputStream(partFile).use { output ->
-            // Write init segment first if present
-            initSegment?.let { url ->
-                downloadSegment(url, userAgent, referer, output, shouldAbort)
-                // init segment size is small, don't count as progress denominator
-            }
-
-            for ((idx, segUrl) in segments.withIndex()) {
-                shouldAbort()?.let { reason -> output.flush(); throw DownloadAbortedException(reason) }
-                downloadSegment(segUrl, userAgent, referer, output, shouldAbort)
-                written = partFile.length()
-
-                val now = System.currentTimeMillis()
-                if (now - lastReport >= progressEveryMillis || idx == segments.lastIndex) {
-                    val elapsed = (now - lastReportTime).coerceAtLeast(1L)
-                    val speed = (written - lastReportBytes) * 1000L / elapsed
-                    lastReport = now; lastReportBytes = written; lastReportTime = now
-                    val fraction = (idx + 1).toFloat() / segments.size
-                    val snapTotal = estimatedTotal ?: if (idx == segments.lastIndex) written else (written / fraction.coerceAtLeast(0.01f)).toLong()
-                    onProgress(DownloadSnapshot(downloadedBytes = written, totalBytes = snapTotal, bytesPerSecond = speed))
-                }
-            }
-            output.flush()
-        }
-
-        if (written <= 0L || !partFile.exists() || partFile.length() == 0L) {
+        if (!partFile.exists() || partFile.length() == 0L) {
             partFile.delete()
             throw IOException("HLS download produced an empty file")
         }
 
-        val finalFile = DownloadManager.nonConflicting(File(targetDir, DownloadManager.sanitizeFilename(download.filename)))
+        val finalFile = DownloadManager.nonConflicting(File(targetDir, safeName))
         if (!partFile.renameTo(finalFile)) {
             partFile.copyTo(finalFile, overwrite = true)
             partFile.delete()
@@ -128,6 +101,108 @@ class HlsDownloader(
         val size = finalFile.length()
         onProgress(DownloadSnapshot(downloadedBytes = size, totalBytes = size, bytesPerSecond = 0L))
         return DownloadResult(file = finalFile, bytesWritten = size, totalBytes = size, contentType = "video/mp2t")
+    }
+
+    /**
+     * Turns the media playlist into an ordered list of parts. The `EXT-X-MAP` initialisation segment
+     * (when present) is part 0; every `EXTINF`/URI is a part after it. `EXT-X-KEY` applies to the
+     * media segments that follow it and rotates whenever a new key tag appears.
+     */
+    private fun parseParts(text: String, playlistUrl: String): List<SegmentPart> {
+        val baseUrl = playlistUrl.substringBeforeLast('/') + "/"
+        val lines = text.lineSequence().map { it.trim() }.toList()
+
+        var mediaSequence = 0L
+        for (line in lines) {
+            if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
+                mediaSequence = line.substringAfter(':').trim().toLongOrNull() ?: 0L
+                break
+            }
+        }
+
+        var currentKeyUri: String? = null
+        var currentIv: ByteArray? = null
+        var pendingRangeSpec: String? = null
+        val lastRangeEnd = HashMap<String, Long>()
+
+        var initPart: SegmentPart? = null
+        val mediaParts = mutableListOf<SegmentPart>()
+        var segmentIndex = 0
+
+        for (line in lines) {
+            if (line.isEmpty()) continue
+            if (line.startsWith("#EXT-X-KEY:")) {
+                val method = Regex("METHOD=([^,\"]+)").find(line)?.groupValues?.getOrNull(1)?.trim()?.uppercase()
+                when (method) {
+                    null, "NONE" -> {
+                        currentKeyUri = null
+                        currentIv = null
+                    }
+                    "AES-128" -> {
+                        currentKeyUri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.getOrNull(1)
+                            ?.let { absolutize(it.trim(), playlistUrl, baseUrl) }
+                            ?: throw IOException("Encrypted HLS playlist has no key URI")
+                        currentIv = Regex("IV=0x([0-9A-Fa-f]+)").find(line)?.groupValues?.getOrNull(1)?.let { hexToBytes(it) }
+                    }
+                    else -> throw IOException("Unsupported HLS encryption method: $method")
+                }
+                continue
+            }
+            if (line.startsWith("#EXT-X-MAP:")) {
+                val uri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.getOrNull(1)
+                // The init segment is left undecrypted: it is normally clear even when the media
+                // segments are AES-128 encrypted, and decrypting a clear init segment would corrupt it.
+                if (uri != null) initPart = SegmentPart(url = absolutize(uri.trim(), playlistUrl, baseUrl))
+                continue
+            }
+            if (line.startsWith("#EXT-X-BYTERANGE:")) {
+                pendingRangeSpec = line.substringAfter(':').trim().trim('"')
+                continue
+            }
+            if (line.startsWith("#")) continue
+
+            val url = absolutize(line, playlistUrl, baseUrl)
+            val range = pendingRangeSpec?.let { resolveByteRange(it, url, lastRangeEnd) }
+            pendingRangeSpec = null
+            val iv = currentIv ?: sequenceIv(mediaSequence + segmentIndex)
+            mediaParts += SegmentPart(url = url, range = range, keyUri = currentKeyUri, iv = iv)
+            segmentIndex++
+            if (mediaParts.size >= MAX_SEGMENTS) break
+        }
+
+        val parts = ArrayList<SegmentPart>(mediaParts.size + 1)
+        initPart?.let { parts += it }
+        parts += mediaParts
+        return parts
+    }
+
+    /** `EXT-X-BYTERANGE:<length>[@<offset>]`; a missing offset continues the previous range. */
+    private fun resolveByteRange(spec: String, url: String, lastRangeEnd: MutableMap<String, Long>): LongRange {
+        val lengthPart = spec.substringBefore('@')
+        val offsetPart = spec.substringAfter('@', "")
+        val length = lengthPart.toLongOrNull()?.takeIf { it > 0L } ?: throw IOException("Invalid EXT-X-BYTERANGE length")
+        val offset = offsetPart.toLongOrNull() ?: lastRangeEnd[url]?.plus(1) ?: 0L
+        val end = offset + length - 1
+        lastRangeEnd[url] = end
+        return offset..end
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val padded = hex.removePrefix("0x").padStart(32, '0').takeLast(32)
+        return ByteArray(16) { i ->
+            ((Character.digit(padded[i * 2], 16) shl 4) or Character.digit(padded[i * 2 + 1], 16)).toByte()
+        }
+    }
+
+    /** The default HLS IV: the segment's media sequence number as a 128-bit big-endian value. */
+    private fun sequenceIv(sequence: Long): ByteArray {
+        val iv = ByteArray(16)
+        var value = sequence
+        for (i in 15 downTo 0) {
+            iv[i] = (value and 0xFF).toByte()
+            value = value ushr 8
+        }
+        return iv
     }
 
     private fun fetchText(url: String, userAgent: String, referer: String?): String? {
@@ -139,29 +214,10 @@ class HlsDownloader(
         okHttpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null
             val bytes = resp.body?.bytes() ?: return null
-            // Cap master playlist at 256 KiB — prevents OOM on adversarial CF responses
+            // Cap master playlist at 256 KiB — prevents OOM on adversarial CDN responses
             if (bytes.size > 256 * 1024) return bytes.copyOf(256 * 1024).toString(Charsets.UTF_8)
             return bytes.toString(Charsets.UTF_8)
         }
-    }
-
-    private fun parseSegments(text: String, playlistUrl: String, baseUrl: String): List<String> {
-        val lines = text.lineSequence().map { it.trim() }.toList()
-        val out = mutableListOf<String>()
-        for (line in lines) {
-            if (line.isEmpty() || line.startsWith("#")) continue
-            // Skip URI lines that follow #EXT-X-STREAM-INF already handled — but media playlists
-            // contain only segment URIs, so any bare line is a segment.
-            out += absolutize(line, playlistUrl, baseUrl)
-            if (out.size >= 2000) break // cap: InShot refuses >2000-segment playlists
-        }
-        return out
-    }
-
-    private fun parseInitSegment(text: String, playlistUrl: String, baseUrl: String): String? {
-        val mapLine = text.lineSequence().firstOrNull { it.trim().startsWith("#EXT-X-MAP:") } ?: return null
-        val uri = Regex("""URI="([^"]+)"""").find(mapLine)?.groupValues?.getOrNull(1) ?: return null
-        return absolutize(uri.trim(), playlistUrl, baseUrl)
     }
 
     private fun pickBestVariantUrl(masterText: String, masterUrl: String): String? {
@@ -195,31 +251,8 @@ class HlsDownloader(
         else -> baseUrl + url
     }
 
-    @Throws(IOException::class)
-    private suspend fun downloadSegment(
-        url: String,
-        userAgent: String,
-        referer: String?,
-        output: FileOutputStream,
-        shouldAbort: suspend () -> AbortReason?
-    ) {
-        val req = Request.Builder().url(url)
-            .header("User-Agent", userAgent)
-            .header("Accept", "*/*")
-            .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
-            .get().build()
-        val call = okHttpClient.newCall(req)
-        call.execute().use { resp ->
-            if (!resp.isSuccessful) throw IOException("Segment failed HTTP ${resp.code} for $url")
-            val body = resp.body ?: throw IOException("Empty segment body for $url")
-            val input = body.byteStream()
-            val buf = ByteArray(64 * 1024)
-            while (true) {
-                val r = input.read(buf)
-                if (r == -1) break
-                output.write(buf, 0, r)
-                shouldAbort()?.let { reason -> throw DownloadAbortedException(reason) }
-            }
-        }
+    private companion object {
+        /** A hard bound on the segments one playlist may contribute, to keep a hostile manifest small. */
+        const val MAX_SEGMENTS = 2000
     }
 }
