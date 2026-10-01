@@ -62,13 +62,24 @@ versionName `1.0.0`.
   button that covers the page should be something the user asked for.
 - **Quality sheet** — resolver runs HEAD, falls back to a ranged GET when HEAD is refused, and
   expands an HLS master playlist into one row per variant (resolution, bitrate, size when known).
-  The sheet opens immediately from what the page already told us and refines its rows when the
-  probe returns, and it never blocks the download button while the probe is still running. A size
-  that is not known is reported as unavailable rather than guessed.
+  A clear, **static, single-period MPEG-DASH** manifest is parsed the same way: each `Representation`
+  becomes a row, and a video rendition is paired with the best audio into a single “1080p + audio”
+  option that the app downloads as two streams and muxes itself. The sheet opens immediately from
+  what the page already told us and refines its rows when the probe returns, and it never blocks the
+  download button while the probe is still running. A size that is not known is reported as
+  unavailable rather than guessed.
 - **Downloads** — foreground `dataSync` service, Room-backed queue, pause / cancel / retry,
   direct files resume over HTTP Range from a `.part` file (including after process death),
-  non-encrypted VOD HLS playlists are fetched segment by segment and concatenated, blob saves land
-  in the same queue. Every progress tick also stores the rate the transfer measured and the seconds
+  non-encrypted VOD HLS playlists are fetched segment by segment and concatenated, DASH
+  representations are fetched segment by segment, blob saves land in the same queue. A segmented
+  transfer is then **remuxed into a plain MP4 with `MediaMuxer`** (no re-encode), and a DASH
+  video+audio pair is **muxed into one file** — so the saved file plays in any gallery or player,
+  not only in this app. The finished file's duration and a frame are read locally for the library
+  rows, and (by default) it is also **published to the system media store** so galleries and other
+  apps can open it. A finished download that is not in the store yet also offers an explicit
+  **Save to gallery** action, which is what covers the two cases the automatic step cannot: the
+  export setting was off, or the device is running Android 9 or below where the publish needs a
+  storage permission — that action asks for it, and refuses with a message if the user declines. Every progress tick also stores the rate the transfer measured and the seconds
   it estimates are left, so a row reads `4.2 MB/s · 0:31 left`. Both are cleared the moment a
   transfer stops, so a paused or finished row never shows a stale speed. Wi-Fi-only mode is off by default: the app browses and downloads on whatever
   connection the phone has, mobile data included, and only holds transfers when the user turns the
@@ -109,11 +120,13 @@ SalviaBrowxer is **not** a YouTube, Instagram or TikTok downloader, and it does 
 protection:
 
 - no site-specific extractors or signature/token harvesting
-- no DRM (Widevine / FairPlay / PlayReady) — the app fails with an honest error
-- no AES-128 encrypted HLS key recovery, and no live HLS
-- no MPEG-DASH: a `.mpd` is recognised and explained, never downloaded — segmenting a manifest
-  needs a parser the app does not have, so it is never offered as a file
-- no native FFmpeg binary and no audio/video muxing
+- no DRM (Widevine / FairPlay / PlayReady) — a manifest carrying `ContentProtection` is refused
+  with an honest error, as is an AES-128 encrypted HLS playlist
+- no live HLS and no dynamic/multi-period DASH — there is no end to them
+- **no transcoding**: there is no native FFmpeg binary. The app only *remuxes* (copies already
+  encoded tracks into an MP4 container) and *muxes* a separate video and audio track together; it
+  never re-encodes, so quality is the original. This is what makes a segmented HLS/DASH download
+  and a “1080p + audio” adaptive pair produce a normal playable file
 - no worker or service-worker sniffing: the injected script runs in the document, so a player that
   fetches its media from a worker stays invisible
 - MSE-backed and unproven blob URLs are refused, not offered as downloadable files. Only a
@@ -123,16 +136,37 @@ protection:
   media probe, or a download the user started. Detection adds none: it reads response headers the
   page already received rather than probing URLs itself
 
+## Verification
+
+Claimed behaviour is covered by the cheapest layer that can actually execute it:
+
+| Layer | What it proves | Where |
+| --- | --- | --- |
+| JVM unit tests | DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`), rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
+| Robolectric | The media-store export executed against the real framework at **API 24** (public-folder copy, media scanner, no-overwrite) and at **API 33** (`MediaStore` pending-flag protocol, byte fidelity) | `:app` `MediaStoreExporterTest` |
+| Instrumented | The real store publish on a device: bytes read back through `ContentResolver`, the row queryable, and the launch smoke check | `.github/workflows/emulator_verification.yml` |
+
+```bash
+./gradlew :app:testDebugUnitTest :core:model:testDebugUnitTest \
+          :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest \
+          :media:downloader:testDebugUnitTest
+# Needs a device or an emulator (KVM); the instrumented suite is what runs here:
+./gradlew :app:connectedDebugAndroidTest
+```
+
+`MediaRemuxer` and `TrackMerger` use the platform codecs and `MediaMuxer`, so they can only be
+verified on a device — that is the reason the emulator workflow exists.
+
 ## Modules
 
 | Module | Contains |
 | --- | --- |
 | `:app` | screens, view models, services, DI, theme, resources |
-| `:core:model` | `MediaCandidate`, `MediaInfo`, `MediaFormat`, `DownloadState`, `Tab`, and the pure detection rules (`MediaUrlRules`, `MediaSniffAdmission`) |
-| `:core:database` | Room database, DAOs, entities, v1→v2 migration |
+| `:core:model` | `MediaCandidate`, `MediaInfo`, `MediaFormat`, `DownloadState`, `Tab`, `DashManifest`/`DashRenditionId`, and the pure detection rules (`MediaUrlRules`, `MediaSniffAdmission`) |
+| `:core:database` | Room database, DAOs, entities, v1→v4 migrations |
 | `:media:detector` | `DomMediaDetector` behind the `MediaDetector` interface |
-| `:media:resolver` | `DirectMediaResolver` (HEAD, ranged GET, HLS variant parse) |
-| `:media:downloader` | `DownloadManager` (Range resume) and `HlsDownloader` (VOD, non-encrypted) |
+| `:media:resolver` | `DirectMediaResolver` (HEAD, ranged GET, HLS variant parse) and `DashManifestParser` (pure, JVM-tested) |
+| `:media:downloader` | `DownloadManager` (Range resume), `HlsDownloader` (VOD, non-encrypted), `DashDownloader`, `MediaRemuxer`, `TrackMerger`, `MediaMetadataReader` |
 
 A Gradle module only exists here when it has a public API and a caller outside itself.
 
@@ -166,10 +200,17 @@ Android SDK 36 itself.
 - `POST_NOTIFICATIONS` — download progress on Android 13+; requested in context, and denying it
   still lets downloads finish
 
-No storage permission is needed: files are written to the app-scoped external downloads directory
-(`Android/data/com.salvia.salviabrowxer/files/Downloads`), which the Settings screen states
-verbatim, and each finished file is handed to `MediaScannerConnection` so it also appears in the
-system downloads UI.
+- `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion="28"` — **only** for the explicit “Save to
+gallery” action on Android 9 and below, which publishes into the public `Movies`/`Music` folders.
+It is requested in context, never at launch; declining it leaves the download, its share sheet and
+the in-app player fully usable.
+
+Downloads themselves need no storage permission: files are written to the app-scoped external
+downloads directory (`Android/data/com.salvia.salviabrowxer/files/Downloads`), which the Settings
+screen states verbatim, and each finished file is handed to `MediaScannerConnection` so it also
+appears in the system downloads UI. Publishing a finished file to the gallery (`MediaStore`, on by
+default) is permission-free on Android 10+, where the automatic step does it; on Android 9 and
+below the automatic step skips silently and the “Save to gallery” action is the way to publish.
 
 ## Privacy
 

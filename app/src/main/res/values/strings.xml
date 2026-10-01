@@ -68,6 +68,9 @@
     <string name="download_open_failed">No app can open this file</string>
     <string name="download_share_failed">Nothing can share this file</string>
     <string name="download_delete">Delete</string>
+    <string name="download_export">Save to gallery</string>
+    <string name="download_exported">Saved to the gallery</string>
+    <string name="download_export_failed">Could not publish this file to the gallery</string>
     <string name="no_active_downloads">No active downloads</string>
     <string name="no_queued_downloads">No queued downloads</string>
     <string name="no_completed_downloads">No completed downloads</string>
@@ -135,6 +138,8 @@
     <string name="settings_simultaneous_downloads">Simultaneous Downloads</string>
     <string name="settings_wifi_only">Wi-Fi only downloads</string>
     <string name="settings_wifi_only_hint">Off by default. Downloads use whatever connection you have — mobile data included — until you turn this on</string>
+    <string name="settings_export_to_gallery">Show downloads in the gallery</string>
+    <string name="settings_export_to_gallery_hint">On by default. Each finished file is also published to the system media store so galleries and other players can open it</string>
     <string name="settings_connection_label">Current connection</string>
     <string name="settings_connection_wifi">Wi-Fi · downloads run without restriction</string>
     <string name="settings_connection_mobile">Mobile data · downloads run normally</string>
@@ -165,7 +170,7 @@
     <string name="error_cleartext_blocked">http:// is blocked. Allow insecure sites in Settings, then load it again.</string>
     <string name="error_unable_to_resolve_media">Unable to resolve this media</string>
     <string name="error_unsupported_media">This media cannot be downloaded</string>
-    <string name="error_dash_unsupported">MPEG-DASH is not supported, so this stream cannot be saved</string>
+    <string name="error_dash_unsupported">This DASH stream cannot be saved — only clear, finite, single-period manifests are supported</string>
     <string name="error_live_unsupported">Live streams cannot be downloaded</string>
     <string name="error_drm_protected">Protected media cannot be downloaded</string>
     <string name="error_size_unavailable">Size unavailable</string>

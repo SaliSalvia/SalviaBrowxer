@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
+import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.service.DownloadService
 import com.salvia.salviabrowxer.ui.utils.getMimeTypeFromExtension
@@ -39,6 +40,7 @@ data class DownloadsUiState(
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
+    private val mediaStoreExporter: MediaStoreExporter,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DownloadsUiState())
@@ -48,6 +50,11 @@ class DownloadsViewModel @Inject constructor(
 
     private val _playRequest = Channel<Pair<String, String>>(Channel.BUFFERED)
     val playRequest: Channel<Pair<String, String>> = _playRequest
+
+    /** A runtime permission the screen must request before an export can finish (API <= 28). */
+    private val _exportPermissionRequest = Channel<String>(Channel.BUFFERED)
+    val exportPermissionRequest: Flow<String> = _exportPermissionRequest.receiveAsFlow()
+    private var pendingExportDownloadId: String? = null
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -128,6 +135,52 @@ class DownloadsViewModel @Inject constructor(
             playRequest.trySend(path to (download.mediaTitle?.ifBlank { null } ?: download.filename))
         }
     }
+    /**
+     * Publishes a finished file to the shared media store on the user's explicit request.
+     *
+     * The automatic post-download export already covers most devices, so this exists for the two
+     * cases it cannot: the export setting was off, or an export was skipped because the older
+     * Android release needs a storage permission the app had not been granted.
+     */
+    fun exportDownload(downloadId: String) {
+        viewModelScope.launch(Dispatchers.IO) { runExport(downloadId) }
+    }
+
+    private suspend fun runExport(downloadId: String, permissionAlreadyHandled: Boolean = false) {
+        val download = downloadRepository.getDownloadById(downloadId)
+        val path = download?.finalPath
+        if (download == null || path.isNullOrBlank()) { _messages.trySend(context.getString(R.string.download_not_ready)); return }
+        val file = File(path)
+        if (!file.exists() || file.length() == 0L) { _messages.trySend(context.getString(R.string.download_file_missing)); return }
+        // After a grant the export proceeds even if the platform still reports the permission as
+        // missing (a race, or a device that ignores the manifest entry): the export then fails with
+        // a message instead of asking the user a second time.
+        val permission = if (permissionAlreadyHandled) null else mediaStoreExporter.requiredPermission()
+        if (permission != null) {
+            // Ask, then come back through onExportPermissionResult with the same download id.
+            pendingExportDownloadId = downloadId
+            _exportPermissionRequest.trySend(permission)
+            return
+        }
+        publish(downloadId, file, download.mimeType)
+    }
+
+    /** Called when the storage-permission dialog closes; retries the export the user asked for. */
+    fun onExportPermissionResult(granted: Boolean) {
+        val downloadId = pendingExportDownloadId
+        pendingExportDownloadId = null
+        if (!granted) { _messages.trySend(context.getString(R.string.error_permission_required)); return }
+        if (downloadId.isNullOrBlank()) return
+        viewModelScope.launch(Dispatchers.IO) { runExport(downloadId, permissionAlreadyHandled = true) }
+    }
+
+    private suspend fun publish(downloadId: String, file: File, mimeType: String?) {
+        val exported = mediaStoreExporter.export(file, file.name, mimeType, mediaStoreExporter.isVideoFile(file.name, mimeType))
+        if (exported == null) { _messages.trySend(context.getString(R.string.download_export_failed)); return }
+        downloadRepository.updateDownloadArtifacts(id = downloadId, exportedUri = exported)
+        _messages.trySend(context.getString(R.string.download_exported))
+    }
+
     fun clearCompletedDownloads() { viewModelScope.launch(Dispatchers.IO) { downloadRepository.deleteDownloadsByState(DownloadState.COMPLETED) } }
     fun clearFailedDownloads() { viewModelScope.launch(Dispatchers.IO) { downloadRepository.deleteDownloadsByState(DownloadState.FAILED) } }
     fun clearAllDownloads() { viewModelScope.launch(Dispatchers.IO) { downloadRepository.clearAllDownloads() } }

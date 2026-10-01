@@ -25,4 +25,10 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":media:resolver"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // DashDownloader and HlsDownloader are pure OkHttp + file IO, so they are exercised against a
+    // real local HTTP server here rather than only on a device.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }

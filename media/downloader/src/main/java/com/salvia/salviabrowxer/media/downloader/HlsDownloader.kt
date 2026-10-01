@@ -27,8 +27,11 @@ class HlsDownloader(
 
     fun looksLikeHls(url: String, contentType: String?): Boolean {
         if (url.contains(".m3u8", ignoreCase = true)) return true
-        if (contentType != null && ("mpegurl" in contentType || "x-mpegurl" in contentType)) return true
-        return false
+        // Case-insensitive on purpose: the registered media type is `application/x-mpegURL` and
+        // CDNs serve `application/x-mpegURL; charset=utf-8` — a case-sensitive match missed the
+        // canonical spelling and only caught the all-lowercase variants.
+        val mime = contentType?.lowercase() ?: return false
+        return "mpegurl" in mime
     }
 
     @Throws(IOException::class)

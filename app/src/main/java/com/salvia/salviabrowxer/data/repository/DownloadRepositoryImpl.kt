@@ -50,11 +50,24 @@ class DownloadRepositoryImpl @Inject constructor(
         )
     }
 
+    override suspend fun updateDownloadArtifacts(id: String, finalPath: String?, filename: String?, mimeType: String?, durationMs: Long?, thumbnail: String?, exportedUri: String?) {
+        downloadDao.updateArtifacts(
+            id = id,
+            finalPath = finalPath,
+            filename = filename,
+            mimeType = mimeType,
+            durationMs = durationMs,
+            thumbnail = thumbnail,
+            exportedUri = exportedUri,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
     override suspend fun deleteDownload(id: String) = downloadDao.delete(id)
     override suspend fun deleteDownloadsByState(state: DownloadState) = downloadDao.deleteByStatus(state)
     override suspend fun clearAllDownloads() = downloadDao.deleteAll()
     override suspend fun getDefaultDownloadDestination(): String = storageManager.getDefaultDownloadDirectory()
-    override suspend fun createDownloadEntity(url: String, filename: String, destination: String, mediaTitle: String?, thumbnail: String?, selectedQuality: String?, mimeType: String?, totalBytes: Long?): DownloadEntity {
-        return DownloadEntity(url = url, finalUrl = null, filename = filename, mimeType = mimeType, destination = destination, totalBytes = totalBytes, mediaTitle = mediaTitle, thumbnail = thumbnail, selectedQuality = selectedQuality, status = DownloadState.QUEUED)
+    override suspend fun createDownloadEntity(url: String, filename: String, destination: String, mediaTitle: String?, thumbnail: String?, selectedQuality: String?, mimeType: String?, totalBytes: Long?, renditionId: String?): DownloadEntity {
+        return DownloadEntity(url = url, finalUrl = null, filename = filename, mimeType = mimeType, destination = destination, totalBytes = totalBytes, mediaTitle = mediaTitle, thumbnail = thumbnail, selectedQuality = selectedQuality, renditionId = renditionId, status = DownloadState.QUEUED)
     }
 }

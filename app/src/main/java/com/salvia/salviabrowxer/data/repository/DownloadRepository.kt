@@ -28,6 +28,21 @@ interface DownloadRepository {
         mimeType: String? = null,
         error: String? = null
     )
+    /**
+     * Persists post-processing results that only exist once a transfer is done: the final file (which
+     * may differ from the requested name after a remux or merge), its duration, its thumbnail and the
+     * gallery URI it was exported to. Only the non-null values are written.
+     */
+    suspend fun updateDownloadArtifacts(
+        id: String,
+        finalPath: String? = null,
+        filename: String? = null,
+        mimeType: String? = null,
+        durationMs: Long? = null,
+        thumbnail: String? = null,
+        exportedUri: String? = null
+    )
+
     suspend fun deleteDownload(id: String)
     suspend fun deleteDownloadsByState(state: DownloadState)
     suspend fun clearAllDownloads()
@@ -40,6 +55,8 @@ interface DownloadRepository {
         thumbnail: String? = null,
         selectedQuality: String? = null,
         mimeType: String? = null,
-        totalBytes: Long? = null
+        totalBytes: Long? = null,
+        /** Set only for a DASH rendition; the manifest URL travels in `url`. */
+        renditionId: String? = null
     ): DownloadEntity
 }

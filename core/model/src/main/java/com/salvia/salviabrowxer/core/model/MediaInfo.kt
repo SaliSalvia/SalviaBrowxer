@@ -27,5 +27,7 @@ data class MediaFormat(
     val audioBitrate: Int? = null,
     val isVideo: Boolean = false,
     val isAudio: Boolean = false,
-    val isHls: Boolean = false
+    val isHls: Boolean = false,
+    /** A clear, static, single-period MPEG-DASH rendition the downloader can segment itself. */
+    val isDash: Boolean = false
 )

@@ -18,7 +18,11 @@ import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepositoryImpl
 import com.salvia.salviabrowxer.media.detector.DomMediaDetector
 import com.salvia.salviabrowxer.media.detector.MediaDetector
+import com.salvia.salviabrowxer.media.downloader.DashDownloader
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
+import com.salvia.salviabrowxer.media.downloader.MediaMetadataReader
+import com.salvia.salviabrowxer.media.downloader.MediaRemuxer
+import com.salvia.salviabrowxer.media.downloader.TrackMerger
 import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.ui.utils.Constants
@@ -58,10 +62,31 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideDashDownloader(okHttpClient: OkHttpClient): DashDownloader = DashDownloader(okHttpClient)
+
+    @Provides
+    @Singleton
+    fun provideMediaRemuxer(): MediaRemuxer = MediaRemuxer()
+
+    @Provides
+    @Singleton
+    fun provideTrackMerger(): TrackMerger = TrackMerger()
+
+    @Provides
+    @Singleton
+    fun provideMediaMetadataReader(): MediaMetadataReader = MediaMetadataReader()
+
+    @Provides
+    @Singleton
+    fun provideMediaStoreExporter(@ApplicationContext context: Context): com.salvia.salviabrowxer.core.storage.MediaStoreExporter =
+        com.salvia.salviabrowxer.core.storage.MediaStoreExporter(context)
+
+    @Provides
+    @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         // Real migrations only: a failed upgrade must surface, never wipe browsing data.
         return Room.databaseBuilder(context, AppDatabase::class.java, "salviabrowxer_db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .build()
     }
 

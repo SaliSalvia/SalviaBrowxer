@@ -12,6 +12,8 @@ interface SettingsDataStore {
     val areCookiesEnabled: Flow<Boolean>
     val maxSimultaneousDownloads: Flow<Int>
     val isWifiOnly: Flow<Boolean>
+    /** Publish finished downloads to the shared media store so galleries can see them. */
+    val isExportToGallery: Flow<Boolean>
     val isCleartextAllowed: Flow<Boolean>
     val isFloatingButtonAlwaysVisible: Flow<Boolean>
     val floatingButtonSize: Flow<Int>
@@ -25,6 +27,7 @@ interface SettingsDataStore {
     suspend fun setCookiesEnabled(enabled: Boolean)
     suspend fun setMaxSimultaneousDownloads(count: Int)
     suspend fun setWifiOnly(enabled: Boolean)
+    suspend fun setExportToGallery(enabled: Boolean)
     suspend fun setCleartextAllowed(enabled: Boolean)
     suspend fun setFloatingButtonAlwaysVisible(enabled: Boolean)
     suspend fun setFloatingButtonSize(size: Int)

@@ -33,6 +33,8 @@ data class SettingsUiState(
     val downloadDirectoryPath: String = "",
     val maxSimultaneousDownloads: Int = 3,
     val isWifiOnly: Boolean = false,
+    /** Finished downloads are published to the shared media store so galleries can see them. */
+    val isExportToGallery: Boolean = true,
     val isCleartextAllowed: Boolean = false,
     /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
     val isFloatingButtonAlwaysVisible: Boolean = false,
@@ -73,6 +75,7 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             launch { settingsDataStore.isWifiOnly.collectLatest { value -> mutate { copy(isWifiOnly = value) } } }
+            launch { settingsDataStore.isExportToGallery.collectLatest { value -> mutate { copy(isExportToGallery = value) } } }
             launch { settingsDataStore.isCleartextAllowed.collectLatest { value -> mutate { copy(isCleartextAllowed = value) } } }
             launch {
                 settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { value ->
@@ -138,6 +141,13 @@ class SettingsViewModel @Inject constructor(
         mutate { copy(isWifiOnly = enabled) }
         viewModelScope.launch {
             runCatching { settingsDataStore.setWifiOnly(enabled) }
+        }
+    }
+
+    fun updateExportToGallery(enabled: Boolean) {
+        mutate { copy(isExportToGallery = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setExportToGallery(enabled) }
         }
     }
 

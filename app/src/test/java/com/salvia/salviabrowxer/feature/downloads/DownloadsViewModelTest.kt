@@ -3,10 +3,13 @@ package com.salvia.salviabrowxer.feature.downloads
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
+import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -32,13 +35,14 @@ class DownloadsViewModelTest {
 
     private lateinit var viewModel: DownloadsViewModel
     private val mockDownloadRepository: DownloadRepository = mockk(relaxed = true)
+    private val mockMediaStoreExporter: MediaStoreExporter = mockk(relaxed = true)
     private val mockContext: android.content.Context = mockk(relaxed = true)
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(emptyList())
-        viewModel = DownloadsViewModel(mockDownloadRepository, mockContext)
+        viewModel = DownloadsViewModel(mockDownloadRepository, mockMediaStoreExporter, mockContext)
     }
 
     @Test
@@ -48,7 +52,9 @@ class DownloadsViewModelTest {
 
         viewModel.retryDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
+        // The ViewModel dispatches this on Dispatchers.IO (a real thread), so verifying immediately
+        // raced the background write. Wait in real time instead.
+        coVerify(timeout = 5_000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
     }
 
     @Test
@@ -58,7 +64,7 @@ class DownloadsViewModelTest {
 
         viewModel.pauseDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED) }
+        coVerify(timeout = 5_000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED) }
     }
 
     @Test
@@ -68,7 +74,7 @@ class DownloadsViewModelTest {
 
         viewModel.resumeDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
+        coVerify(timeout = 5_000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED) }
     }
 
     @Test
@@ -78,7 +84,7 @@ class DownloadsViewModelTest {
 
         viewModel.cancelDownload(downloadId)
 
-        coVerify { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.CANCELLED) }
+        coVerify(timeout = 5_000) { mockDownloadRepository.updateDownloadState(downloadId, DownloadState.CANCELLED) }
     }
 
     @Test
@@ -129,7 +135,7 @@ class DownloadsViewModelTest {
         )
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(downloads)
 
-        val vm = DownloadsViewModel(mockDownloadRepository, mockContext)
+        val vm = DownloadsViewModel(mockDownloadRepository, mockMediaStoreExporter, mockContext)
         // The ViewModel collects on Dispatchers.IO, so the buckets are published by a real
         // background thread. Reading uiState.value straight after construction raced that thread
         // and passed or failed depending on scheduling. Waiting on the default dispatcher keeps
@@ -144,6 +150,65 @@ class DownloadsViewModelTest {
         assertEquals(1, state.completed.size)
         assertEquals(1, state.failed.size)
         assertEquals(4, state.all.size)
+    }
+
+    @Test
+    fun `exportDownload publishes the finished file and records the gallery uri`() = runTest {
+        val file = java.io.File.createTempFile("salvia-export", ".mp4").apply { writeBytes(ByteArray(64) { 7 }) }
+        file.deleteOnExit()
+        val downloadId = "download-export-1"
+        coEvery { mockDownloadRepository.getDownloadById(downloadId) } returns DownloadEntity(
+            id = downloadId, url = "https://example.com/v.mp4", filename = file.name,
+            destination = file.parent.orEmpty(), finalPath = file.absolutePath,
+            status = DownloadState.COMPLETED
+        )
+        every { mockMediaStoreExporter.requiredPermission() } returns null
+        every { mockMediaStoreExporter.isVideoFile(any(), any()) } returns true
+        every { mockMediaStoreExporter.export(any(), any(), any(), any()) } returns "content://media/external/video/media/42"
+
+        viewModel.exportDownload(downloadId)
+
+        verify(timeout = 5_000) { mockMediaStoreExporter.export(file, file.name, any(), true) }
+        coVerify(timeout = 5_000) {
+            mockDownloadRepository.updateDownloadArtifacts(id = downloadId, exportedUri = "content://media/external/video/media/42")
+        }
+    }
+
+    @Test
+    fun `exportDownload asks for storage permission first on older devices`() = runTest {
+        val file = java.io.File.createTempFile("salvia-export", ".mp4").apply { writeBytes(ByteArray(64) { 7 }) }
+        file.deleteOnExit()
+        val downloadId = "download-export-2"
+        coEvery { mockDownloadRepository.getDownloadById(downloadId) } returns DownloadEntity(
+            id = downloadId, url = "https://example.com/v.mp4", filename = file.name,
+            destination = file.parent.orEmpty(), finalPath = file.absolutePath,
+            status = DownloadState.COMPLETED
+        )
+        every { mockMediaStoreExporter.requiredPermission() } returns android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+
+        viewModel.exportDownload(downloadId)
+
+        // The request is buffered on the channel, so it can be read after the fact.
+        val requestedPermission = withContext(Dispatchers.Default) {
+            withTimeout(5_000L) { viewModel.exportPermissionRequest.first() }
+        }
+        assertEquals(android.Manifest.permission.WRITE_EXTERNAL_STORAGE, requestedPermission)
+        // Nothing may be published before the grant exists.
+        verify(exactly = 0) { mockMediaStoreExporter.export(any(), any(), any(), any()) }
+
+        every { mockMediaStoreExporter.export(any(), any(), any(), any()) } returns "content://media/external/video/media/7"
+        viewModel.onExportPermissionResult(granted = true)
+        verify(timeout = 5_000) { mockMediaStoreExporter.export(file, file.name, any(), any()) }
+    }
+
+    @Test
+    fun `a refused storage permission reports instead of exporting`() = runTest {
+        every { mockMediaStoreExporter.requiredPermission() } returns android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+
+        viewModel.onExportPermissionResult(granted = false)
+
+        // No file is published when the user declines the grant.
+        verify(exactly = 0) { mockMediaStoreExporter.export(any(), any(), any(), any()) }
     }
 
     private fun download(id: String, status: DownloadState) = DownloadEntity(

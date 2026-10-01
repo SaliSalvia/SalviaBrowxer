@@ -204,7 +204,8 @@ class DownloadManager(
             return tail.substringAfterLast('/').ifBlank { "download" }
         }
 
-        internal fun nonConflicting(file: File): File {
+        /** Public because HLS/DASH assembly and the service also need collision-safe names. */
+        fun nonConflicting(file: File): File {
             if (!file.exists()) return file
             val parent = file.parentFile ?: return file
             val base = file.nameWithoutExtension

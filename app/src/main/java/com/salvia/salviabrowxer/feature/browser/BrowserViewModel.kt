@@ -474,8 +474,9 @@ class BrowserViewModel @Inject constructor(
 
     /**
      * Opens the quality sheet for one tray row. The sheet is filled immediately from what the
-     * page already told us and refines itself when the HEAD/HLS probe returns — the page is never
-     * blocked, and a stream this app cannot save is refused with a message instead of a probe.
+     * page already told us and refines itself when the probe returns — the page is never blocked.
+     * A stream no probe can help with (live, unproven blob) is still refused up front; a DASH
+     * manifest is probed, and only becomes a refusal when the probe finds nothing it can segment.
      */
     fun openQualitySheetFor(candidate: MediaCandidate) {
         val unsupported = unsupportedReasonFor(candidate)
@@ -500,27 +501,56 @@ class BrowserViewModel @Inject constructor(
             _messages.trySend(context.getString(messageFor(unsupported)))
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        // No explicit dispatcher: the resolver already switches to IO internally, and staying on the
+        // view-model's own scope keeps the probe ordered behind the sheet state it updates.
+        viewModelScope.launch {
             val resolved = runCatching { mediaResolver.resolve(candidate.mediaUrl) }.getOrNull()
-            val merged = resolved?.let { info ->
-                val synthesized = mediaInfoFrom(candidate)
-                val formats = (info.combinedFormats + synthesized.combinedFormats).distinctBy { it.url }
-                info.copy(title = info.title.ifBlank { synthesized.title }, thumbnail = info.thumbnail ?: synthesized.thumbnail, combinedFormats = formats.ifEmpty { synthesized.combinedFormats }, formats = formats)
-            } ?: mediaInfoFrom(candidate)
+            val synthesized = mediaInfoFrom(candidate)
+            // When the probe described the stream, its rows are the truth. Several DASH renditions
+            // share one manifest URL, so they must not be de-duplicated by URL — the fallback is
+            // only used when the probe found nothing to segment.
+            val hasResolvedFormats = resolved != null && (resolved.combinedFormats.isNotEmpty() || resolved.audioFormats.isNotEmpty())
+            val merged = if (hasResolvedFormats) {
+                val info = resolved!!
+                info.copy(
+                    title = info.title.ifBlank { synthesized.title },
+                    thumbnail = info.thumbnail ?: synthesized.thumbnail,
+                    formats = info.formats.ifEmpty { info.combinedFormats }
+                )
+            } else {
+                synthesized
+            }
+            val failure = if (!hasResolvedFormats && isDashCandidate(candidate)) UnsupportedMedia.DASH else null
+            // An unsupported sheet keeps a title and a poster but nothing selectable, so no row can
+            // ever turn a refused stream into a download.
+            val presented = if (failure == null) merged else merged.copy(
+                formats = emptyList(), audioFormats = emptyList(), videoFormats = emptyList(), combinedFormats = emptyList()
+            )
             _uiState.update { state ->
                 val current = state.qualitySheet ?: return@update state
                 if (current.candidate.mediaUrl != candidate.mediaUrl) return@update state
-                state.copy(qualitySheet = current.copy(mediaInfo = merged, isResolving = false))
+                state.copy(qualitySheet = current.copy(mediaInfo = presented, isResolving = false, unsupported = failure))
             }
+            if (failure != null) _messages.trySend(context.getString(messageFor(failure)))
         }
     }
 
     fun closeQualitySheet() { _uiState.update { it.copy(qualitySheet = null) } }
 
-    /** Null when the candidate can be downloaded; otherwise the honest reason it cannot. */
+    /**
+     * Null when the candidate can be downloaded; otherwise the honest reason it cannot.
+     *
+     * DASH is deliberately allowed through here: a clear, static, single-period manifest is now
+     * segmented by the app itself, and the resolver is the only layer that can tell that apart from
+     * a dynamic, multi-period or DRM one. When resolution comes back empty, the sheet gets the DASH
+     * refusal instead — see [openQualitySheetFor].
+     */
     fun unsupportedReasonFor(candidate: MediaCandidate): UnsupportedMedia? =
         MediaOfferability.unsupportedReason(candidate.mediaUrl, candidate.mimeType, candidate.extension,
-            candidate.isLive, candidate.isMediaSource, candidate.isBlobFile)
+            candidate.isLive, candidate.isMediaSource, candidate.isBlobFile, dashIsSupported = true)
+
+    private fun isDashCandidate(candidate: MediaCandidate): Boolean =
+        MediaOfferability.isDash(candidate.mediaUrl, candidate.mimeType, candidate.extension)
 
     private fun messageFor(reason: UnsupportedMedia): Int = when (reason) {
         UnsupportedMedia.DASH -> R.string.error_dash_unsupported
@@ -620,7 +650,7 @@ class BrowserViewModel @Inject constructor(
             val filename = sanitizeFilename(com.salvia.salviabrowxer.media.downloader.DownloadManager.generateFilename(title, extension))
             val destination = runCatching { downloadRepository.getDefaultDownloadDestination() }.getOrNull()?.takeIf { it.isNotBlank() }
                 ?: context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.absolutePath ?: context.filesDir.absolutePath
-            val entity = downloadRepository.createDownloadEntity(url = format.url, filename = filename, destination = destination, mediaTitle = title, thumbnail = candidate.thumbnailUrl, selectedQuality = format.format, mimeType = format.mimeType, totalBytes = format.size?.takeIf { it > 0L }).copy(status = DownloadState.QUEUED)
+            val entity = downloadRepository.createDownloadEntity(url = format.url, filename = filename, destination = destination, mediaTitle = title, thumbnail = candidate.thumbnailUrl, selectedQuality = format.format, mimeType = format.mimeType, totalBytes = format.size?.takeIf { it > 0L }, renditionId = format.id.takeIf { format.isDash }).copy(status = DownloadState.QUEUED)
             downloadRepository.addDownload(entity)
             DownloadService.enqueueDownload(context, entity.id)
             _uiState.update { it.copy(qualitySheet = null) }

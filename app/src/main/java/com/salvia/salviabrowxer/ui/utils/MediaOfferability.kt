@@ -44,9 +44,15 @@ object MediaOfferability {
      */
     fun unsupportedReason(
         url: String, mimeType: String?, extension: String?, isLive: Boolean = false,
-        isMediaSource: Boolean = false, isBlobFile: Boolean = false
+        isMediaSource: Boolean = false, isBlobFile: Boolean = false,
+        /**
+         * True once the resolver can segment a clear, static manifest itself. Even then only some
+         * manifests qualify (dynamic, multi-period and DRM ones do not), so the final judgement is
+         * made after resolution: an empty result on a DASH candidate is still a refusal.
+         */
+        dashIsSupported: Boolean = false
     ): UnsupportedMedia? = when {
-        isDash(url, mimeType, extension) -> UnsupportedMedia.DASH
+        isDash(url, mimeType, extension) -> if (dashIsSupported) null else UnsupportedMedia.DASH
         isLive -> UnsupportedMedia.LIVE
         url.startsWith("blob:") && (isMediaSource || !isBlobFile) -> UnsupportedMedia.BLOB_STREAM
         else -> null
