@@ -61,7 +61,9 @@ versionName `1.0.0`.
   The draggable floating button still exists as an advanced setting, off by default, because a
   button that covers the page should be something the user asked for.
 - **Quality sheet** — resolver runs HEAD, falls back to a ranged GET when HEAD is refused, and
-  expands an HLS master playlist into one row per variant (resolution, bitrate, size when known).
+  fetches the playlist *in parallel with that probe* whenever the URL path already names a manifest,
+  so the rows appear sooner instead of after two serial round trips. It expands an HLS master
+  playlist into one row per variant (resolution, bitrate, size when known).
   A clear, **static, single-period MPEG-DASH** manifest is parsed the same way: each `Representation`
   becomes a row, and a video rendition is paired with the best audio into a single “1080p + audio”
   option that the app downloads as two streams and muxes itself. The sheet opens immediately from
@@ -74,7 +76,10 @@ versionName `1.0.0`.
   concatenated, DASH representations are fetched the same way and resume too, blob saves land in
   the same queue. An **AES-128 encrypted** HLS playlist is decrypted with the key the manifest names,
   `EXT-X-BYTERANGE` segments are honoured, and a paused or process-killed segmented transfer
-  resumes from the parts it already staged. A segmented
+  resumes from the parts it already staged. A segmented transfer that fails on a transient network
+  error is **retried a bounded number of times with backoff**, and the retry resumes too: the staged
+  segments are kept, and a DASH rendition that already finished is not fetched again, so only the
+  missing segments are requested. A segmented
   transfer is then **remuxed into a plain MP4 with `MediaMuxer`** (no re-encode), and a DASH
   video+audio pair is **muxed into one file** — so the saved file plays in any gallery or player,
   not only in this app. The finished file's duration and a frame are read locally for the library
@@ -146,9 +151,9 @@ Claimed behaviour is covered by the cheapest layer that can actually execute it:
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| JVM unit tests | DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`) — including AES-128 decryption, `EXT-X-BYTERANGE`, variant selection and resumable staged parts — rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
+| JVM unit tests | DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`) — including AES-128 decryption, `EXT-X-BYTERANGE`, variant selection and resumable staged parts — resolver HLS-variant expansion against a real server, rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
 | Robolectric | The media-store export executed against the real framework at **API 24** (public-folder copy, media scanner, no-overwrite) and at **API 33** (`MediaStore` pending-flag protocol, byte fidelity) | `:app` `MediaStoreExporterTest` |
-| Instrumented | The real store publish on a device: bytes read back through `ContentResolver`, the row queryable, and the launch smoke check | `.github/workflows/emulator_verification.yml` |
+| Instrumented | The real store publish on a device (bytes read back through `ContentResolver`, the row queryable), a real **AES-128 HLS** download decrypted on-device with Android’s own JCE against a local server, and the launch smoke check | `.github/workflows/emulator_verification.yml` |
 
 ```bash
 ./gradlew :app:testDebugUnitTest :core:model:testDebugUnitTest \

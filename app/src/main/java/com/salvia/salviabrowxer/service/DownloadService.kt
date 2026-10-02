@@ -20,6 +20,7 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.concurrent.SlotLimiter
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DashRenditionId
+import com.salvia.salviabrowxer.core.model.DashRepresentation
 import com.salvia.salviabrowxer.core.model.DashSelection
 import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
@@ -209,10 +210,15 @@ class DownloadService : Service() {
                 // Three real paths, chosen by what the row is: a DASH rendition (the manifest is
                 // re-read here), an HLS playlist, or a plain single-file transfer.
                 val dashSelection = DashRenditionId.parse(stored.renditionId)
-                val transfer = when {
-                    dashSelection != null -> downloadDashRendition(stored, downloadId, finalUrl, dashSelection)
-                    isHlsStream(finalUrl, stored.mimeType) -> downloadHlsStream(stored, downloadId, finalUrl)
-                    else -> directTransfer(stored, downloadId, finalUrl)
+                val hlsStream = isHlsStream(finalUrl, stored.mimeType)
+                // A segmented transfer is retried after a transient failure. The parts it already
+                // staged are kept, so the retry resumes instead of re-fetching from the first segment.
+                val transfer = transferWithRetry(downloadId, segmented = dashSelection != null || hlsStream) { attempt ->
+                    when {
+                        dashSelection != null -> downloadDashRendition(stored, downloadId, finalUrl, dashSelection, reuseCompleted = attempt > 0)
+                        hlsStream -> downloadHlsStream(stored, downloadId, finalUrl)
+                        else -> directTransfer(stored, downloadId, finalUrl)
+                    }
                 }
 
                 val finalized = finalizeTransfer(stored, transfer)
@@ -238,6 +244,42 @@ class DownloadService : Service() {
             finally { inFlight.decrementAndGet(); refreshSummaryThrottled(force = true) }
         } finally {
             limiter.release()
+        }
+    }
+
+    /**
+     * Runs a transfer, retrying a *segmented* one a bounded number of times after a transient
+     * failure. A retry resumes rather than restarts: [SegmentedFetcher] keeps the parts it already
+     * staged, and a DASH rendition that finished on an earlier attempt is not fetched again, so only
+     * the missing segments are requested. The backoff doubles and stays short; a pause or cancel
+     * during the wait stops the retry instead of letting it finish.
+     */
+    private suspend fun transferWithRetry(
+        downloadId: String,
+        segmented: Boolean,
+        block: suspend (attempt: Int) -> Transfer
+    ): Transfer {
+        var attempt = 0
+        while (true) {
+            abortReasonFor(downloadId)?.let { throw DownloadAbortedException(it) }
+            try {
+                return block(attempt)
+            } catch (aborted: DownloadAbortedException) {
+                throw aborted
+            } catch (network: IOException) {
+                if (!segmented || attempt >= MAX_SEGMENTED_RETRIES) throw network
+                attempt++
+                Log.i(TAG, "Segmented transfer $downloadId failed, retry $attempt/$MAX_SEGMENTED_RETRIES", network)
+                downloadRepository.updateDownloadState(downloadId, DownloadState.RETRYING)
+                refreshSummaryThrottled(force = true)
+                var waited = 0L
+                val backoff = RETRY_BASE_DELAY_MILLIS * attempt
+                while (waited < backoff) {
+                    abortReasonFor(downloadId)?.let { throw DownloadAbortedException(it) }
+                    kotlinx.coroutines.delay(RETRY_POLL_MILLIS)
+                    waited += RETRY_POLL_MILLIS
+                }
+            }
         }
     }
 
@@ -283,12 +325,37 @@ class DownloadService : Service() {
         return Transfer(result.file, result.contentType ?: "video/mp2t", remuxToMp4 = true)
     }
 
+    /**
+     * Downloads one DASH representation unless a previous attempt of this same download already
+     * produced the whole file. A finished representation is the coarsest resume unit: its staged
+     * segments are deleted once it completes, so reusing the file is what keeps a retry from
+     * fetching a whole video track again. On the first attempt any stale file is removed first, so a
+     * later retry can trust whatever it finds.
+     */
+    private suspend fun fetchDashRepresentation(
+        representation: DashRepresentation,
+        target: File,
+        userAgent: String,
+        reuseCompleted: Boolean,
+        onProgress: suspend (DownloadSnapshot) -> Unit,
+        shouldAbort: suspend () -> AbortReason?
+    ): DownloadResult {
+        if (target.exists()) {
+            if (reuseCompleted && target.length() > 0L) {
+                return DownloadResult(file = target, bytesWritten = target.length(), totalBytes = target.length(), contentType = representation.mimeType)
+            }
+            target.delete()
+        }
+        return dashDownloader.downloadRepresentation(representation, target, userAgent, null, onProgress = onProgress, shouldAbort = shouldAbort)
+    }
+
     /** Re-reads the manifest and downloads the chosen DASH representation(s). */
     private suspend fun downloadDashRendition(
         stored: DownloadEntity,
         downloadId: String,
         manifestUrl: String,
-        selection: DashSelection
+        selection: DashSelection,
+        reuseCompleted: Boolean
     ): Transfer {
         val userAgent = FileDownload.DEFAULT_DOWNLOAD_USER_AGENT
         val manifest = dashDownloader.fetchManifest(manifestUrl, userAgent, null)
@@ -305,13 +372,13 @@ class DownloadService : Service() {
             is DashSelection.Video -> {
                 val representation = manifest.representationById(selection.videoId)
                     ?: throw IOException("DASH video rendition is no longer in the manifest")
-                val result = dashDownloader.downloadRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, null, onProgress = progress, shouldAbort = abort)
+                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, reuseCompleted, progress, abort)
                 Transfer(result.file, representation.mimeType, remuxToMp4 = true)
             }
             is DashSelection.Audio -> {
                 val representation = manifest.representationById(selection.audioId)
                     ?: throw IOException("DASH audio rendition is no longer in the manifest")
-                val result = dashDownloader.downloadRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, null, onProgress = progress, shouldAbort = abort)
+                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, reuseCompleted, progress, abort)
                 Transfer(result.file, representation.mimeType, remuxToMp4 = true)
             }
             is DashSelection.Merged -> {
@@ -321,8 +388,8 @@ class DownloadService : Service() {
                     ?: throw IOException("DASH audio rendition is no longer in the manifest")
                 val videoRaw = File(directory, "$base.video.tmp")
                 val audioRaw = File(directory, "$base.audio.tmp")
-                dashDownloader.downloadRepresentation(videoRepresentation, videoRaw, userAgent, null, onProgress = progress, shouldAbort = abort)
-                dashDownloader.downloadRepresentation(audioRepresentation, audioRaw, userAgent, null, onProgress = progress, shouldAbort = abort)
+                fetchDashRepresentation(videoRepresentation, videoRaw, userAgent, reuseCompleted, progress, abort)
+                fetchDashRepresentation(audioRepresentation, audioRaw, userAgent, reuseCompleted, progress, abort)
                 val merged = DownloadManager.nonConflicting(File(directory, "$base.mp4"))
                 if (trackMerger.merge(videoRaw, audioRaw, merged)) {
                     videoRaw.delete(); audioRaw.delete()
@@ -518,6 +585,10 @@ class DownloadService : Service() {
         const val ACTION_PROCESS_QUEUE = "com.salvia.salviabrowxer.action.PROCESS_QUEUE"
         const val EXTRA_DOWNLOAD_ID = "extra_download_id"
         private const val TAG = "DownloadService"
+        /** How many times a segmented transfer is retried after a transient failure (3 tries total). */
+        private const val MAX_SEGMENTED_RETRIES = 2
+        private const val RETRY_BASE_DELAY_MILLIS = 1200L
+        private const val RETRY_POLL_MILLIS = 200L
         private const val NOTIFICATION_COMPLETED_BASE_ID = 2000
         private val ACTIVE_STATES = listOf(DownloadState.QUEUED, DownloadState.RESOLVING, DownloadState.PREPARING, DownloadState.DOWNLOADING, DownloadState.RETRYING, DownloadState.PROCESSING, DownloadState.PAUSED)
         fun enqueueDownload(context: Context, downloadId: String) { start(context, ACTION_ENQUEUE, downloadId) }

@@ -5,6 +5,7 @@ import com.salvia.salviabrowxer.core.model.DashRenditionId
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -19,6 +20,14 @@ class DirectMediaResolver(
         var filename: String? = null
 
         val ua = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36"
+
+        // When the URL path itself names a manifest, its playlist fetch is independent of the
+        // metadata probe, so the two run together. The quality sheet used to wait for the probe
+        // (HEAD, sometimes a ranged GET) and *then* the playlist: a serial pair of round trips.
+        // Overlapping them is what makes the sheet fill in sooner on adaptive pages.
+        val hint = manifestHint(url)
+        val hlsDeferred = if (hint == ManifestHint.HLS) async { tryParseHlsVariants(url, ua) } else null
+        val dashDeferred = if (hint == ManifestHint.DASH) async { tryParseDash(url, ua) } else null
 
         // Try HEAD first; fall back to GET with Range if HEAD is rejected
         val headRequest = Request.Builder().url(url).head().header("User-Agent", ua).build()
@@ -54,7 +63,7 @@ class DirectMediaResolver(
         // save (dynamic, multi-period, DRM, an unknown segment form) still resolves to no formats
         // at all, and the UI keeps its explanation instead of starting a doomed transfer.
         if (isDash) {
-            val manifest = tryParseDash(url, ua)
+            val manifest = dashDeferred?.await() ?: tryParseDash(url, ua)
             if (manifest != null) {
                 val dash = dashMediaInfo(title, url, manifest)
                 if (dash.combinedFormats.isNotEmpty() || dash.audioFormats.isNotEmpty()) return@withContext dash
@@ -68,7 +77,7 @@ class DirectMediaResolver(
 
         // Expand the HLS master playlist into one selectable quality per variant.
         if (isHls) {
-            val hlsFormats = tryParseHlsVariants(url, ua)
+            val hlsFormats = hlsDeferred?.await() ?: tryParseHlsVariants(url, ua)
             if (hlsFormats.isNotEmpty()) {
                 return@withContext MediaInfo(
                     title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
@@ -95,6 +104,18 @@ class DirectMediaResolver(
             videoFormats = if (format.isVideo) listOf(format) else emptyList(),
             combinedFormats = listOf(format), source = url, extractor = "direct", webpageUrl = url
         )
+    }
+
+    /** The manifest a URL path names outright, so its playlist can be fetched in parallel with the probe. */
+    private enum class ManifestHint { HLS, DASH }
+
+    private fun manifestHint(url: String): ManifestHint? {
+        val path = url.substringBefore('?').substringBefore('#')
+        return when (path.substringAfterLast('.', "").lowercase()) {
+            "m3u8" -> ManifestHint.HLS
+            "mpd" -> ManifestHint.DASH
+            else -> null
+        }
     }
 
     /** Lightweight HLS variant parser: reads the master playlist and emits one [MediaFormat] per variant.
