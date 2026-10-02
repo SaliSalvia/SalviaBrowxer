@@ -22,6 +22,18 @@ class DomMediaDetector : MediaDetector {
     private val urlInTextRegex = Regex("""https?://[^\s"'<>]+\.($mediaAlternation)[^\s"'<>]*""", RegexOption.IGNORE_CASE)
     private val protocolRelativeRegex = Regex("""//[^\s"'<>]+\.($mediaAlternation)[^\s"'<>]*""", RegexOption.IGNORE_CASE)
 
+    // Structured data (`<script type="application/ld+json">`) names the real file in `contentUrl`.
+    // `embedUrl` is deliberately not read: it is the player *page*, not a downloadable file.
+    private val jsonLdContentUrlRegex = Regex(""""contentUrl"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+
+    // Attributes player libraries use to hand a lazy media URL to their JS. Read only when the
+    // value itself looks like media, so a generic `data-url` pointing at an API or an image cannot
+    // become a candidate.
+    private val dataMediaAttributes = listOf(
+        "data-video-src", "data-video-url", "data-video", "data-src", "data-mp4",
+        "data-hls", "data-dash", "data-stream-url", "data-file", "data-url"
+    )
+
     override suspend fun detect(pageUrl: String, html: String?): List<MediaCandidate> {
         if (html.isNullOrBlank()) return emptyList()
         // Hard cap: HTML already trimmed to 62k by JS, but defend against huge pasted values
@@ -31,8 +43,10 @@ class DomMediaDetector : MediaDetector {
 
         detectVideoAudio(doc, pageUrl, candidates)
         detectSourceElements(doc, pageUrl, candidates)
+        detectDataAttributes(doc, pageUrl, candidates)
         detectAnchors(doc, pageUrl, candidates)
         detectMetaTags(doc, pageUrl, candidates)
+        detectJsonLd(doc, pageUrl, candidates)
         detectJsonUrls(safeHtml, pageUrl, candidates)
         detectPlainUrls(safeHtml, pageUrl, candidates)
 
@@ -48,14 +62,14 @@ class DomMediaDetector : MediaDetector {
     private fun detectVideoAudio(doc: Document, pageUrl: String, out: MutableList<MediaCandidate>) {
         for (tag in arrayOf("video", "audio")) {
             doc.select(tag).forEach { el ->
-                val src = el.attr("src").trim()
+                val src = el.attr("src").trim().ifEmpty { el.attr("data-src").trim() }
                 if (src.isNotEmpty()) {
                     out += candidate(pageUrl, src, el.attr("title").ifEmpty { null }, el.attr("type").ifEmpty { null }, confidence = 0.92f)
                 }
                 // poster often is thumbnail
                 val poster = if (tag == "video") el.attr("poster").trim().ifEmpty { null } else null
                 el.select("source").forEach { srcEl ->
-                    val s = srcEl.attr("src").trim()
+                    val s = srcEl.attr("src").trim().ifEmpty { srcEl.attr("data-src").trim() }
                     if (s.isNotEmpty()) {
                         val c = candidate(pageUrl, s, srcEl.attr("title").ifEmpty { null }, srcEl.attr("type").ifEmpty { null }, confidence = 0.86f)
                         out += if (poster != null) c.copy(thumbnailUrl = makeAbsolute(pageUrl, poster)) else c
@@ -67,8 +81,8 @@ class DomMediaDetector : MediaDetector {
 
     private fun detectSourceElements(doc: Document, pageUrl: String, out: MutableList<MediaCandidate>) {
         // Standalone <source> outside video (e.g. picture/srcset not media, so filter)
-        doc.select("source[src]").forEach { el ->
-            val src = el.attr("src").trim()
+        doc.select("source[src], source[data-src]").forEach { el ->
+            val src = el.attr("src").trim().ifEmpty { el.attr("data-src").trim() }
             if (src.isEmpty()) return@forEach
             val type = el.attr("type").trim().ifEmpty { null }
             // Only keep if mime or extension suggests media
@@ -104,12 +118,54 @@ class DomMediaDetector : MediaDetector {
 
     private fun detectMetaTags(doc: Document, pageUrl: String, out: MutableList<MediaCandidate>) {
         // og:video, og:audio, twitter:player:stream
-        val metaProps = listOf("og:video", "og:video:url", "og:video:secure_url", "og:audio", "twitter:player:stream")
+        val metaProps = listOf(
+            "og:video", "og:video:url", "og:video:secure_url",
+            "og:audio", "og:audio:url", "og:audio:secure_url",
+            "twitter:player:stream"
+        )
         for (prop in metaProps) {
             doc.select("meta[property=$prop], meta[name=$prop]").forEach { el ->
                 val content = el.attr("content").trim().ifEmpty { return@forEach }
                 val abs = makeAbsolute(pageUrl, content)
                 if (abs.isNotBlank()) out += candidate(pageUrl, abs, null, null, confidence = 0.88f)
+            }
+        }
+    }
+
+    private fun detectDataAttributes(doc: Document, pageUrl: String, out: MutableList<MediaCandidate>) {
+        val selector = dataMediaAttributes.joinToString(",") { "[$it]" }
+        doc.select(selector).forEach { el ->
+            for (attr in dataMediaAttributes) {
+                val raw = el.attr(attr).trim()
+                if (raw.isEmpty()) continue
+                val abs = makeAbsolute(pageUrl, raw)
+                if (!isMediaUrl(abs, null)) continue
+                out += MediaCandidate(
+                    pageUrl = pageUrl, mediaUrl = abs,
+                    title = el.attr("title").trim().ifEmpty { null },
+                    extension = getExt(abs), source = MediaSource.DOM, confidence = 0.66f
+                )
+            }
+        }
+    }
+
+    private fun detectJsonLd(doc: Document, pageUrl: String, out: MutableList<MediaCandidate>) {
+        var count = 0
+        doc.select("script[type=application/ld+json]").forEach { script ->
+            if (count > 16) return@forEach
+            val body = runCatching { script.data() }.getOrDefault("")
+            if (body.isEmpty()) return@forEach
+            for (match in jsonLdContentUrlRegex.findAll(body)) {
+                if (count++ > 16) break
+                val raw = match.groupValues[1].trim()
+                if (raw.isEmpty() || raw.length > 500) continue
+                val abs = makeAbsolute(pageUrl, raw)
+                val isMedia = isMediaUrl(abs, null) || MediaUrlRules.isPlaylistUrl(abs) || MediaUrlRules.isDashUrl(abs)
+                if (!isMedia) continue
+                out += MediaCandidate(
+                    pageUrl = pageUrl, mediaUrl = abs,
+                    extension = getExt(abs), source = MediaSource.DOM, confidence = 0.8f
+                )
             }
         }
     }

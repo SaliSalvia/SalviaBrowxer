@@ -96,4 +96,34 @@ class MediaUrlRulesTest {
         assertEquals("mpd", MediaUrlRules.extensionForMime(MediaUrlRules.DASH_MIME_TYPE))
         assertNull(MediaUrlRules.extensionForMime("application/octet-stream"))
     }
+
+    // The app used to know only the handful of containers a phone camera produces. File-serving
+    // sites still hand out these, and every layer now recognises them because they are read from
+    // this one list rather than copied into each layer.
+    @Test
+    fun `the wider set of containers is recognised`() {
+        for (extension in listOf("ogv", "mpg", "mpeg", "wmv", "f4v", "m2ts", "mts", "vob", "asf", "3g2")) {
+            assertTrue(extension, extension in MediaUrlRules.VIDEO_EXTENSIONS)
+            assertTrue(extension, MediaUrlRules.hasMediaExtension("https://example.com/clip.$extension"))
+        }
+        for (extension in listOf("opus", "oga", "mka", "aif", "aiff", "m4b", "amr", "ac3")) {
+            assertTrue(extension, extension in MediaUrlRules.AUDIO_EXTENSIONS)
+            assertTrue(extension, MediaUrlRules.hasMediaExtension("https://example.com/track.$extension"))
+        }
+    }
+
+    @Test
+    fun `extensionForMime maps the wider containers`() {
+        assertEquals("ogv", MediaUrlRules.extensionForMime("video/ogg"))
+        assertEquals("avi", MediaUrlRules.extensionForMime("video/x-msvideo"))
+        assertEquals("wmv", MediaUrlRules.extensionForMime("video/x-ms-wmv"))
+        assertEquals("wmv", MediaUrlRules.extensionForMime("video/x-ms-asf"))
+        assertEquals("mpg", MediaUrlRules.extensionForMime("video/mpeg"))
+        assertEquals("3g2", MediaUrlRules.extensionForMime("video/3gpp2"))
+        assertEquals("opus", MediaUrlRules.extensionForMime("audio/opus"))
+        assertEquals("mka", MediaUrlRules.extensionForMime("audio/x-matroska"))
+        assertEquals("aiff", MediaUrlRules.extensionForMime("audio/x-aiff"))
+        assertEquals("amr", MediaUrlRules.extensionForMime("audio/amr"))
+        assertEquals("m4a", MediaUrlRules.extensionForMime("audio/x-m4a"))
+    }
 }

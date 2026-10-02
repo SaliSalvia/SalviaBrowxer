@@ -129,6 +129,29 @@ class MediaSniffAdmissionTest {
         assertNotNull(MediaSniffAdmission.admit(page, "https://cdn.example.com/clip.webm", null, SniffOrigin.ELEMENT_SOURCE))
     }
 
+    // The same evidence the DOM scanner already trusts (`<source type="video/mp4">`, a lazy
+    // data-* attribute): markup that declares a real media type can admit an extension-less URL,
+    // so sniffer and DOM no longer disagree about the same element.
+    @Test
+    fun `markup that declares the type can admit an extension-less URL`() {
+        val candidate = MediaSniffAdmission.admit(
+            page, "https://cdn.example.com/playback/9f8e7d", "video/mp4", SniffOrigin.ELEMENT_SOURCE
+        )
+        assertNotNull(candidate)
+        assertEquals("mp4", candidate!!.extension)
+        assertEquals(0.7f, candidate.confidence, 0.0001f)
+    }
+
+    @Test
+    fun `a declared weak type still needs an extension`() {
+        assertNull(
+            MediaSniffAdmission.admit(
+                page, "https://cdn.example.com/playback/9f8e7d", "application/octet-stream", SniffOrigin.ELEMENT_SOURCE
+            )
+        )
+        assertNull(MediaSniffAdmission.admit(page, "https://api.example.com/v2/feed", null, SniffOrigin.ELEMENT_SOURCE))
+    }
+
     @Test
     fun `a blob is admitted on the type the media source declared`() {
         val blob = "blob:https://www.example.com/8f7e6d5c"
