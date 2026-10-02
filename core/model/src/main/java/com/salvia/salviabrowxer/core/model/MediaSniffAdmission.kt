@@ -21,7 +21,10 @@ enum class SniffOrigin(val wireName: String) {
      */
     ELEMENT_METADATA("element-metadata"),
 
-    /** Markup points at this URL but nothing has loaded it: only the extension is evidence. */
+    /**
+     * Markup points at this URL but nothing has loaded it: the extension or a page-declared media
+     * mime (`<source type="video/mp4">`, a lazy `data-*` player attribute) is the only evidence.
+     */
     ELEMENT_SOURCE("element-source");
 
     companion object {
@@ -107,7 +110,11 @@ object MediaSniffAdmission {
             // The player loaded it. There may be no header and no extension worth trusting.
             SniffOrigin.ELEMENT_METADATA -> true
 
-            SniffOrigin.ELEMENT_SOURCE -> hasExtension || isPlaylist || isDash
+            // Markup only points here, but the markup can also *declare* the type (`<source
+            // type="video/mp4">`, a data-* player attribute). A declared media mime is the same
+            // evidence the DOM scanner already trusts, so an extension-less source URL is admitted
+            // on it instead of being visible to one layer and dropped by the next.
+            SniffOrigin.ELEMENT_SOURCE -> hasExtension || isPlaylist || isDash || isStrongMime
         }
         if (!admitted) return null
 

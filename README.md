@@ -46,13 +46,20 @@ versionName `1.0.0`.
     guesses from outgoing headers. Only an absent Range or `bytes=0-` is considered whole-file
     evidence. Fetch/XHR observation rejects partial responses; segments and web manifests are
     excluded from DOM and request candidates too.
-  - a **DOM scan** of the loaded page (`media`, `source`, anchors, meta tags, JSON and plain-text
-    URLs) for whatever the markup itself states.
+  - a **DOM scan** of the loaded page (`media`, `source`, lazy `data-*` player attributes,
+    `application/ld+json` `contentUrl`, Open Graph / Twitter meta tags, anchors, and JSON or
+    plain-text URLs) for whatever the markup itself states. A `<source type="video/mp4">` or a
+    lazy `data-video-src` may name only an extension-less URL; the declared media type is then the
+    evidence, and the same declared type now travels across the sniffing bridge instead of being
+    visible to the DOM scanner and dropped by the sniffer.
   - **blob reassembly** through the bridge, in Binder-safe 480 KiB chunks.
 
   Every layer takes its notion of "is this media" from one object, `MediaUrlRules` — previously
   there were five copies and they disagreed, most visibly over `manifest`, which made a PWA's
-  `site.webmanifest` offer itself as a playlist. Admission is evidence-based, in
+  `site.webmanifest` offer itself as a playlist. That one list now also carries the wider set of
+  containers plain file-serving sites still use (`ogv`, `mpg`/`mpeg`, `wmv`, `f4v`, `m2ts`/`mts`,
+  `vob`, `asf`, `3g2`, `opus`, `oga`, `mka`, `aif`/`aiff`, `m4b`, `amr`, `ac3`), so every layer
+  recognises them without a second copy drifting. Admission is evidence-based, in
   `MediaSniffAdmission`: the type has to come from the server or from a player that actually loaded
   the URL, so HLS segments, ranged fragment reads, web manifests and ordinary page assets never
   reach the tray as candidates that would fail at download time.

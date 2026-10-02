@@ -54,6 +54,15 @@ class MediaSnifferScriptTest {
     }
 
     @Test
+    fun `a media element reports the type its markup declared`() {
+        // `<source type="video/mp4">` and lazy data-* players name the container in the markup.
+        // Carrying it across the bridge is what lets an extension-less source URL be admitted on
+        // the same evidence the DOM scanner already trusts, instead of being dropped here.
+        assertTrue(script.contains("declaredType"))
+        assertTrue(script.contains("getAttribute('type')"))
+    }
+
+    @Test
     fun `fragments are recognised by the range the page asked for`() {
         assertTrue(script.contains("isPartialRange"))
         assertTrue(script.contains("setRequestHeader"))

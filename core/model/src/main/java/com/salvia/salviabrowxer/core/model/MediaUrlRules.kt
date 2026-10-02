@@ -15,11 +15,18 @@ package com.salvia.salviabrowxer.core.model
  */
 object MediaUrlRules {
 
-    // Kept identical to what shipped before: widening these silently reclassifies existing
-    // candidates (isVideo/isAudio in the quality sheet), so it is a deliberate change, not a
-    // side effect of tidying up.
-    val VIDEO_EXTENSIONS: Set<String> = setOf("mp4", "webm", "mov", "avi", "3gp", "m4v", "mkv", "flv")
-    val AUDIO_EXTENSIONS: Set<String> = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "wma")
+    // Widening these silently reclassifies existing candidates (isVideo/isAudio in the quality
+    // sheet), so it is a deliberate change, not a side effect of tidying up. The extra containers
+    // are the ones plain file-serving sites still hand out next to mp4/webm — most of them the app
+    // saves as a raw single file, and all of them are matched by every layer because they are read
+    // from here rather than copied per layer.
+    val VIDEO_EXTENSIONS: Set<String> = setOf(
+        "mp4", "webm", "mov", "avi", "3gp", "3g2", "m4v", "mkv", "flv",
+        "ogv", "mpg", "mpeg", "wmv", "f4v", "m2ts", "mts", "vob", "asf"
+    )
+    val AUDIO_EXTENSIONS: Set<String> = setOf(
+        "mp3", "m4a", "m4b", "aac", "wav", "flac", "ogg", "oga", "opus", "mka", "wma", "aif", "aiff", "amr", "ac3"
+    )
     val PLAYLIST_EXTENSIONS: Set<String> = setOf("m3u8", "ts")
     val MEDIA_EXTENSIONS: Set<String> = VIDEO_EXTENSIONS + AUDIO_EXTENSIONS + PLAYLIST_EXTENSIONS
 
@@ -159,14 +166,24 @@ object MediaUrlRules {
             mime.startsWith("video/quicktime") -> "mov"
             mime.startsWith("video/x-matroska") -> "mkv"
             mime.startsWith("video/x-flv") -> "flv"
+            mime.startsWith("video/3gpp2") -> "3g2"
             mime.startsWith("video/3gpp") -> "3gp"
+            mime.startsWith("video/ogg") -> "ogv"
+            mime.startsWith("video/x-msvideo") || mime.startsWith("video/avi") -> "avi"
+            mime.startsWith("video/x-ms-wmv") || mime.startsWith("video/x-ms-asf") -> "wmv"
+            mime.startsWith("video/mpeg") -> "mpg"
             mime.startsWith("audio/mpeg") -> "mp3"
-            mime.startsWith("audio/mp4") -> "m4a"
+            mime.startsWith("audio/mp4") || mime.startsWith("audio/x-m4a") -> "m4a"
             mime.startsWith("audio/aac") -> "aac"
             mime.startsWith("audio/wav") || mime.startsWith("audio/x-wav") -> "wav"
-            mime.startsWith("audio/flac") -> "flac"
+            mime.startsWith("audio/flac") || mime.startsWith("audio/x-flac") -> "flac"
             mime.startsWith("audio/ogg") -> "ogg"
+            mime.startsWith("audio/opus") -> "opus"
+            mime.startsWith("audio/x-matroska") -> "mka"
             mime.startsWith("audio/x-ms-wma") -> "wma"
+            mime.startsWith("audio/aiff") || mime.startsWith("audio/x-aiff") -> "aiff"
+            mime.startsWith("audio/amr") -> "amr"
+            mime.startsWith("audio/ac3") -> "ac3"
             else -> null
         }
     }

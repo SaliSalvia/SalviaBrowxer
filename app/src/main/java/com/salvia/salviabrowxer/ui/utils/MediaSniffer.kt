@@ -273,6 +273,19 @@ object MediaSniffer {
     // 4. Media elements. A plain <video src> on an extension-less CDN path is invisible to every
     //    other layer, but the element itself answers the question: once it reports loaded metadata
     //    the URL is playable media, whatever the path looks like.
+    //    Markup can also declare the type (`<source type="video/mp4">`, a data-* player attribute).
+    //    That is the same evidence the DOM scanner trusts, so it is carried across the bridge
+    //    instead of leaving an extension-less source URL detectable by one layer and dropped here.
+    function declaredType(n) {
+        try {
+            if (!n || !n.getAttribute) return '';
+            var t = n.getAttribute('type');
+            if (!t) return '';
+            t = String(t).split(';')[0].trim().toLowerCase();
+            return isMediaMime(t) ? t : '';
+        } catch (e) { return ''; }
+    }
+
     function scanElement(n) {
         try {
             var player = n.tagName === 'VIDEO' || n.tagName === 'AUDIO';
@@ -290,7 +303,8 @@ object MediaSniffer {
             try {
                 if (owner) loaded = owner.readyState > 0 && absolute(owner.currentSrc) === absolute(url);
             } catch (e) {}
-            report(url, '', loaded ? 'element-metadata' : 'element-source', false, kind);
+            var type = declaredType(n) || declaredType(owner);
+            report(url, type, loaded ? 'element-metadata' : 'element-source', false, kind);
         } catch (e) {}
     }
 

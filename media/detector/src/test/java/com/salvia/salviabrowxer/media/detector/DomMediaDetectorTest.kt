@@ -166,6 +166,29 @@ class DomMediaDetectorTest {
     }
 
     @Test
+    fun `structured data contentUrl is detected but embedUrl is not`() = runTest {
+        val html = """
+            <script type="application/ld+json">
+            {"@type":"VideoObject","name":"Clip","contentUrl":"https://cdn.example.org/clip.mp4","embedUrl":"https://example.org/embed/1"}
+            </script>
+        """.trimIndent()
+        val urls = detector.detect("https://example.org/post", html).map { it.mediaUrl }
+        assertEquals(listOf("https://cdn.example.org/clip.mp4"), urls)
+    }
+
+    @Test
+    fun `lazy data attributes are detected only when the value is media`() = runTest {
+        val html = """
+            <div data-video-src="https://cdn.example.org/trailer.mp4"></div>
+            <video data-src="https://cdn.example.org/lazy.webm"></video>
+            <div data-src="https://example.org/api/feed"></div>
+            <div data-url="https://example.org/thumb.jpg"></div>
+        """.trimIndent()
+        val urls = detector.detect("https://example.org/page", html).map { it.mediaUrl }.toSet()
+        assertEquals(setOf("https://cdn.example.org/trailer.mp4", "https://cdn.example.org/lazy.webm"), urls)
+    }
+
+    @Test
     fun `detect returns empty list for no media`() = runTest {
         val html = """
             <html>
