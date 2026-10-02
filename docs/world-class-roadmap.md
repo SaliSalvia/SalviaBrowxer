@@ -44,7 +44,8 @@ bypass to make comparison numbers look good.
   cancellations, stalled server, revoked access, network changes, throttled progress persistence,
   retry without duplicates; explicit errors for unsupported formats. Cancellation and HTTP-failure
   mid-transfer are covered for the DASH and HLS paths by `DashDownloaderTest`/`HlsDownloaderTest`
-  against a local server. Release gate: the required clean unit tests, assembleDebug, release lint
+  against a local server, and a failed segmented transfer is auto-retried without re-fetching its
+  completed parts (`DownloadService.transferWithRetry`). Release gate: the required clean unit tests, assembleDebug, release lint
   and real-device matrix all pass — the last one needs a KVM-capable machine, which is what
   `.github/workflows/emulator_verification.yml` is for.
 
@@ -52,10 +53,14 @@ bypass to make comparison numbers look good.
   **decrypted** with the key the manifest names — key rotation and explicit/default IVs included —
   instead of refused, `EXT-X-BYTERANGE` segments are honoured, segments are fetched with bounded
   parallelism, and a paused or process-killed segmented transfer **resumes** from the parts it
-  already staged (`SegmentedFetcher`). `SAMPLE-AES` (DRM-adjacent) and live playlists are still
-  refused with honest errors. DASH segment transfers share the same parallel, resumable fetcher.
-  The unit tests cover decrypt/rotate/range/resume against a real HTTP server; a real encrypted
-  stream still needs the on-device pass.
+  already staged (`SegmentedFetcher`). A segmented transfer that fails on a transient network error
+  is now **auto-retried** a bounded number of times with backoff, resuming from those staged parts;
+  a DASH rendition that already completed is not fetched again. `SAMPLE-AES` (DRM-adjacent) and live
+  playlists are still refused with honest errors. DASH segment transfers share the same parallel,
+  resumable fetcher. The unit tests cover decrypt/rotate/range/resume against a real HTTP server;
+  an encrypted HLS stream is also downloaded and decrypted **on a device**
+  (`EncryptedHlsInstrumentedTest`, run by the emulator workflow) so Android's own JCE performs the
+  decryption for real.
 
 ## P1 — quality users notice every day
 
