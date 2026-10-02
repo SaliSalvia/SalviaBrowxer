@@ -104,7 +104,9 @@ class DownloadsViewModelTest {
 
         viewModel.clearCompletedDownloads()
 
-        coVerify { mockDownloadRepository.deleteDownloadsByState(DownloadState.COMPLETED) }
+        // Like the other ViewModel actions, this runs on Dispatchers.IO (a real thread), so a bare
+        // verify races the background write and fails intermittently on a loaded CI runner.
+        coVerify(timeout = 5_000) { mockDownloadRepository.deleteDownloadsByState(DownloadState.COMPLETED) }
     }
 
     @Test
@@ -113,7 +115,7 @@ class DownloadsViewModelTest {
 
         viewModel.clearFailedDownloads()
 
-        coVerify { mockDownloadRepository.deleteDownloadsByState(DownloadState.FAILED) }
+        coVerify(timeout = 5_000) { mockDownloadRepository.deleteDownloadsByState(DownloadState.FAILED) }
     }
 
     @Test
@@ -122,7 +124,7 @@ class DownloadsViewModelTest {
 
         viewModel.clearAllDownloads()
 
-        coVerify { mockDownloadRepository.clearAllDownloads() }
+        coVerify(timeout = 5_000) { mockDownloadRepository.clearAllDownloads() }
     }
 
     @Test
