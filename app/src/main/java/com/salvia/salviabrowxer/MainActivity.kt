@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -92,12 +91,6 @@ fun SalviaBrowxerAppContent(
 ) {
     val navController = rememberNavController()
 
-    /**
-     * A link submitted on the home screen. Whether it becomes a download or a page load is decided
-     * in the browser's view model, so only the URL travels from here.
-     */
-    var submittedLink by remember { mutableStateOf<String?>(null) }
-
     LaunchedEffect(openDownloads) {
         if (openDownloads && navController.currentDestination?.route != ROUTE_DOWNLOADS) {
             navController.navigate(ROUTE_DOWNLOADS)
@@ -116,17 +109,18 @@ fun SalviaBrowxerAppContent(
 
     NavHost(
         navController = navController,
-        // The app opens on the paste field, like every other downloader: the link is the entry
-        // point, and browsing is what you do when you do not have one yet.
-        startDestination = ROUTE_HOME
+        // The app is a browser first, so the browser is what the user meets on launch: the media
+        // tray and its pill are what turn browsing into downloading, and the paste field stays one
+        // tap away in the overflow menu ("Start screen") for when a link is already in hand.
+        startDestination = ROUTE_BROWSER
     ) {
         composable(ROUTE_HOME) {
             HomeScreen(
-                onOpenLink = { url ->
-                    submittedLink = url
-                    navController.navigate(ROUTE_BROWSER) { launchSingleTop = true }
-                },
-                onNavigateToBrowser = { navController.navigate(ROUTE_BROWSER) { launchSingleTop = true } },
+                // A submitted link is handed to the browser that is already on the back stack, so
+                // its tabs and WebViews survive. Whether it becomes a download or a page load is
+                // decided in the browser's view model, so only the URL travels from here.
+                onOpenLink = { url -> deliverToBrowser(navController, KEY_PASTED_LINK, url) },
+                onNavigateToBrowser = { navController.returnToBrowser() },
                 onNavigateToDownloads = { navController.navigate(ROUTE_DOWNLOADS) }
             )
         }
@@ -134,14 +128,17 @@ fun SalviaBrowxerAppContent(
             val requestedUrl by entry.savedStateHandle
                 .getStateFlow<String?>(KEY_OPEN_URL, null)
                 .collectAsStateWithLifecycle()
+            val pastedUrl by entry.savedStateHandle
+                .getStateFlow<String?>(KEY_PASTED_LINK, null)
+                .collectAsStateWithLifecycle()
             BrowserScreen(
                 onNavigateToDownloads = { navController.navigate(ROUTE_DOWNLOADS) },
                 onNavigateToSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onNavigateToBookmarks = { navController.navigate(ROUTE_BOOKMARKS) },
                 onNavigateToHistory = { navController.navigate(ROUTE_HISTORY) },
-                onNavigateToHome = { navController.navigate(ROUTE_HOME) { popUpTo(ROUTE_HOME) { inclusive = false }; launchSingleTop = true } },
-                submittedLink = submittedLink,
-                onSubmittedLinkConsumed = { submittedLink = null },
+                onNavigateToHome = { navController.navigate(ROUTE_HOME) { launchSingleTop = true } },
+                submittedLink = pastedUrl,
+                onSubmittedLinkConsumed = { entry.savedStateHandle[KEY_PASTED_LINK] = null },
                 inAppUrl = requestedUrl,
                 onInAppUrlConsumed = { entry.savedStateHandle[KEY_OPEN_URL] = null },
                 externalUrl = incomingUrl,
@@ -197,6 +194,34 @@ private fun openUrlInBrowser(navController: NavController, url: String) {
     navController.popBackStack()
 }
 
+/**
+ * Drops everything above the browser and returns to it, keeping its tabs alive.
+ *
+ * The browser is the app's first screen, so a pushed screen can never leave a second, empty
+ * browser on top of the real one: the user comes back to the page they were reading.
+ */
+private fun NavController.returnToBrowser() {
+    if (!popBackStack(ROUTE_BROWSER, inclusive = false)) {
+        navigate(ROUTE_BROWSER) { launchSingleTop = true }
+    }
+}
+
+/**
+ * Hands [url] to the browser that is already on the back stack under [key], then returns to it.
+ *
+ * Only the URL travels: the browser's view model is the single place that decides whether a pasted
+ * link becomes a download or a page load, and reusing the live entry keeps the open tabs.
+ */
+private fun deliverToBrowser(navController: NavController, key: String, url: String) {
+    val entry = runCatching { navController.getBackStackEntry(ROUTE_BROWSER) }.getOrNull()
+    if (entry == null) {
+        navController.navigate(ROUTE_BROWSER) { launchSingleTop = true }
+        return
+    }
+    entry.savedStateHandle[key] = url
+    navController.popBackStack(ROUTE_BROWSER, inclusive = false)
+}
+
 /** Navigates to the player for one media file (playlist of one). */
 fun navigateToPlayer(navController: NavController, url: String, title: String) {
     val encoded = java.net.URLEncoder.encode(url, "UTF-8")
@@ -212,3 +237,4 @@ private const val ROUTE_HISTORY = "history"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_PLAYER = "player/{url}/{title}"
 private const val KEY_OPEN_URL = "open_url"
+private const val KEY_PASTED_LINK = "pasted_link"
