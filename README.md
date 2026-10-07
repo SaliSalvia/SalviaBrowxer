@@ -9,8 +9,10 @@ versionName `1.0.0`.
 
 ## What it does today
 
-- **Home** — the app opens on a paste field, because a downloader's entry point is the link. A
-  copied link is picked up when the app comes to the foreground and fills the field — never
+- **Entry point** — the app is a browser, so it launches on the browser: the address field, the
+  media pill and the page are the first thing on screen. The paste screen ("Start screen") sits one
+  tap away in the overflow menu for when a link is already in hand, and behaves as described here.
+  A copied link is picked up when the app comes to the foreground and fills the field — never
   overwriting something already typed, and never offered twice. A URL that names its own container
   (`…/clip.mp4`, `…/master.m3u8`, `…/stream.mpd`) opens its quality sheet straight away; anything
   else is a page, so it is opened and the media tray finds what that page exposes. There is no
