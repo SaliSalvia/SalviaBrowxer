@@ -64,6 +64,12 @@ import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
  * The quality sheet is per-item — this is the step before it. Each row states what it is (kind and
  * container), never a confidence score, and a stream this app cannot save says so on the row
  * instead of opening a sheet that could only fail.
+ *
+ * The reason a candidate may be present in the tray but not downloadable is one of the app’s real
+ * refusal reasons, not a hidden failure mode. Those reasons are the same ones the detection and
+ * offerability layers already use: an MPEG-DASH manifest the app recognises but does not parse,
+ * a live playlist with no end, or a blob/MSE stream the page owns but the app cannot save. The
+ * tray is the place that says that out loud.
  */
 @Composable
 fun MediaTraySheet(
