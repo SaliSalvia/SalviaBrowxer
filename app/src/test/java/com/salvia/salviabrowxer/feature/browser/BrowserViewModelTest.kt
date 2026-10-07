@@ -323,6 +323,21 @@ class BrowserViewModelTest {
     }
 
     @Test
+    fun `a pasted media file opens its sheet even while the browser is on another page`() = runTest {
+        viewModel.navigate("https://example.com/article")
+
+        viewModel.openPastedLink("https://cdn.example.com/clip.mp4")
+
+        // A pasted file is a deliberate link, not something a page exposed, so the "open the media
+        // tray above the page" hint must not swallow it: the browser is the app's first screen, so
+        // the user pastes a direct media link while sitting on some other page almost every time.
+        val sheet = viewModel.uiState.value.qualitySheet
+        assertNotNull("a pasted direct media link must still open its sheet", sheet)
+        assertNull(sheet?.unsupported)
+        coVerify(exactly = 1) { mediaResolver.resolve("https://cdn.example.com/clip.mp4") }
+    }
+
+    @Test
     fun `revoked blob is removed from foreground detection and quality selection`() {
         val page = "https://example.com/feed"
         viewModel.navigate(page)

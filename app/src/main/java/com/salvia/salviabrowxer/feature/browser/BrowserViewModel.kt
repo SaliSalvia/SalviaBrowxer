@@ -486,11 +486,20 @@ class BrowserViewModel @Inject constructor(
      * manifest is probed, and only becomes a refusal when the probe finds nothing it can segment.
      */
     fun openQualitySheetFor(candidate: MediaCandidate) {
-        if (_uiState.value.url.isNotBlank() && candidate.pageUrl != _uiState.value.url) {
+        val unsupported = unsupportedReasonFor(candidate)
+        // A stream no probe can help with is refused on its own terms, whatever page it came from:
+        // its honest reason is more useful than a tray hint, and the tray would not offer it either.
+        // The tray hint is for a candidate the sheet could really open — a sighting on a page the
+        // user has since left, which is the shape where the sheet would show the wrong page's file.
+        // A deliberate pasted file (`pageUrl == mediaUrl`) is not a sighting, so it is never held
+        // back: it is a link the user handed over on purpose, not something a page exposed.
+        val sightedOnAnotherPage = _uiState.value.url.isNotBlank() &&
+            candidate.pageUrl != candidate.mediaUrl &&
+            candidate.pageUrl != _uiState.value.url
+        if (unsupported == null && sightedOnAnotherPage) {
             _messages.trySend(context.getString(R.string.home_media_tray_only_hint))
             return
         }
-        val unsupported = unsupportedReasonFor(candidate)
         val info = mediaInfoFrom(candidate)
         _uiState.update {
             it.copy(
