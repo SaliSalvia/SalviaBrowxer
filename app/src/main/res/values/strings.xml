@@ -220,6 +220,8 @@
     <string name="home_open_browser">Browser</string>
     <string name="home_how_it_works">SalviaBrowxer saves media a page already offers. Paste a link to open it and the media tray picks up whatever that page exposes.</string>
     <string name="home_start_screen">Start screen</string>
+    <string name="home_noop_moved">You are already on the start screen.</string>
+    <string name="home_media_tray_only_hint">This file is from a page — open the media tray above the page to choose it.</string>
 
     <!-- Accessibility -->
     <string name="downloads_badge_description">%1$d active downloads</string>

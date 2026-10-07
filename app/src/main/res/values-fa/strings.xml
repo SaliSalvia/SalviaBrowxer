@@ -221,6 +221,8 @@
     <string name="home_open_browser">مرورگر</string>
     <string name="home_how_it_works">SalviaBrowxer رسانه‌ای را ذخیره می‌کند که خودِ صفحه ارائه می‌دهد. لینک را بچسبانید تا باز شود، و ترِی رسانه هرچه آن صفحه ارائه می‌دهد را برمی‌دارد.</string>
     <string name="home_start_screen">صفحهٔ شروع</string>
+    <string name="home_noop_moved">شما همین‌جاست: روی صفحهٔ شروع هستید.</string>
+    <string name="home_media_tray_only_hint">این فایل از یک صفحه آمده — برای انتخابش، ترِی رسانهٔ بالای صفحه را باز کنید.</string>
 
     <!-- Accessibility -->
     <string name="downloads_badge_description">%1$d دانلود فعال</string>

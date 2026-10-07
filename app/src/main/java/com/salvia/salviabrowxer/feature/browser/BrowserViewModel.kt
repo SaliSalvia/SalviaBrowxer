@@ -295,7 +295,14 @@ class BrowserViewModel @Inject constructor(
         _commands.trySend(BrowserCommand.Load(target))
     }
 
-    fun goHome() { navigate(_uiState.value.homepage.ifBlank { Constants.DEFAULT_HOMEPAGE }) }
+    fun goHome() {
+        val target = _uiState.value.homepage.ifBlank { Constants.DEFAULT_HOMEPAGE }
+        if (_uiState.value.url == target) {
+            _messages.trySend(context.getString(R.string.home_noop_moved))
+            return
+        }
+        navigate(target)
+    }
     fun goBack() { _commands.trySend(BrowserCommand.Back) }
     fun goForward() { _commands.trySend(BrowserCommand.Forward) }
     fun reload() { _commands.trySend(BrowserCommand.Reload) }
@@ -479,6 +486,10 @@ class BrowserViewModel @Inject constructor(
      * manifest is probed, and only becomes a refusal when the probe finds nothing it can segment.
      */
     fun openQualitySheetFor(candidate: MediaCandidate) {
+        if (_uiState.value.url.isNotBlank() && candidate.pageUrl != _uiState.value.url) {
+            _messages.trySend(context.getString(R.string.home_media_tray_only_hint))
+            return
+        }
         val unsupported = unsupportedReasonFor(candidate)
         val info = mediaInfoFrom(candidate)
         _uiState.update {
