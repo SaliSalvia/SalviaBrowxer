@@ -12,6 +12,15 @@ package com.salvia.salviabrowxer.core.model
  *
  * Everything that decides "is this media?" derives from here now, and [EXTENSION_ALTERNATION] is
  * interpolated into the injected JavaScript so the browser side cannot drift from the Kotlin side.
+ *
+ * Detection here is intentionally evidence-based, not bypass-based. The strong signals are the
+ * server’s own `Content-Type`, a player that actually loaded and reported metadata for the URL, and
+ * markup that declares a media type (`<source type="video/mp4">`, a lazy `data-*` player attribute).
+ * The weaker but still valid signal is a real media extension on a file the server also marked as
+ * weak media. What this object does not do, and does not help anyone do, is fetch URLs on its own,
+ * probe servers it was not given, spoof headers to defeat protections, or admit fragments/manifests
+ * as if they were finished files — the admission object is the authority for that once the response
+ * headers are already in hand.
  */
 object MediaUrlRules {
 

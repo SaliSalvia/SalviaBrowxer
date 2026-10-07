@@ -79,7 +79,12 @@ fun MediaQualitySelectionSheet(
     isResolving: Boolean,
     onDismiss: () -> Unit,
     onQualitySelected: (MediaFormat) -> Unit,
-    /** Set when this stream cannot be saved at all, so the sheet explains instead of offering. */
+    /**
+     * Set when this stream cannot be saved at all, so the sheet explains instead of offering.
+     *
+     * The reason text comes from the same [UnsupportedMedia] the tray uses, so a candidate the app
+     * admits but cannot save gets one honest explanation everywhere it appears.
+     */
     unsupported: UnsupportedMedia? = null
 ) {
     val formats = if (unsupported != null) emptyList() else mediaInfo.combinedFormats.ifEmpty { mediaInfo.formats }
