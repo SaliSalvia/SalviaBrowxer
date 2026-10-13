@@ -1,24 +1,17 @@
 package com.salvia.salviabrowxer.ui.utils
 
-import java.io.File
 import java.text.DecimalFormat
 
-fun File.safeDelete(): Boolean {
-    return if (exists()) {
-        delete()
-    } else {
-        false
-    }
-}
-
-fun File.ensureParentDirectory(): Boolean {
-    parentFile?.let { parent ->
-        if (!parent.exists()) {
-            return parent.mkdirs()
-        }
-    }
-    return true
-}
+/**
+ * The formatting helpers the UI actually calls.
+ *
+ * Three members used to live here and were removed after checking every caller: `File.safeDelete`
+ * (every deletion path in the app already handles the result of `delete()` itself, and this wrapper
+ * only made the failure silent), `File.ensureParentDirectory` (the downloader creates its
+ * destination directory where it writes, so a second one only hid which component owned that) and
+ * `getFileExtension` (both the downloader and `MediaUrlRules.pathExtension` have a stricter version,
+ * and the copy here accepted query strings as part of the extension).
+ */
 
 fun formatFileSize(bytes: Long): String {
     if (bytes <= 0) return "0 B"
@@ -56,16 +49,6 @@ fun sanitizeFilename(filename: String): String {
         .replace("__+".toRegex(), "_")
         .replace("^_+".toRegex(), "")
         .replace("_+$".toRegex(), "")
-}
-
-fun getFileExtension(url: String): String? {
-    val lastDotIndex = url.lastIndexOf('.')
-    val lastSlashIndex = url.lastIndexOf('/')
-    return if (lastDotIndex > lastSlashIndex && lastDotIndex < url.length - 1) {
-        url.substring(lastDotIndex + 1).lowercase()
-    } else {
-        null
-    }
 }
 
 fun getMimeTypeFromExtension(extension: String?): String {

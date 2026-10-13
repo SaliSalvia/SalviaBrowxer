@@ -3,72 +3,25 @@ package com.salvia.salviabrowxer.ui.utils
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import java.net.URL
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
-fun Context.toast(message: String, duration: Int = android.widget.Toast.LENGTH_SHORT) {
-    android.widget.Toast.makeText(this, message, duration).show()
-}
-
+/**
+ * Opens a URL in whatever app handles it.
+ *
+ * The only member of this file that is still called (the About section's licence, source and
+ * privacy links). `toast`, `shareText`, `Date.format`/`Long.formatDate`, `String.isValidUrl`,
+ * `String.toUri` and the three `startsWithAny`/`endsWithAny`/`containsAny` helpers were removed
+ * after checking every caller: the screens that needed those behaviours have their own, clearer
+ * implementations (the address bar has `AddressBarResolver`, the share sheet is built in
+ * `DownloadsViewModel`, and both URL validators were dead copies of rules that already live in the
+ * model layer).
+ *
+ * A target that cannot handle the link is swallowed on purpose: it happens when the user taps a
+ * link for an app that is not installed, and there is nothing the user could do about a toast here.
+ */
 fun Context.openUrl(url: String) {
-    try {
+    runCatching {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
-    } catch (e: Exception) {
-        toast("Could not open URL: $url")
-    }
-}
-
-fun Context.shareText(text: String) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, text)
-    }
-    startActivity(Intent.createChooser(intent, "Share"))
-}
-
-fun Date.format(pattern: String = "yyyy-MM-dd HH:mm:ss"): String {
-    return SimpleDateFormat(pattern, Locale.getDefault()).format(this)
-}
-
-fun Long.formatDate(pattern: String = "yyyy-MM-dd HH:mm:ss"): String {
-    return Date(this).format(pattern)
-}
-
-fun String.isValidUrl(): Boolean {
-    return try {
-        URL(this)
-        true
-    } catch (e: Exception) {
-        false
-    }
-}
-
-fun String.toUri(): Uri? {
-    return try {
-        Uri.parse(this)
-    } catch (e: Exception) {
-        null
-    }
-}
-
-fun String.containsAny(keywords: List<String>, ignoreCase: Boolean = true): Boolean {
-    return keywords.any { keyword ->
-        this.contains(keyword, ignoreCase)
-    }
-}
-
-fun String.startsWithAny(prefixes: List<String>, ignoreCase: Boolean = true): Boolean {
-    return prefixes.any { prefix ->
-        this.startsWith(prefix, ignoreCase)
-    }
-}
-
-fun String.endsWithAny(suffixes: List<String>, ignoreCase: Boolean = true): Boolean {
-    return suffixes.any { suffix ->
-        this.endsWith(suffix, ignoreCase)
     }
 }
