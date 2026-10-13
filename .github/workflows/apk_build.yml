@@ -73,6 +73,52 @@ jobs:
           set -o pipefail
           ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
 
+      # Without this the workflow's failure output is only reachable from the runner's log export,
+      # which is not always readable from a sandbox. Annotations and a PR comment are.
+      - name: Report Gradle failure
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          logs = [Path(name) for name in ("gradle-debug.log", "gradle-release.log")]
+          lines = []
+          for log in logs:
+              if not log.exists():
+                  continue
+              for raw in log.read_text(errors="replace").splitlines():
+                  stripped = raw.strip()
+                  if stripped.startswith("e: ") or "Unresolved reference" in stripped or re.search(r"\berror: ", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+                  elif stripped.startswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+          seen, unique = set(), []
+          for line in lines:
+              if line not in seen:
+                  seen.add(line)
+                  unique.append(line)
+          chunk = "\n".join(unique[-120:])[:20000] or "No Gradle log was found on the runner."
+          Path("gradle-failure.txt").write_text(chunk)
+          print("----- GRADLE FAILURE -----")
+          print(chunk)
+          for line in chunk.splitlines():
+              safe = line.replace("%", "%25").replace("\r", "")
+              print(f"::error title=Gradle::{safe}")
+          PY
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            {
+              echo 'APK build failed. Compiler errors:'
+              echo
+              echo '```'
+              cat gradle-failure.txt
+              echo '```'
+            } > failure-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file failure-comment.md || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Extract APK and verify signature
         if: success()
         run: |

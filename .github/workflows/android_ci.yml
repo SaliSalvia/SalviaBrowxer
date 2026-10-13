@@ -59,7 +59,10 @@ jobs:
 
       - name: Run required unit tests from clean outputs
         run: |
-          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --stacktrace --no-daemon
+          set -o pipefail
+          # Tee'd like the build steps: when this task is the one that fails, the log it wrote is
+          # the only place the compiler and the test report say what went wrong.
+          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee gradle-test.log
 
       - name: Upload unit test reports
         if: always()
@@ -142,23 +145,61 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          # Report whichever Gradle invocation actually failed (bundle is built last,
-          # so its log is the most likely culprit).
-          candidates = [Path("gradle-bundle.log"), Path("gradle-release.log"), Path("gradle-build.log")]
-          log = next((p for p in candidates if p.exists() and "FAILURE:" in p.read_text(errors="replace")), candidates[-1])
-          text = log.read_text(errors="replace") if log.exists() else "no gradle log found"
-          errors = [ln for ln in text.splitlines() if ln.startswith("e:") or "Unresolved reference" in ln or "error: " in ln]
-          fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
-          chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
+          import glob
+          import re
+          import xml.etree.ElementTree as ET
+
+          # Every Gradle invocation on this job tees its output, and whichever one failed is the one
+          # that has something to say. Previously only the build logs were read, so a failure in the
+          # test task produced an empty comment — which is worse than no comment.
+          logs = [Path(name) for name in ("gradle-test.log", "gradle-build.log", "gradle-release.log", "gradle-bundle.log")]
+          lines = []
+          for log in logs:
+              if not log.exists():
+                  continue
+              for raw in log.read_text(errors="replace").splitlines():
+                  stripped = raw.strip()
+                  if stripped.startswith("e: ") or "Unresolved reference" in stripped or re.search(r"\berror: ", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+                  elif stripped.startswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+
+          # An assertion failure never reaches the "e:" filter above: the message lives in the JUnit
+          # XML, and that message is exactly what a human needs.
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  tree = ET.parse(xml_path)
+              except (ET.ParseError, OSError):
+                  continue
+              for case in tree.iter("testcase"):
+                  for bad in list(case.findall("failure")) + list(case.findall("error")):
+                      where = f"{case.get('classname')}.{case.get('name')}"
+                      message = " ".join((bad.get("message") or bad.text or "").split())
+                      lines.append(f"[junit] {where}: {message[:600]}")
+
+          # Keep the order, drop the repeats, and keep the tail: the first error is the cause.
+          seen, unique = set(), []
+          for line in lines:
+              if line not in seen:
+                  seen.add(line)
+                  unique.append(line)
+          chunk = "\n".join(unique[-120:])[:20000] or "No Gradle log and no JUnit failure was found on the runner."
           Path("gradle-failure.txt").write_text(chunk)
           print("----- GRADLE FAILURE -----")
           print(chunk)
-          for line in chunk.splitlines()[:80]:
+          for line in chunk.splitlines():
               safe = line.replace("%", "%25").replace("\r", "")
               print(f"::error title=Gradle::{safe}")
           PY
           if [ -n "${{ github.event.pull_request.number }}" ]; then
-            gh pr comment "${{ github.event.pull_request.number }}" --body "$(printf 'Gradle assembleDebug failed:\n\n```\n%s\n```\n' "$(cat gradle-failure.txt)")" || true
+            {
+              echo 'This run failed. Compiler errors and test failures:'
+              echo
+              echo '```'
+              cat gradle-failure.txt
+              echo '```'
+            } > failure-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file failure-comment.md || true
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
