@@ -61,8 +61,18 @@ class DownloadManager(
     fun isDownloading(id: String): Boolean = activeCalls.containsKey(id)
     fun cancel(id: String) { activeCalls[id]?.cancel() }
 
-    fun getFinalUrl(url: String): String {
-        val request = Request.Builder().url(url).head().header("User-Agent", FileDownload.DEFAULT_DOWNLOAD_USER_AGENT).build()
+    /**
+     * Follows whatever redirect stands between the URL that was detected and the file itself.
+     *
+     * `userAgent` and `referer` are the session the row was started with. Passing them matters: a HEAD
+     * that arrives as a bare client is refused by a hotlink guard, and then the transfer goes to the
+     * original URL and fails there instead of walking the redirect it was supposed to follow.
+     */
+    fun getFinalUrl(url: String, userAgent: String? = null, referer: String? = null): String {
+        val request = Request.Builder().url(url).head()
+            .header("User-Agent", userAgent?.takeIf { it.isNotBlank() } ?: FileDownload.DEFAULT_DOWNLOAD_USER_AGENT)
+            .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+            .build()
         return okHttpClient.newCall(request).execute().use { response -> response.request.url.toString() }
     }
 
@@ -71,22 +81,77 @@ class DownloadManager(
         return okHttpClient.newCall(request).execute().use { response -> response.body?.contentLength() ?: -1L }
     }
 
-    /** Entry point: handles resume rejection and HLS passthrough */
+    /**
+     * Entry point: handles resume rejection, and uses several Range connections for one file when the
+     * server allows it.
+     *
+     * @param parallelConnections how many connections one direct file may use. Fewer than
+     *   [RangePlanner.MIN_CONNECTIONS] keeps the single-stream path, and so does a server that does
+     *   not state the file's length, does not accept ranges, or accepts one and then ignores it.
+     *
+     * HLS playlists and DASH manifests do not come through here — they are segmented downloads with
+     * their own parallel fetcher.
+     */
     @Throws(IOException::class)
     suspend fun download(
         download: FileDownload,
         progressEveryMillis: Long = PROGRESS_THROTTLE_MILLIS,
+        parallelConnections: Int = 0,
         onProgress: suspend (DownloadSnapshot) -> Unit = {},
         shouldAbort: suspend () -> AbortReason? = { null }
     ): DownloadResult {
-        // HLS playlists need segment downloading — for now delegate to single-file download
-        // if the URL is an m3u8 we still download the playlist file itself (user can choose quality)
-        // Full segment muxing is handled by MediaProcessor; here we ensure playlist is fetched intact.
+        if (parallelConnections >= RangePlanner.MIN_CONNECTIONS) {
+            val plan = RangePlanner.plan(rangedLengthOf(download), parallelConnections)
+            if (plan != null) {
+                try {
+                    return ParallelRangeDownloader(okHttpClient, parallelConnections).download(
+                        download = download,
+                        plan = plan,
+                        targetDir = File(download.directory),
+                        progressEveryMillis = progressEveryMillis,
+                        onProgress = onProgress,
+                        shouldAbort = shouldAbort
+                    ) { call -> activeCalls[download.id] = call }
+                } catch (notHonoured: RangeNotHonouredException) {
+                    // The server answered the probe with a range and then sent a whole file. Its parts
+                    // are not something the single-stream path can resume, so they are cleaned up
+                    // instead of being left as orphans beside a download that starts over.
+                    val base = sanitizeFilename(download.filename)
+                    plan.ranges.indices.forEach { File(download.directory, "$base.$PART_SUFFIX$it").delete() }
+                } finally {
+                    activeCalls.remove(download.id)
+                }
+            }
+        }
         return try {
             transfer(download, progressEveryMillis, onProgress, shouldAbort)
         } catch (rejected: ResumeRejectedException) {
             partialFileFor(download).delete()
             transfer(download, progressEveryMillis, onProgress, shouldAbort)
+        }
+    }
+
+    /**
+     * The file's length as the server itself states it for a ranged request, or null when it will not
+     * say — which is also the answer for a server that ignores ranges, since a 200 to a ranged request
+     * means "here is the whole file, unsliced".
+     *
+     * One request, one byte: this is a probe, not a download, and its body is closed immediately.
+     */
+    private fun rangedLengthOf(download: FileDownload): Long? {
+        val request = Request.Builder().url(download.url)
+            .header("Range", "bytes=0-0")
+            .header("Accept", "*/*")
+            .apply {
+                download.userAgent?.takeIf { it.isNotBlank() }?.let { header("User-Agent", it) }
+                download.referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) }
+            }
+            .build()
+        val response = runCatching { okHttpClient.newCall(request).execute() }.getOrNull() ?: return null
+        return response.use {
+            if (it.code != 206) return null
+            val total = it.header("Content-Range")?.substringAfter('/', "")?.trim()?.toLongOrNull() ?: return null
+            total.takeIf { size -> size > 0L }
         }
     }
 

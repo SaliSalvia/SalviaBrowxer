@@ -15,7 +15,7 @@ import com.salvia.salviabrowxer.core.model.DownloadState
 
 @Database(
     entities = [DownloadEntity::class, BookmarkEntity::class, HistoryEntity::class],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -62,6 +62,28 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `downloads` ADD COLUMN `renditionId` TEXT")
                 db.execSQL("ALTER TABLE `downloads` ADD COLUMN `exportedUri` TEXT")
                 db.execSQL("ALTER TABLE `downloads` ADD COLUMN `durationMs` INTEGER")
+            }
+        }
+
+        /**
+         * v4 -> v5 lets a queued row carry the session it belongs to: the page it was started from
+         * (sent as `Referer`) and the user agent that page was loaded with. Both are nullable, so an
+         * installed user's queue survives untouched — a row that predates this simply sends none.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `pageUrl` TEXT")
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `userAgent` TEXT")
+            }
+        }
+
+        /**
+         * v5 -> v6 gives a finished download a place behind the password: one flag, defaulting to
+         * "not locked", so every row an installed user already has stays exactly where it is.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `downloads` ADD COLUMN `isLocked` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

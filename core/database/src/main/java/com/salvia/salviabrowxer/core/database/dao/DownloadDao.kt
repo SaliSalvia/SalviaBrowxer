@@ -112,6 +112,28 @@ interface DownloadDao {
         updatedAt: Long
     )
 
+    /**
+     * Moves a finished file into — or out of — the password-protected folder.
+     *
+     * Only the flag changes; the file itself does not move, because the row is what every screen,
+     * export and share intent is built from, and two copies of a large file is not a feature.
+     */
+    @Query("UPDATE downloads SET isLocked = :locked, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun setLocked(id: String, locked: Boolean, updatedAt: Long)
+
+    @Query("SELECT COUNT(*) FROM downloads WHERE isLocked = 1")
+    fun lockedCount(): Flow<Int>
+
+    /**
+     * Forgets where a copy was published. Used when a file enters the locked folder: the gallery copy
+     * is deleted, and a row that still pointed at it would offer to open something that is not there.
+     */
+    @Query("UPDATE downloads SET exportedUri = NULL WHERE id = :id")
+    suspend fun clearExportedUri(id: String)
+
+    @Query("UPDATE downloads SET isLocked = 0")
+    suspend fun unlockAll()
+
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun delete(id: String)
 
