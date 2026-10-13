@@ -135,7 +135,11 @@ class BrowserViewModelTest {
         assertTrue(state.isCleartextAllowed)
         assertNull(state.blockedCleartextUrl)
         assertEquals("http://example.org/page", state.url)
-        coVerify(exactly = 1) { settingsDataStore.setCleartextAllowed(true) }
+        // The write is dispatched to Dispatchers.IO — a real thread pool even in a unit test — so a
+        // bare verify races it and failed on a loaded runner (this is the flake that reddened the
+        // first run of this branch). Waiting is the honest fix: the assertion is "it is persisted",
+        // not "it is persisted before the next line runs".
+        coVerify(timeout = 5_000, exactly = 1) { settingsDataStore.setCleartextAllowed(true) }
     }
 
     @Test
