@@ -31,6 +31,13 @@ import com.salvia.salviabrowxer.core.storage.SafDocumentExporter
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.storage.SafDestinationStore
+import com.salvia.salviabrowxer.service.queue.DownloadWorkQueue
+import com.salvia.salviabrowxer.service.queue.SegmentedRetryPolicy
+import com.salvia.salviabrowxer.service.queue.TransferKind
+import com.salvia.salviabrowxer.service.queue.TransferPlan
+import com.salvia.salviabrowxer.service.queue.WifiHold
+import com.salvia.salviabrowxer.service.queue.WifiHoldAction
+import com.salvia.salviabrowxer.service.queue.WifiHoldGate
 import com.salvia.salviabrowxer.media.downloader.AbortReason
 import com.salvia.salviabrowxer.media.downloader.DownloadAbortedException
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
@@ -46,17 +53,13 @@ import com.salvia.salviabrowxer.ui.utils.formatFileSize
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -74,9 +77,6 @@ class DownloadService : Service() {
     @Inject lateinit var safDocumentExporter: SafDocumentExporter
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val queue = Channel<String>(Channel.UNLIMITED)
-    private val inFlight = AtomicInteger(0)
-    private var processorJob: Job? = null
     private val notificationId = 1
     private val channelId = "download_channel"
     private var lastSummaryTime = 0L
@@ -87,6 +87,28 @@ class DownloadService : Service() {
     private val limiter = SlotLimiter(3)
     private lateinit var connectivityGate: ConnectivityGate
     private var wifiOnly = false
+
+    /**
+     * The queue, the concurrency gate and the idle condition, in one testable object.
+     *
+     * Everything that made this service hard to test lives in `service/queue` now: the ordering of
+     * "claim the id, then suspend", the slot limiter, the retry schedule and the Wi-Fi hold. What
+     * stays here is what genuinely needs the Android service: notifications, the foreground
+     * promotion and the Room rows.
+     */
+    private val workQueue by lazy {
+        DownloadWorkQueue(
+            limiter = limiter,
+            process = { downloadId ->
+                try { processDownload(downloadId) } finally { progressThrottle.forget(downloadId) }
+            },
+            onIdle = { stopWhenIdle() }
+        )
+    }
+
+    /** Holds or releases work for the Wi-Fi-only setting; the transitions are unit-tested. */
+    private val wifiHoldGate = WifiHoldGate()
+    private val retryPolicy = SegmentedRetryPolicy()
 
     /** Range connections one direct file may use; retuned live from settings like the limiter. */
     @Volatile private var parallelConnections = 1
@@ -101,6 +123,7 @@ class DownloadService : Service() {
     override fun onCreate() {
         super.onCreate()
         connectivityGate = ConnectivityGate(this)
+        workQueue.start(scope)
         createNotificationChannel()
         promoteToForeground(buildSummaryNotification(getString(R.string.downloads_title), 0L, 0L))
         scope.launch {
@@ -115,27 +138,37 @@ class DownloadService : Service() {
     /**
      * Wi-Fi only: transfers never start on a non-Wi-Fi network, running ones are paused with an
      * explanatory error, and everything that was held is requeued when Wi-Fi returns.
+     *
+     * The decision of *which* of those two things to do is [WifiHoldGate]'s, so both inputs — the
+     * setting and the network report — go through the same tested transition instead of two
+     * hand-written `if`s that could disagree.
      */
     private fun observeNetworkPolicy() {
         scope.launch {
             settingsDataStore.isWifiOnly.collect { enabled ->
                 wifiOnly = enabled
-                if (!enabled) releaseWifiHolds()
-                else if (connectivityGate.isOnWifi()) releaseWifiHolds() else holdEverythingForWifi()
+                when (wifiHoldGate.onWifiOnlyChanged(enabled, connectivityGate.isOnWifi())) {
+                    WifiHoldAction.Hold -> holdEverythingForWifi()
+                    WifiHoldAction.Release -> releaseWifiHolds()
+                    WifiHoldAction.None -> Unit
+                }
             }
         }
         scope.launch {
             connectivityGate.observeWifi().collect { onWifi ->
                 if (!wifiOnly) return@collect
-                if (onWifi) releaseWifiHolds() else holdEverythingForWifi()
+                when (wifiHoldGate.onConnectivityChanged(onWifi)) {
+                    WifiHoldAction.Hold -> holdEverythingForWifi()
+                    WifiHoldAction.Release -> releaseWifiHolds()
+                    WifiHoldAction.None -> Unit
+                }
             }
         }
     }
 
     private suspend fun holdEverythingForWifi() {
-        val active = runCatching {
-            downloadRepository.getDownloadsByStates(listOf(DownloadState.QUEUED, DownloadState.RETRYING, DownloadState.PREPARING, DownloadState.DOWNLOADING)).first()
-        }.getOrNull().orEmpty()
+        val active = runCatching { downloadRepository.getDownloadsByStates(WifiHold.HOLDABLE_STATES).first() }
+            .getOrNull().orEmpty()
         if (active.isEmpty()) return
         wifiHoldActive = true
         active.forEach { download ->
@@ -147,26 +180,28 @@ class DownloadService : Service() {
 
     private suspend fun releaseWifiHolds() {
         wifiHoldActive = false
-        val held = runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.PAUSED)).first() }
-            .getOrNull().orEmpty().filter { it.error == WIFI_HOLD_MARKER }
+        val held = WifiHold.heldRows(
+            runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.PAUSED)).first() }
+                .getOrNull().orEmpty()
+        )
         if (held.isEmpty()) return
         held.forEach { download ->
             downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.QUEUED, error = null)
-            queue.trySend(download.id)
+            workQueue.enqueue(download.id)
         }
-        startQueueProcessor()
+        workQueue.start(scope)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val downloadId = intent?.getStringExtra(EXTRA_DOWNLOAD_ID)
         when (intent?.action) {
-            ACTION_ENQUEUE -> if (downloadId != null) queue.trySend(downloadId) else recoverQueue()
+            ACTION_ENQUEUE -> if (downloadId != null) workQueue.enqueue(downloadId) else recoverQueue()
             ACTION_PAUSE -> if (downloadId != null) scope.launch { pauseRequested(downloadId) }
             ACTION_CANCEL -> if (downloadId != null) scope.launch { cancelRequested(downloadId) }
             ACTION_PROCESS_QUEUE -> recoverQueue()
-            else -> if (downloadId != null) queue.trySend(downloadId) else recoverQueue()
+            else -> if (downloadId != null) workQueue.enqueue(downloadId) else recoverQueue()
         }
-        startQueueProcessor()
+        workQueue.start(scope)
         return START_STICKY
     }
 
@@ -174,102 +209,74 @@ class DownloadService : Service() {
         scope.launch {
             // DOWNLOADING is included so a process death mid-transfer resumes from the .part file
             // over a Range request. PAUSED is *not* requeued: only the user resumes it.
-            val pending = runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.QUEUED, DownloadState.RETRYING, DownloadState.PREPARING, DownloadState.DOWNLOADING)).first() }.getOrNull().orEmpty()
-            if (pending.isEmpty()) { if (inFlight.get() == 0 && queue.isEmpty) stopWhenIdle(); return@launch }
-            pending.forEach { download -> queue.trySend(download.id) }
-        }
-    }
-
-    private fun startQueueProcessor() {
-        if (processorJob?.isActive == true) return
-        processorJob = scope.launch {
-            while (isActive) {
-                val downloadId = queue.receive()
-                // The id counts as in flight the moment it leaves the queue, *before* any
-                // suspension. It used to be claimed inside processDownload, after the Room read and
-                // the Wi-Fi check; in that window another transfer's completion saw an empty queue
-                // and an idle counter, called stopSelf() and cancelled this one mid-startup.
-                inFlight.incrementAndGet()
-                // Each download runs under the concurrency semaphore — InShot allows N parallel.
-                launch {
-                    try { processDownload(downloadId) }
-                    catch (cancellation: CancellationException) { throw cancellation }
-                    catch (error: Exception) { Log.w(TAG, "Download $downloadId failed", error) }
-                    finally {
-                        progressThrottle.forget(downloadId)
-                        if (inFlight.decrementAndGet() == 0 && queue.isEmpty) stopWhenIdle()
-                    }
-                }
-            }
+            val pending = runCatching { downloadRepository.getDownloadsByStates(WifiHold.RESUMABLE_STATES).first() }.getOrNull().orEmpty()
+            if (pending.isEmpty()) { if (workQueue.isIdle) stopWhenIdle(); return@launch }
+            pending.forEach { download -> workQueue.enqueue(download.id) }
         }
     }
 
     private suspend fun processDownload(downloadId: String) {
-        limiter.acquire()
-        try {
-            val stored = downloadRepository.getDownloadById(downloadId) ?: return
-            if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED) return
-            if (WifiOnlyPolicy.shouldHold(wifiOnly, connectivityGate.isOnWifi())) {
-                wifiHoldActive = true
-                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.PAUSED, error = WIFI_HOLD_MARKER)
-                refreshSummaryThrottled(force = true)
-                return
-            }
-            try {
-                downloadRepository.updateDownloadState(downloadId, DownloadState.PREPARING)
-                val finalUrl = runCatching {
-                    downloadManager.getFinalUrl(stored.url, sessionUserAgent(stored), sessionReferer(stored, stored.url))
-                }.getOrNull()?.takeIf { it.isNotBlank() } ?: stored.url
-                val preparing = stored.copy(finalUrl = finalUrl, status = DownloadState.DOWNLOADING, error = null, temporaryPath = temporaryPathFor(stored).absolutePath, updatedAt = System.currentTimeMillis())
-                downloadRepository.updateDownload(preparing)
-                refreshSummaryThrottled(force = true)
-
-                // Three real paths, chosen by what the row is: a DASH rendition (the manifest is
-                // re-read here), an HLS playlist, or a plain single-file transfer.
-                val dashSelection = DashRenditionId.parse(stored.renditionId)
-                val hlsStream = isHlsStream(finalUrl, stored.mimeType)
-                // A segmented transfer is retried after a transient failure. The parts it already
-                // staged are kept, so the retry resumes instead of re-fetching from the first segment.
-                val transfer = transferWithRetry(downloadId, segmented = dashSelection != null || hlsStream) { attempt ->
-                    when {
-                        dashSelection != null -> downloadDashRendition(stored, downloadId, finalUrl, dashSelection, reuseCompleted = attempt > 0)
-                        hlsStream -> downloadHlsStream(stored, downloadId, finalUrl)
-                        else -> directTransfer(stored, downloadId, finalUrl)
-                    }
-                }
-
-                val finalized = finalizeTransfer(stored, transfer)
-                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.COMPLETED, downloadedBytes = finalized.file.length(), totalBytes = finalized.file.length(), finalPath = finalized.file.absolutePath, mimeType = finalized.mimeType)
-                downloadRepository.updateDownloadArtifacts(
-                    id = downloadId,
-                    finalPath = finalized.file.absolutePath,
-                    filename = finalized.file.name,
-                    mimeType = finalized.mimeType,
-                    durationMs = finalized.durationMs,
-                    thumbnail = finalized.thumbnailPath,
-                    exportedUri = finalized.exportedUri
-                )
-                temporaryPathFor(stored).delete()
-                scanFile(finalized.file)
-                notifyCompleted(stored, finalized.file)
-            } catch (aborted: DownloadAbortedException) {
-                if (aborted.reason == AbortReason.CANCELLED) { temporaryPathFor(stored).delete(); downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel)) }
-                else downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
-            } catch (network: IOException) {
-                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.FAILED, error = network.localizedMessage ?: getString(R.string.error_connection_unavailable))
-            } catch (cancellation: CancellationException) { throw cancellation }
-            finally { refreshSummaryThrottled(force = true) }
-        } finally {
-            limiter.release()
+        val stored = downloadRepository.getDownloadById(downloadId) ?: return
+        if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED) return
+        if (WifiOnlyPolicy.shouldHold(wifiOnly, connectivityGate.isOnWifi())) {
+            wifiHoldActive = true
+            downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.PAUSED, error = WIFI_HOLD_MARKER)
+            refreshSummaryThrottled(force = true)
+            return
         }
+        try {
+            downloadRepository.updateDownloadState(downloadId, DownloadState.PREPARING)
+            val finalUrl = runCatching {
+                downloadManager.getFinalUrl(stored.url, sessionUserAgent(stored), sessionReferer(stored, stored.url))
+            }.getOrNull()?.takeIf { it.isNotBlank() } ?: stored.url
+            val preparing = stored.copy(finalUrl = finalUrl, status = DownloadState.DOWNLOADING, error = null, temporaryPath = temporaryPathFor(stored).absolutePath, updatedAt = System.currentTimeMillis())
+            downloadRepository.updateDownload(preparing)
+            refreshSummaryThrottled(force = true)
+
+            // Three real paths, chosen by what the row is — a decision made in TransferPlan so
+            // it is unit-testable rather than three branches inside a network call.
+            val plan = TransferPlan.of(stored.renditionId, finalUrl, stored.mimeType, parallelConnections)
+            val dashSelection = DashRenditionId.parse(stored.renditionId)
+            // A segmented transfer is retried after a transient failure. The parts it already
+            // staged are kept, so the retry resumes instead of re-fetching from the first segment.
+            val transfer = transferWithRetry(downloadId, segmented = plan.retryable) { attempt ->
+                when (plan.kind) {
+                    TransferKind.DASH -> downloadDashRendition(stored, downloadId, finalUrl, dashSelection!!, reuseCompleted = attempt > 0)
+                    TransferKind.HLS -> downloadHlsStream(stored, downloadId, finalUrl)
+                    TransferKind.DIRECT -> directTransfer(stored, downloadId, finalUrl)
+                }
+            }
+
+            val finalized = finalizeTransfer(stored, transfer)
+            downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.COMPLETED, downloadedBytes = finalized.file.length(), totalBytes = finalized.file.length(), finalPath = finalized.file.absolutePath, mimeType = finalized.mimeType)
+            downloadRepository.updateDownloadArtifacts(
+                id = downloadId,
+                finalPath = finalized.file.absolutePath,
+                filename = finalized.file.name,
+                mimeType = finalized.mimeType,
+                durationMs = finalized.durationMs,
+                thumbnail = finalized.thumbnailPath,
+                exportedUri = finalized.exportedUri
+            )
+            temporaryPathFor(stored).delete()
+            scanFile(finalized.file)
+            notifyCompleted(stored, finalized.file)
+        } catch (aborted: DownloadAbortedException) {
+            if (aborted.reason == AbortReason.CANCELLED) { temporaryPathFor(stored).delete(); downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel)) }
+            else downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
+        } catch (network: IOException) {
+            downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.FAILED, error = network.localizedMessage ?: getString(R.string.error_connection_unavailable))
+        } catch (cancellation: CancellationException) { throw cancellation }
+        finally { refreshSummaryThrottled(force = true) }
     }
 
     /**
      * Runs a transfer, retrying a *segmented* one a bounded number of times after a transient
      * failure. A retry resumes rather than restarts: [SegmentedFetcher] keeps the parts it already
      * staged, and a DASH rendition that finished on an earlier attempt is not fetched again, so only
-     * the missing segments are requested. The backoff doubles and stays short; a pause or cancel
-     * during the wait stops the retry instead of letting it finish.
+     * the missing segments are requested. The schedule itself lives in [SegmentedRetryPolicy] — three
+     * tries in total with a short, growing backoff — and a pause or cancel during the wait stops the
+     * retry instead of letting it finish.
      */
     private suspend fun transferWithRetry(
         downloadId: String,
@@ -284,14 +291,17 @@ class DownloadService : Service() {
             } catch (aborted: DownloadAbortedException) {
                 throw aborted
             } catch (network: IOException) {
-                if (!segmented || attempt >= MAX_SEGMENTED_RETRIES) throw network
-                attempt++
-                Log.i(TAG, "Segmented transfer $downloadId failed, retry $attempt/$MAX_SEGMENTED_RETRIES", network)
+                // The schedule (three tries in total, growing backoff) is the retry policy's, so the
+                // numbers are asserted in a unit test instead of counted here.
+                val decision = if (segmented) retryPolicy.onFailure(attempt) else SegmentedRetryPolicy.Decision.GiveUp
+                if (decision is SegmentedRetryPolicy.Decision.GiveUp) throw network
+                decision as SegmentedRetryPolicy.Decision.Retry
+                attempt = decision.attempt
+                Log.i(TAG, "Segmented transfer $downloadId failed, retry $attempt/${SegmentedRetryPolicy.DEFAULT_MAX_RETRIES}", network)
                 downloadRepository.updateDownloadState(downloadId, DownloadState.RETRYING)
                 refreshSummaryThrottled(force = true)
                 var waited = 0L
-                val backoff = RETRY_BASE_DELAY_MILLIS * attempt
-                while (waited < backoff) {
+                while (waited < decision.backoffMillis) {
                     abortReasonFor(downloadId)?.let { throw DownloadAbortedException(it) }
                     kotlinx.coroutines.delay(RETRY_POLL_MILLIS)
                     waited += RETRY_POLL_MILLIS
@@ -312,9 +322,6 @@ class DownloadService : Service() {
     )
 
     private fun baseName(filename: String): String = filename.substringBeforeLast('.', filename).ifBlank { "download" }
-
-    private fun isHlsStream(finalUrl: String, mimeType: String?): Boolean =
-        finalUrl.contains(".m3u8", ignoreCase = true) || mimeType?.contains("mpegurl", ignoreCase = true) == true
 
     /**
      * The session a transfer belongs to: the page it was started from, sent as `Referer`, and the
@@ -542,7 +549,7 @@ class DownloadService : Service() {
             downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel))
         }
         refreshSummaryThrottled(force = true)
-        if (inFlight.get() == 0 && queue.isEmpty) stopWhenIdle()
+        if (workQueue.settledNow()) stopWhenIdle()
     }
 
     private fun temporaryPathFor(download: DownloadEntity): File = File(download.destination, "${DownloadManager.sanitizeFilename(download.filename)}.${DownloadManager.PART_SUFFIX}")
@@ -635,7 +642,7 @@ class DownloadService : Service() {
         if (promoted.isFailure) { Log.w(TAG, "promoteToForeground failed, stopping service", promoted.exceptionOrNull()); stopSelf() }
     }
 
-    override fun onDestroy() { super.onDestroy(); processorJob?.cancel(); scope.cancel() }
+    override fun onDestroy() { super.onDestroy(); workQueue.stop(); scope.cancel() }
 
     companion object {
         const val ACTION_ENQUEUE = "com.salvia.salviabrowxer.action.ENQUEUE_DOWNLOAD"
@@ -644,9 +651,6 @@ class DownloadService : Service() {
         const val ACTION_PROCESS_QUEUE = "com.salvia.salviabrowxer.action.PROCESS_QUEUE"
         const val EXTRA_DOWNLOAD_ID = "extra_download_id"
         private const val TAG = "DownloadService"
-        /** How many times a segmented transfer is retried after a transient failure (3 tries total). */
-        private const val MAX_SEGMENTED_RETRIES = 2
-        private const val RETRY_BASE_DELAY_MILLIS = 1200L
         private const val RETRY_POLL_MILLIS = 200L
         private const val NOTIFICATION_COMPLETED_BASE_ID = 2000
         private val ACTIVE_STATES = listOf(DownloadState.QUEUED, DownloadState.RESOLVING, DownloadState.PREPARING, DownloadState.DOWNLOADING, DownloadState.RETRYING, DownloadState.PROCESSING, DownloadState.PAUSED)
