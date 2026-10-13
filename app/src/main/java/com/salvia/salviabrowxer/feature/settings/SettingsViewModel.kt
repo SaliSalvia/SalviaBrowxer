@@ -1,15 +1,23 @@
 package com.salvia.salviabrowxer.feature.settings
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.core.storage.SafDocumentExporter
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
+import com.salvia.salviabrowxer.data.security.LockedFolderStore
+import com.salvia.salviabrowxer.data.security.PasswordVault
+import com.salvia.salviabrowxer.data.storage.SafDestinationStore
 import com.salvia.salviabrowxer.ui.utils.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +27,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /** Every preference the settings screen renders, in one immutable snapshot. */
@@ -32,13 +41,23 @@ data class SettingsUiState(
     /** Real, app-scoped folder the downloader writes to. Never a user-editable label. */
     val downloadDirectoryPath: String = "",
     val maxSimultaneousDownloads: Int = 3,
+    /**
+     * Range connections one direct file may use. 1 is off, and the label says so rather than showing
+     * a number the user has to translate.
+     */
+    val parallelConnections: Int = 4,
     val isWifiOnly: Boolean = false,
     /** Finished downloads are published to the shared media store so galleries can see them. */
     val isExportToGallery: Boolean = true,
     val isCleartextAllowed: Boolean = false,
     /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
     val isFloatingButtonAlwaysVisible: Boolean = false,
-    val floatingButtonSize: Int = 56
+    val floatingButtonSize: Int = 56,
+    /** Whether the locked folder has a password, and whether the verifier sits behind the keystore. */
+    val isPasswordFolderSet: Boolean = false,
+    val isPasswordFolderSecured: Boolean = true,
+    /** The folder the user chose for a second copy of every download, or null for none. */
+    val safDestinationLabel: String? = null
 ) {
     val searchEngineOptions: List<String> get() = Constants.SEARCH_ENGINES.keys.toList()
 }
@@ -47,7 +66,10 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val historyRepository: HistoryRepository,
+    private val downloadRepository: DownloadRepository,
     private val storageManager: StorageManager,
+    private val lockedFolderStore: LockedFolderStore,
+    private val safDestinationStore: SafDestinationStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -58,7 +80,80 @@ class SettingsViewModel @Inject constructor(
     val messages: Flow<String> = _messages.receiveAsFlow()
 
     init {
+        // Both are read once, not collected: neither the verifier nor the chosen tree changes unless
+        // this screen changes it, and this screen updates the state itself when it does.
+        mutate { copy(isPasswordFolderSet = lockedFolderStore.isConfigured(), isPasswordFolderSecured = lockedFolderStore.isSecured) }
+        viewModelScope.launch {
+            safDestinationStore.destination.collectLatest { destination ->
+                mutate { copy(safDestinationLabel = destination?.label) }
+            }
+        }
         loadSettings()
+    }
+
+    /**
+     * Sets or replaces the password of the locked folder.
+     *
+     * Hashing is done off the main thread: the cost of the verifier is the point, and paying it on the
+     * UI thread would be a frozen settings screen.
+     */
+    fun setPasswordFolderPassword(password: String) {
+        viewModelScope.launch {
+            if (!PasswordVault.isAcceptable(password)) {
+                _messages.send(context.getString(R.string.locked_folder_password_short, PasswordVault.MIN_PASSWORD_CHARS))
+                return@launch
+            }
+            val saved = withContext(Dispatchers.Default) { lockedFolderStore.setPassword(password) }
+            mutate { copy(isPasswordFolderSet = lockedFolderStore.isConfigured(), isPasswordFolderSecured = lockedFolderStore.isSecured) }
+            _messages.send(context.getString(if (saved) R.string.locked_folder_set else R.string.locked_folder_save_failed))
+        }
+    }
+
+    /**
+     * Removes the password — and unlocks every file with it.
+     *
+     * A password that no longer exists cannot be the thing hiding a file, so leaving rows locked with
+     * no way to open them would be worse than either state on its own.
+     */
+    fun removePasswordFolder() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                lockedFolderStore.clear()
+                downloadRepository.unlockAllDownloads()
+            }
+            mutate { copy(isPasswordFolderSet = false) }
+            _messages.send(context.getString(R.string.locked_folder_removed))
+        }
+    }
+
+    /**
+     * Remembers the folder the user picked, and the permission to keep writing to it after a restart.
+     *
+     * The persistable grant is what turns "this session" into "from now on"; without it the tree would
+     * stop resolving as soon as the process dies, so a failure to take it is reported rather than
+     * stored as a folder that silently stops working.
+     */
+    fun onSafTreePicked(treeUri: String) {
+        if (treeUri.isBlank()) return
+        viewModelScope.launch {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            val taken = runCatching {
+                context.contentResolver.takePersistableUriPermission(Uri.parse(treeUri), flags)
+            }
+            if (taken.isFailure) {
+                _messages.send(context.getString(R.string.sd_card_grant_failed))
+                return@launch
+            }
+            safDestinationStore.set(treeUri, SafDocumentExporter.describe(treeUri))
+            _messages.send(context.getString(R.string.sd_card_folder_set))
+        }
+    }
+
+    fun clearSafDestination() {
+        viewModelScope.launch {
+            runCatching { safDestinationStore.clear() }
+            _messages.send(context.getString(R.string.sd_card_folder_cleared))
+        }
     }
 
     private fun loadSettings() {
@@ -70,6 +165,11 @@ class SettingsViewModel @Inject constructor(
             launch { settingsDataStore.areCookiesEnabled.collectLatest { value -> mutate { copy(areCookiesEnabled = value) } } }
             mutate { copy(downloadDirectoryPath = runCatching { storageManager.getDefaultDownloadDirectory() }.getOrDefault("")) }
             launch {
+                settingsDataStore.parallelConnections.collectLatest { value ->
+                    mutate { copy(parallelConnections = value) }
+                }
+            }
+            viewModelScope.launch {
                 settingsDataStore.maxSimultaneousDownloads.collectLatest { value ->
                     mutate { copy(maxSimultaneousDownloads = value) }
                 }
@@ -134,6 +234,15 @@ class SettingsViewModel @Inject constructor(
         mutate { copy(maxSimultaneousDownloads = safe) }
         viewModelScope.launch {
             runCatching { settingsDataStore.setMaxSimultaneousDownloads(safe) }
+        }
+    }
+
+    /** On means a few connections per direct file; off means the single-stream download. */
+    fun updateParallelDownload(enabled: Boolean) {
+        val connections = if (enabled) SettingsDataStore.DEFAULT_PARALLEL_CONNECTIONS else 1
+        mutate { copy(parallelConnections = connections) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setParallelConnections(connections) }
         }
     }
 

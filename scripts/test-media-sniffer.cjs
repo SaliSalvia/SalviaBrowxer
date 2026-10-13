@@ -12,6 +12,7 @@ function set(name) {
 }
 const media = [...set('VIDEO_EXTENSIONS'), ...set('AUDIO_EXTENSIONS'), ...set('PLAYLIST_EXTENSIONS')].join('|');
 const script = kotlin.split('private const val SNIFFER_TEMPLATE = """')[1].split('"""')[0]
+  .replace('__MSE_PORT__', 'SalviaMsePort')
   .replace('__MEDIA_EXT__', media)
   .replace('__NON_MEDIA_EXT__', set('NON_MEDIA_EXTENSIONS').join('|'))
   .replace('__SEGMENT_EXT__', set('SEGMENT_EXTENSIONS').join('|'));
@@ -25,9 +26,14 @@ function video(src, top = 20, options = {}) {
     getBoundingClientRect() { return { left: 0, right: 400, top: this.top, bottom: this.top + 220 }; },
     ...options };
 }
-function harness(initial = []) {
+function harness(initial = [], options = {}) {
+  // fetch, MSE recording, the play/loadedmetadata scans: setInterval is registered here too.
   let videos = initial, interval, observer, now = 10000, serial = 0;
   const listeners = {}, pending = [], admitted = [], focused = [], objects = [], expired = [];
+  // MSE recording: what the page fed through appendBuffer, what reached the app, and what the app
+  // said when it refused encrypted media.
+  const appends = [], messages = [], encrypted = [];
+  const portEnabled = options.msePort !== false;
   const requests = [], loads = [];
   let response = { url: 'https://cdn.example.org/stream', status: 200, headers: new Headers({'content-type': 'video/mp4'}) };
   let deferred;
@@ -35,7 +41,11 @@ function harness(initial = []) {
     static createObjectURL() { return `blob:${page}/${++serial}`; }
     static revokeObjectURL() {}
   }
-  class FakeMediaSource { addSourceBuffer(mime) { if (mime === 'invalid') throw Error('codec'); return {mime}; } }
+  class FakeSourceBuffer {
+    constructor(mime) { this.mime = mime; this.appended = []; }
+    appendBuffer(data) { this.appended.push(data); appends.push(data && data.byteLength); }
+  }
+  class FakeMediaSource { addSourceBuffer(mime) { if (mime === 'invalid') throw Error('codec'); return new FakeSourceBuffer(mime); } }
   class FakeXHR {
     open(method, url) { this.url = url; }
     setRequestHeader() {}
@@ -44,7 +54,8 @@ function harness(initial = []) {
     send() { loads.push(this); }
   }
   const ctx = {
-    URL: FakeURL, Blob, MediaSource: FakeMediaSource, XMLHttpRequest: FakeXHR, Headers,
+    URL: FakeURL, Blob, MediaSource: FakeMediaSource, SourceBuffer: FakeSourceBuffer,
+    XMLHttpRequest: FakeXHR, Headers,
     location: { href: page }, innerWidth: 400, innerHeight: 800,
     Date: { now: () => now },
     SalviaMedia: {
@@ -52,23 +63,44 @@ function harness(initial = []) {
       onVisibleMedia: (...args) => focused.push(args),
       onMediaObjectUrl: (...args) => objects.push(args),
       onMediaUrlExpired: (...args) => expired.push(args),
+      onMseEncrypted: (...args) => encrypted.push(args),
     },
     document: {
       visibilityState: 'visible', documentElement: {},
-      addEventListener(name, cb) { listeners[name] = cb; },
+      addEventListener(name, cb) { (listeners[name] = listeners[name] || []).push(cb); },
       querySelectorAll() { return videos; },
     },
     getComputedStyle(n) { return { visibility: n.hidden ? 'hidden' : 'visible', display: 'block', opacity: '1' }; },
-    addEventListener(name, cb) { listeners[name] = cb; },
+    addEventListener(name, cb) { (listeners[name] = listeners[name] || []).push(cb); },
     MutationObserver: class { constructor(cb) { observer = cb; } observe(options, config) { assert(config.attributes); } },
     setTimeout(cb) { pending.push(cb); }, setInterval(cb) { interval = cb; },
     fetch(...args) { requests.push(args); return deferred || Promise.resolve(response); },
   };
   ctx.window = ctx; ctx.top = ctx;
+  // The web-message object `WebViewCompat.addWebMessageListener` injects. Absent when the WebView
+  // cannot do binary messages at all — the recording path has to survive that.
+  if (portEnabled) ctx.SalviaMsePort = { postMessage(message) { messages.push(message); } };
   vm.createContext(ctx); compiled.runInContext(ctx);
+  // The frame announcement is the first thing every frame posts. It is pulled out of `messages` so
+  // the recording tests keep counting exactly what a recording forwards, and kept in `announcements`
+  // for the tests that are about attribution.
+  const frameAnnouncement = m => typeof m === 'string' && m.indexOf('{"t":"frame"') === 0;
+  const announcements = messages.filter(frameAnnouncement);
+  for (let i = messages.length - 1; i >= 0; i--) if (frameAnnouncement(messages[i])) messages.splice(i, 1);
   return { ctx, admitted, focused, objects, expired, requests, loads, pending,
+    appends, messages, announcements, encrypted, portEnabled,
+    announcementCount() {
+      return announcements.length + messages.filter(frameAnnouncement).length;
+    },
+    rerun() { compiled.runInContext(ctx); },
+    arm(kind) { return ctx.__salviaMseArm(kind); },
+    disarm() { ctx.__salviaMseDisarm(); },
+    mseState() { return ctx.__salviaMseState(); },
     videos(v) { videos = v; },
-    emit(name, target) { assert(listeners[name], name + ' is hooked'); listeners[name]({ target }); },
+    emit(name, target) {
+      assert(listeners[name], name + ' is hooked');
+      listeners[name].forEach(cb => cb({ target }));
+    },
     mutate() { observer([{ type: 'childList' }]); },
     flush() { while (pending.length) pending.shift()(); },
     tick() { now += 2000; interval(); },
@@ -80,6 +112,24 @@ function harness(initial = []) {
   };
 }
 const urls = h => [...new Set(h.admitted.map(row => row[1]))];
+
+test('each frame announces itself once, with the URL it claims and whether it is the top frame', () => {
+  const h = harness();
+
+  assert.equal(h.announcements.length, 1);
+  assert.deepEqual(JSON.parse(h.announcements[0]), { t: 'frame', u: page, m: true });
+
+  // The script is evaluated again on every page start and finish; an announcement is not repeated.
+  h.rerun();
+  assert.equal(h.announcementCount(), 1);
+});
+
+test('a WebView without the message port announces nothing', () => {
+  const h = harness([], { msePort: false });
+
+  assert.equal(h.announcements.length, 0);
+  assert.equal(h.messages.length, 0);
+});
 
 test('already loaded inline player is detected immediately, without opening a post', () => {
   const v = video('https://cdn.example.org/inline-no-extension');
@@ -238,4 +288,160 @@ test('DOM snapshot includes page metadata and excludes lifetime sniffer log', ()
       [{outerHTML:'<meta property="og:video" content="https://cdn.example.org/main.mp4">'}] : []; }},
   });
   assert(html.includes('main.mp4')); assert(!html.includes('old.mp4'));
+});
+
+// ---------------------------------------------------------------------------------------------
+// MSE recording: explicit action only, one stream, playback never delayed, DRM refused.
+// ---------------------------------------------------------------------------------------------
+
+function videoBuffer(h, mime = 'video/mp4; codecs="avc1"') {
+  return new h.ctx.MediaSource().addSourceBuffer(mime);
+}
+
+const u8 = message => [...new Uint8Array(message)];
+
+test('nothing is forwarded before the user arms recording, and the page still plays', () => {
+  const h = harness([]);
+  const sb = videoBuffer(h);
+
+  sb.appendBuffer(new Uint8Array([1, 2, 3]).buffer);
+
+  assert.equal(h.messages.length, 0);
+  assert.equal(h.appends.length, 1);
+  assert.equal(sb.appended.length, 1);
+});
+
+test('an armed recording sends the init segment and every fragment, byte for byte', () => {
+  const h = harness([]);
+  const sb = videoBuffer(h);
+
+  assert.equal(h.arm('video'), true);
+  sb.appendBuffer(new Uint8Array([0, 0, 0, 1, 9]).buffer);
+  sb.appendBuffer(new Uint8Array([7, 7]).buffer);
+
+  assert.deepEqual(JSON.parse(h.messages[0]), { t: 'open', mime: 'video/mp4' });
+  assert.equal(h.messages.length, 3);
+  assert.deepEqual(u8(h.messages[1]), [0, 0, 0, 1, 9]);
+  assert.deepEqual(u8(h.messages[2]), [7, 7]);
+  // The page's own call happened first, and it happened once per segment.
+  assert.equal(h.appends.length, 2);
+});
+
+test('a segment is handed over as bytes, never as base64 text', () => {
+  const h = harness([]);
+  const sb = videoBuffer(h);
+  h.arm('video');
+
+  sb.appendBuffer(new Uint8Array([65, 66, 67]).buffer);
+
+  const payload = h.messages[1];
+  assert.equal(typeof payload, 'object');
+  assert.equal(payload.byteLength, 3);
+  assert.deepEqual(u8(payload), [65, 66, 67]);
+});
+
+test('the video stream is the one kept when a MediaSource feeds audio and video separately', () => {
+  const h = harness([]);
+  const ms = new h.ctx.MediaSource();
+  const audio = ms.addSourceBuffer('audio/mp4; codecs="mp4a"');
+  const video = ms.addSourceBuffer('video/mp4; codecs="avc1"');
+  h.arm('video');
+
+  audio.appendBuffer(new Uint8Array([1]).buffer);
+  video.appendBuffer(new Uint8Array([2]).buffer);
+
+  assert.deepEqual(JSON.parse(h.messages[0]), { t: 'open', mime: 'video/mp4' });
+  assert.equal(h.messages.length, 2);
+  assert.deepEqual(u8(h.messages[1]), [2]);
+});
+
+test('an audio-only stream is recorded when that is what the user asked for', () => {
+  const h = harness([]);
+  const ms = new h.ctx.MediaSource();
+  const audio = ms.addSourceBuffer('audio/mp4; codecs="mp4a"');
+  const video = ms.addSourceBuffer('video/mp4; codecs="avc1"');
+  h.arm('audio');
+
+  video.appendBuffer(new Uint8Array([9]).buffer);
+  audio.appendBuffer(new Uint8Array([3, 3]).buffer);
+
+  assert.deepEqual(JSON.parse(h.messages[0]), { t: 'open', mime: 'audio/mp4' });
+  assert.equal(h.messages.length, 2);
+  assert.deepEqual(u8(h.messages[1]), [3, 3]);
+});
+
+test('disarming stops the recording without touching playback', () => {
+  const h = harness([]);
+  const sb = videoBuffer(h);
+  h.arm('video');
+  sb.appendBuffer(new Uint8Array([1]).buffer);
+
+  h.disarm();
+  sb.appendBuffer(new Uint8Array([2]).buffer);
+
+  assert.equal(h.messages.length, 2);
+  assert.equal(h.appends.length, 2);
+});
+
+test('an encrypted stream stops the recording and tells the app', () => {
+  const h = harness([]);
+  const sb = videoBuffer(h);
+  h.arm('video');
+  sb.appendBuffer(new Uint8Array([1]).buffer);
+
+  h.emit('encrypted', sb);
+  sb.appendBuffer(new Uint8Array([2]).buffer);
+
+  assert.equal(h.encrypted.length, 1);
+  assert.equal(h.encrypted[0][0], page);
+  assert.equal(h.messages.length, 2, 'nothing more is forwarded after the refusal');
+  assert.equal(h.mseState().armed, false);
+});
+
+test('a page that already attached a key system cannot be armed at all', () => {
+  const v = video('https://cdn.example.org/drm', 20, { mediaKeys: {} });
+  const h = harness([v]);
+
+  assert.equal(h.arm('video'), false);
+  assert.equal(h.encrypted.length, 1);
+  assert.equal(h.messages.length, 0);
+});
+
+test('an encrypted element that starts playing later stops the recording', () => {
+  const v = video('https://cdn.example.org/late-drm');
+  const h = harness([v]);
+  const sb = videoBuffer(h);
+  assert.equal(h.arm('video'), true);
+
+  // The key system is attached after the recording started, which is the order a real player uses.
+  v.mediaKeys = {};
+  h.emit('play', v);
+  sb.appendBuffer(new Uint8Array([1]).buffer);
+
+  assert.equal(h.encrypted.length, 1);
+  assert.equal(h.mseState().armed, false);
+  assert.equal(h.messages.length, 0, 'a refused recording forwards nothing');
+});
+
+test('without a message port the recording is refused instead of silently doing nothing', () => {
+  const h = harness([], { msePort: false });
+  const sb = videoBuffer(h);
+
+  assert.equal(h.arm('video'), false);
+  sb.appendBuffer(new Uint8Array([1]).buffer);
+
+  assert.equal(h.messages.length, 0);
+  assert.equal(h.appends.length, 1);
+});
+
+test('the size cap stops the recording and says so', () => {
+  const h = harness([]);
+  const sb = videoBuffer(h);
+  h.arm('video');
+
+  sb.appendBuffer({ byteLength: 513 * 1024 * 1024, slice: () => new Uint8Array([1]).buffer });
+
+  assert.deepEqual(JSON.parse(h.messages[1]), { t: 'cap', bytes: 0 });
+  assert.equal(h.messages.length, 2);
+  assert.equal(h.mseState().armed, false);
 });

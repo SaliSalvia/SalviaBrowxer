@@ -5,18 +5,30 @@ import android.content.Context
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.ServiceWorkerClientCompat
+import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaUrlRules
+import com.salvia.salviabrowxer.core.model.WebOrigin
 import com.salvia.salviabrowxer.ui.bridge.BlobDownloadBridge
 import com.salvia.salviabrowxer.ui.bridge.MediaSnifferBridge
+import com.salvia.salviabrowxer.ui.bridge.MseRecordingBridge
+import com.salvia.salviabrowxer.ui.utils.MediaRequestObserver
 import com.salvia.salviabrowxer.ui.utils.MediaSniffer
+import com.salvia.salviabrowxer.ui.utils.MseRecordingSupport
+import com.salvia.salviabrowxer.ui.utils.frameClaimAccepted
+import com.salvia.salviabrowxer.ui.utils.PageErrorKind
 import com.salvia.salviabrowxer.ui.utils.WebViewClientWrapper
 import com.salvia.salviabrowxer.ui.utils.WebViewSetup
 import java.io.File
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Owns one WebView per live tab, and nothing else.
@@ -29,6 +41,9 @@ import java.io.File
  *   and the WebView is destroyed. Restoring that tab loads its URL again — a reload, never a
  *   blank page.
  * - WebViews for closed tabs are destroyed by [retain].
+ * - A page whose renderer process crashes costs that tab its WebView and nothing else: the dead view
+ *   is destroyed, the tab is reported through [Callbacks.onRendererGone], and showing the tab again
+ *   loads the URL the view model still holds. A browser that dies with one bad page is not a browser.
  *
  * The store deliberately does no bookkeeping of its own beyond the live set: the view model owns
  * tab metadata (title, URL, private flag) and this class owns pixels and render state.
@@ -49,26 +64,80 @@ class TabWebViewStore(
         fun onMediaDetected(tabId: String, candidate: MediaCandidate)
         fun onVisibleMedia(tabId: String, pageUrl: String, mediaUrl: String)
         fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String)
-        fun onBlobCaptured(pageUrl: String, blobUrl: String, file: File, mimeType: String)
+        fun onBlobCaptured(tabId: String, pageUrl: String, blobUrl: String, file: File, mimeType: String)
         fun onTabHibernated(tabId: String, url: String, title: String)
         fun onFindResult(tabId: String, matches: Int, activeMatch: Int)
         /** Hand a non-web scheme to the system. Return true when it was handled. */
         fun onExternalScheme(url: String): Boolean
+        /**
+         * The page's renderer process died and this tab's WebView has been destroyed. The tab's URL
+         * is still known to the caller, so showing the tab again builds a fresh WebView for it.
+         */
+        fun onRendererGone(tabId: String)
+        /** A main-frame load failed. The chrome decides how to say it. */
+        fun onPageError(tabId: String, kind: PageErrorKind, description: String)
+        /**
+         * The page asked to save something the browser cannot render — a PDF, a ZIP, an installer.
+         * Without this the click does nothing at all, which is a broken browser on the open web.
+         */
+        fun onDownloadRequested(
+            tabId: String,
+            url: String,
+            userAgent: String?,
+            contentDisposition: String?,
+            mimeType: String?,
+            contentLength: Long
+        )
+        /**
+         * A page says it is about to feed the recording armed for this tab, and which mime it is.
+         * [sourceOrigin] and [isMainFrame] are the frame's own coordinates, which is what keeps an
+         * unrelated ad frame from writing into the file the user asked for.
+         */
+        fun onMseOpen(tabId: String, mimeType: String, sourceOrigin: String?, isMainFrame: Boolean)
+        /** One appended segment, as bytes. */
+        fun onMseSegment(tabId: String, bytes: ByteArray, sourceOrigin: String?, isMainFrame: Boolean)
+        /** The page hit the recording ceiling; the file so far is complete as far as it goes. */
+        fun onMseCap(tabId: String)
+        /** The stream is protected (DRM). Nothing was kept, and the recording stops here. */
+        fun onMseEncrypted(tabId: String)
     }
 
     private val live = mutableMapOf<String, WebView>()
     private val usage = ArrayDeque<String>()
 
+    /**
+     * The tab on screen. A worker's request carries no tab, so it is attributed to the visible page.
+     * Written on the main thread, read from the worker observer's own thread.
+     */
+    @Volatile private var visibleTabId: String? = null
+
+    /** The page the visible tab last started loading, for attribution of worker requests. */
+    @Volatile private var lastPageUrl: String = ""
+
+    /**
+     * The origins of the frames the current document of a tab contains.
+     *
+     * This is what makes a report *attributable*: each frame announces itself once through the
+     * recording port (the same channel a recording uses, because it is the only one where WebKit
+     * hands the app the frame's own origin and whether it is the main frame), and every sighting a
+     * frame reports must come from an origin that is actually in the document. A frame claiming to be
+     * another site is refused instead of poisoning the tray; a real embed is accepted, which is what
+     * makes media inside iframes visible at all. Cleared when the tab loads a new page.
+     */
+    private val verifiedFrames = ConcurrentHashMap<String, MutableSet<String>>()
+
+    /** Service worker requests, observed with the same rule the document's requests go through. */
+    private val serviceWorkerObserver = MediaRequestObserver(
+        pageUrlProvider = { lastPageUrl },
+        onCandidate = { candidate -> visibleTabId?.let { callbacks.onMediaDetected(it, candidate) } }
+    )
+
+    private var serviceWorkerObserverInstalled = false
+
     private var javaScriptEnabled = true
     private var desktopMode = false
     private var cookiesEnabled = true
     private var defaultUserAgent: String? = null
-
-    private val blobBridge = BlobDownloadBridge(
-        onBlobCaptured = { pageUrl, blobUrl, file, mime -> callbacks.onBlobCaptured(pageUrl, blobUrl, file, mime) },
-        // Blob staging gets its own cache subdirectory so FileProvider only exposes that folder.
-        cacheDirProvider = { File(context.cacheDir, "blob") }
-    )
 
     /** Document-start injection needs a WebView new enough to have the feature. */
     private val documentStartSniffer: Boolean = runCatching {
@@ -92,6 +161,7 @@ class TabWebViewStore(
 
     /** Attaches the tab's WebView to [container], detaching whatever was there before. */
     fun attach(container: ViewGroup, tabId: String, initialUrl: String): WebView {
+        visibleTabId = tabId
         val view = webViewFor(tabId, initialUrl)
         (view.parent as? ViewGroup)?.takeIf { it !== container }?.removeView(view)
         if (container.childCount > 0 && container.getChildAt(0) !== view) container.removeAllViews()
@@ -107,6 +177,26 @@ class TabWebViewStore(
     }
 
     fun currentUrl(tabId: String): String? = live[tabId]?.url
+
+    /**
+     * Whether [url] belongs to the document the tab is showing: the page itself, or one of the frames
+     * the page actually contains. False for a tab whose frames were never registered (an older WebView
+     * without the message port), which is the same answer the app gave before frames could be told
+     * apart — so nothing that used to be shown disappears.
+     */
+    fun isDocumentUrl(tabId: String, url: String): Boolean {
+        val frames = verifiedFrames[tabId] ?: return false
+        val origin = WebOrigin.of(url) ?: return false
+        return frames.contains(origin)
+    }
+
+    /**
+     * The user agent the tab is actually loaded with — the WebView's own, desktop mode included.
+     * A transfer that repeats it looks like the same client to the server, which is what some CDNs
+     * check before they hand over a file the page was already playing. Main thread only, like the
+     * rest of this class.
+     */
+    fun userAgent(tabId: String): String? = live[tabId]?.settings?.userAgentString?.takeIf { it.isNotBlank() }
 
     fun title(tabId: String): String? = live[tabId]?.title
 
@@ -137,6 +227,32 @@ class TabWebViewStore(
 
     fun evaluateJavascript(tabId: String, script: String) { live[tabId]?.evaluateJavascript(script, null) }
 
+    /** Whether this device's WebView can hand a page's `appendBuffer` payload to the app at all. */
+    fun supportsMseRecording(): Boolean = MseRecordingSupport.isSupported
+
+    /**
+     * Asks the page to start feeding the recording armed for this tab.
+     *
+     * The answer comes back from the page's own hook, which refuses when it has no recording port
+     * (an old WebView) or when the media is protected — the caller turns that into a message rather
+     * than a silence the user cannot tell from a bug.
+     */
+    fun armMseRecording(tabId: String, kind: String, onResult: (Boolean) -> Unit) {
+        val view = live[tabId] ?: run { onResult(false); return }
+        val requested = if (kind == "audio") "audio" else "video"
+        val script = "(function(){try{return (typeof window.__salviaMseArm==='function') " +
+            "&& (window.__salviaMseArm('$requested')===true);}catch(e){return false;}})()"
+        view.evaluateJavascript(script) { raw -> onResult(raw?.trim() == "true") }
+    }
+
+    fun disarmMseRecording(tabId: String) {
+        val view = live[tabId] ?: return
+        view.evaluateJavascript(
+            "(function(){try{if(typeof window.__salviaMseDisarm==='function')window.__salviaMseDisarm();}catch(e){}})()",
+            null
+        )
+    }
+
     /** Reads a blob: URL the page owns and streams it back through the blob bridge in chunks. */
     fun fetchBlob(tabId: String, blobUrl: String, pageUrl: String) {
         val view = live[tabId] ?: return
@@ -153,6 +269,7 @@ class TabWebViewStore(
     fun hibernate(tabId: String) {
         val view = live.remove(tabId) ?: return
         usage.remove(tabId)
+        verifiedFrames.remove(tabId)
         val url = view.url.orEmpty()
         val title = view.title.orEmpty()
         destroyView(view)
@@ -162,12 +279,15 @@ class TabWebViewStore(
     fun destroy(tabId: String) {
         val view = live.remove(tabId) ?: return
         usage.remove(tabId)
+        verifiedFrames.remove(tabId)
         destroyView(view)
     }
 
     fun destroyAll() {
         live.keys.toList().forEach { destroy(it) }
         usage.clear()
+        verifiedFrames.clear()
+        visibleTabId = null
     }
 
     /** Applies the three live settings to every open WebView without reloading on every pass. */
@@ -232,17 +352,49 @@ class TabWebViewStore(
         val view = WebView(context)
         WebViewSetup.apply(view, javaScriptEnabled, desktopMode)
         if (defaultUserAgent == null) defaultUserAgent = view.settings.userAgentString
-        view.addJavascriptInterface(blobBridge, BRIDGE_NAME)
-        // A bridge per WebView keeps sightings from a background tab out of the foreground tray.
+        // A bridge per WebView, not one for the store: a blob read belongs to the tab that asked for
+        // it, and the view model can then check that tab's page before it accepts a file at all.
+        // Blob staging gets its own cache subdirectory so FileProvider only exposes that folder.
+        view.addJavascriptInterface(
+            BlobDownloadBridge(
+                onBlobCaptured = { pageUrl, blobUrl, file, mime ->
+                    callbacks.onBlobCaptured(tabId, pageUrl, blobUrl, file, mime)
+                },
+                cacheDirProvider = { File(context.cacheDir, "blob") },
+                // A blob belongs to the frame that read it, and only a frame of the page on screen may
+                // hand one over — the bridge is a `JavascriptInterface`, which any frame can call.
+                pageAllowed = { pageUrl -> acceptsFrameReport(tabId, pageUrl) }
+            ),
+            BRIDGE_NAME
+        )
+        // A bridge per WebView keeps sightings from a background tab out of the foreground tray, and
+        // nothing reaches it unverified: the frame that reports a URL has to be a frame of the page
+        // the tab is showing.
         view.addJavascriptInterface(MediaSnifferBridge(
-            onAdmitted = { candidate -> callbacks.onMediaDetected(tabId, candidate) },
-            onVisible = { pageUrl, mediaUrl -> callbacks.onVisibleMedia(tabId, pageUrl, mediaUrl) },
-            onExpired = { pageUrl, mediaUrl -> callbacks.onMediaExpired(tabId, pageUrl, mediaUrl) }
+            onAdmitted = { candidate ->
+                if (acceptsFrameReport(tabId, candidate.pageUrl)) callbacks.onMediaDetected(tabId, candidate)
+            },
+            onVisible = { pageUrl, mediaUrl ->
+                if (acceptsFrameReport(tabId, pageUrl)) callbacks.onVisibleMedia(tabId, pageUrl, mediaUrl)
+            },
+            onExpired = { pageUrl, mediaUrl ->
+                if (acceptsFrameReport(tabId, pageUrl)) callbacks.onMediaExpired(tabId, pageUrl, mediaUrl)
+            },
+            onEncrypted = { _, _ -> callbacks.onMseEncrypted(tabId) }
         ), MediaSniffer.BRIDGE_NAME)
+        installMseRecording(view, tabId)
+        installServiceWorkerObserver()
         installSniffer(view)
         view.webViewClient = WebViewClientWrapper(
             onPageStartedHook = { _, url, _ ->
-                url?.takeIf { it.isNotBlank() }?.let { callbacks.onPageStarted(tabId, it) }
+                url?.takeIf { it.isNotBlank() }?.let {
+                    if (tabId == visibleTabId) lastPageUrl = it
+                    // A new document: the frames of the old one are gone, and with them the right to
+                    // speak for this tab until they announce themselves again.
+                    verifiedFrames[tabId] = synchronizedSet()
+                    serviceWorkerObserver.reset()
+                    callbacks.onPageStarted(tabId, it)
+                }
                 // The script guards itself with window.__salviaMediaHook, so running it here as
                 // well as at document start costs one no-op and covers WebViews where document
                 // start injection is not available.
@@ -267,8 +419,16 @@ class TabWebViewStore(
                 }
             },
             onMediaDetectedHook = { candidate -> callbacks.onMediaDetected(tabId, candidate) },
-            onExternalSchemeHook = { url -> callbacks.onExternalScheme(url) }
+            onExternalSchemeHook = { url -> callbacks.onExternalScheme(url) },
+            onRenderProcessGoneHook = { dead -> handleRendererGone(dead) },
+            onPageErrorHook = { kind, description -> callbacks.onPageError(tabId, kind, description) }
         )
+        // Anything the page offers as a file: the browser cannot show a PDF or a ZIP, so it goes to
+        // the download queue instead of nowhere.
+        view.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+            if (url.isNullOrBlank()) return@setDownloadListener
+            callbacks.onDownloadRequested(tabId, url, userAgent, contentDisposition, mimeType, contentLength)
+        }
         view.webChromeClient = object : WebChromeClient() {
             private var lastProgress = 0
             private var lastProgressTime = 0L
@@ -290,6 +450,97 @@ class TabWebViewStore(
     }
 
     /**
+     * Injects the object a page's recording hook posts to, and the listener that receives it.
+     *
+     * The origin rule is `*` on purpose: a player inside a cross-origin frame is exactly the case this
+     * has to cover, and the object is not a way to read anything out of the app — it only accepts
+     * messages. What a message may *do* is decided in `MseRecordingController`, which knows whether
+     * the user armed this tab and which frame is allowed to speak for the stream.
+     */
+    private fun installMseRecording(view: WebView, tabId: String) {
+        if (!MseRecordingSupport.isSupported) return
+        runCatching {
+            WebViewCompat.addWebMessageListener(
+                view,
+                MediaSniffer.MSE_PORT_NAME,
+                setOf("*"),
+                MseRecordingBridge(
+                    onFrame = { claimedUrl, sourceOrigin, isMainFrame ->
+                        rememberFrame(tabId, claimedUrl, sourceOrigin, isMainFrame)
+                    },
+                    onOpen = { mime, origin, isMainFrame -> callbacks.onMseOpen(tabId, mime, origin, isMainFrame) },
+                    onSegment = { bytes, origin, isMainFrame -> callbacks.onMseSegment(tabId, bytes, origin, isMainFrame) },
+                    onCap = { _, _ -> callbacks.onMseCap(tabId) }
+                )
+            )
+        }
+    }
+
+    /**
+     * A frame of this document announced itself.
+     *
+     * The claim is checked against the origin WebKit reported for the posting frame, so a frame can
+     * only ever register *itself*: the origin is what a page cannot forge, and the claimed URL has to
+     * agree with it. When WebKit says the posting frame is the main frame, the claimed URL is also the
+     * page's URL — the most trustworthy page URL the app has, and the one worker requests are
+     * attributed to.
+     */
+    private fun rememberFrame(tabId: String, claimedUrl: String, sourceOrigin: String?, isMainFrame: Boolean) {
+        if (!frameClaimAccepted(claimedUrl, sourceOrigin)) return
+        val origin = WebOrigin.of(sourceOrigin) ?: WebOrigin.of(claimedUrl) ?: return
+        // The listener runs on the WebView's thread and the set is read from a worker's, so the set
+        // itself is synchronized rather than assumed to be single-threaded.
+        framesOf(tabId).add(origin)
+        if (isMainFrame) lastPageUrl = claimedUrl
+    }
+
+    /** The registered origins of a tab's document, created on first use. */
+    private fun framesOf(tabId: String): MutableSet<String> =
+        verifiedFrames.getOrPut(tabId) { synchronizedSet() }
+
+    private fun synchronizedSet(): MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
+
+    /**
+     * Whether a report from [reportedPageUrl] may speak for the tab.
+     *
+     * True while nothing has been registered: a WebView without the message port cannot verify frames
+     * at all, and refusing every report there would turn a hardening into a regression. Once frames do
+     * announce themselves, a report has to come from one the document actually contains.
+     */
+    private fun acceptsFrameReport(tabId: String, reportedPageUrl: String): Boolean {
+        if (!MseRecordingSupport.isSupported) return true
+        val frames = verifiedFrames[tabId] ?: return true
+        if (frames.isEmpty()) return true
+        val origin = WebOrigin.of(reportedPageUrl) ?: return false
+        return frames.contains(origin)
+    }
+
+    /**
+     * A page's service worker fetches media the document's client never sees.
+     *
+     * Observed, not answered: the app reads the URL, the method and the `Range` header, returns
+     * nothing, and the request goes on exactly as it would have. A worker that downloads a player's
+     * segments becomes visible without a single byte being read or rewritten.
+     */
+    private fun installServiceWorkerObserver() {
+        if (serviceWorkerObserverInstalled) return
+        serviceWorkerObserverInstalled = true
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) return
+        runCatching {
+            ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(
+                object : ServiceWorkerClientCompat() {
+                    override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
+                        val range = request.requestHeaders?.entries
+                            ?.firstOrNull { it.key.equals("Range", true) }?.value
+                        serviceWorkerObserver.onRequest(request.url?.toString(), request.method, range)
+                        return null
+                    }
+                }
+            )
+        }
+    }
+
+    /**
      * Installs the media sniffer before the page runs any of its own script.
      *
      * This is the difference for a player that fetches its manifest and first segments the moment
@@ -300,6 +551,21 @@ class TabWebViewStore(
     private fun installSniffer(view: WebView) {
         if (!documentStartSniffer) return
         runCatching { WebViewCompat.addDocumentStartJavaScript(view, MediaSniffer.script, setOf("*")) }
+    }
+
+    /**
+     * A dead renderer. The WebView cannot be reused or cleaned up the normal way — every call on it
+     * throws once its renderer is gone — so it is only destroyed, and the tab is reported so the
+     * composition builds a new WebView for the URL the tab still remembers.
+     */
+    private fun handleRendererGone(view: WebView) {
+        val tabId = live.entries.firstOrNull { it.value === view }?.key
+        if (tabId != null) {
+            live.remove(tabId)
+            usage.remove(tabId)
+        }
+        runCatching { view.destroy() }
+        if (tabId != null) callbacks.onRendererGone(tabId)
     }
 
     private fun destroyView(view: WebView) {

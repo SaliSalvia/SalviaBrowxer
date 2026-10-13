@@ -6,10 +6,16 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.salvia.salviabrowxer.core.database.AppDatabase
+import com.salvia.salviabrowxer.core.session.WebViewCookies
 import com.salvia.salviabrowxer.core.storage.StorageManager
+import com.salvia.salviabrowxer.data.datastore.SessionDataStore
+import com.salvia.salviabrowxer.data.datastore.SessionRestorer
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStoreImpl
 import com.salvia.salviabrowxer.data.datastore.dataStore
+import com.salvia.salviabrowxer.data.datastore.sessionDataStore
+import com.salvia.salviabrowxer.data.security.LockedFolderStore
+import com.salvia.salviabrowxer.data.storage.SafDestinationStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.BookmarkRepositoryImpl
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
@@ -22,6 +28,7 @@ import com.salvia.salviabrowxer.media.downloader.DashDownloader
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
 import com.salvia.salviabrowxer.media.downloader.MediaMetadataReader
 import com.salvia.salviabrowxer.media.downloader.MediaRemuxer
+import com.salvia.salviabrowxer.media.downloader.SessionCookieJar
 import com.salvia.salviabrowxer.media.downloader.TrackMerger
 import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
@@ -44,6 +51,11 @@ object AppModule {
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
+            // One jar for every request the app makes on a page's behalf — the quality probe, the
+            // manifest fetches, the segments and the direct transfer — so a site that guards media
+            // with the session the user is browsing with serves the download too. Read-only: see
+            // SessionCookieJar.
+            .cookieJar(SessionCookieJar(WebViewCookies::headerFor))
             .connectTimeout(Constants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(Constants.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(Constants.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -83,10 +95,21 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideSafDocumentExporter(@ApplicationContext context: Context): com.salvia.salviabrowxer.core.storage.SafDocumentExporter =
+        com.salvia.salviabrowxer.core.storage.SafDocumentExporter(context)
+
+    @Provides
+    @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         // Real migrations only: a failed upgrade must surface, never wipe browsing data.
         return Room.databaseBuilder(context, AppDatabase::class.java, "salviabrowxer_db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6
+            )
             .build()
     }
 
@@ -97,6 +120,23 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSettingsDataStore(@ApplicationContext context: Context): SettingsDataStore = SettingsDataStoreImpl(context.dataStore)
+
+    @Provides
+    @Singleton
+    fun provideSessionDataStore(@ApplicationContext context: Context): SessionDataStore = SessionDataStore(context.sessionDataStore)
+
+    @Provides
+    @Singleton
+    fun provideSessionRestorer(sessionDataStore: SessionDataStore): SessionRestorer = SessionRestorer(sessionDataStore)
+
+    /** The password verifier and the chosen SD-card tree: both are small, encrypted-at-rest settings. */
+    @Provides
+    @Singleton
+    fun provideLockedFolderStore(@ApplicationContext context: Context): LockedFolderStore = LockedFolderStore(context)
+
+    @Provides
+    @Singleton
+    fun provideSafDestinationStore(@ApplicationContext context: Context): SafDestinationStore = SafDestinationStore(context.dataStore)
 
     @Provides
     @Singleton

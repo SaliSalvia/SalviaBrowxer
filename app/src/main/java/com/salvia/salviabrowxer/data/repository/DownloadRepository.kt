@@ -43,6 +43,18 @@ interface DownloadRepository {
         exportedUri: String? = null
     )
 
+    /** Moves a finished file into or out of the password-protected folder. */
+    suspend fun setDownloadLocked(id: String, locked: Boolean)
+
+    /** Forgets a published copy (the gallery copy of a file that has just been locked). */
+    suspend fun clearExportedUri(id: String)
+
+    /** How many rows are behind the password; the list draws a locked section from this. */
+    fun lockedDownloadCount(): Flow<Int>
+
+    /** Called when the password is removed: nothing may stay hidden behind a lock that no longer exists. */
+    suspend fun unlockAllDownloads()
+
     suspend fun deleteDownload(id: String)
     suspend fun deleteDownloadsByState(state: DownloadState)
     suspend fun clearAllDownloads()
@@ -57,6 +69,10 @@ interface DownloadRepository {
         mimeType: String? = null,
         totalBytes: Long? = null,
         /** Set only for a DASH rendition; the manifest URL travels in `url`. */
-        renditionId: String? = null
+        renditionId: String? = null,
+        /** The page that exposed the media: sent as `Referer` on every request of the transfer. */
+        pageUrl: String? = null,
+        /** The user agent that page was loaded with, so the server sees the same client twice. */
+        userAgent: String? = null
     ): DownloadEntity
 }

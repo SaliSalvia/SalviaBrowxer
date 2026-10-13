@@ -9,6 +9,7 @@ import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
+import com.salvia.salviabrowxer.data.datastore.SessionRestorer
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
@@ -16,6 +17,7 @@ import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -27,6 +29,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -50,6 +53,15 @@ class BrowserViewModelTest {
     private val mediaDetector: MediaDetector = mockk(relaxed = true)
     private val mediaResolver: MediaResolver = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
+    private val sessionRestorer: SessionRestorer = mockk(relaxed = true)
+
+    /**
+     * A real directory, because the view model builds its recording controller from `cacheDir` and a
+     * relaxed mock hands back a *mock* `File` whose internal path is null — `File(mockFile, "mse")`
+     * then throws inside `java.io.File` itself, which is how four unrelated tab tests failed.
+     */
+    private val cacheDir: File =
+        File(System.getProperty("java.io.tmpdir"), "salvia-browser-test-cache").apply { mkdirs() }
 
     @Before
     fun setup() {
@@ -64,6 +76,7 @@ class BrowserViewModelTest {
         every { settingsDataStore.floatingButtonY } returns flowOf(0f)
         every { downloadRepository.getDownloadsByStates(any()) } returns
             flowOf(emptyList<DownloadEntity>())
+        every { context.cacheDir } returns cacheDir
 
         viewModel = BrowserViewModel(
             historyRepository = historyRepository,
@@ -72,6 +85,7 @@ class BrowserViewModelTest {
             settingsDataStore = settingsDataStore,
             mediaDetector = mediaDetector,
             mediaResolver = mediaResolver,
+            sessionRestorer = sessionRestorer,
             context = context
         )
     }
@@ -334,7 +348,8 @@ class BrowserViewModelTest {
         val sheet = viewModel.uiState.value.qualitySheet
         assertNotNull("a pasted direct media link must still open its sheet", sheet)
         assertNull(sheet?.unsupported)
-        coVerify(exactly = 1) { mediaResolver.resolve("https://cdn.example.com/clip.mp4") }
+        // The session goes with the probe: the pasted link is resolved as the page the browser is on.
+        coVerify(exactly = 1) { mediaResolver.resolve("https://cdn.example.com/clip.mp4", any(), any()) }
     }
 
     @Test
@@ -491,7 +506,7 @@ class BrowserViewModelTest {
 
         // A clear, static manifest is segmented by the downloader now, so the sheet probes it
         // instead of refusing it up front like a live or unproven blob stream.
-        coVerify { mediaResolver.resolve(any()) }
+        coVerify { mediaResolver.resolve(any(), any(), any()) }
 
         // The relaxed resolver returns a MediaInfo with no usable formats: that is exactly the
         // dynamic/DRM/unsupported-manifest case, and it must become the honest refusal.
@@ -561,6 +576,30 @@ class BrowserViewModelTest {
         viewModel.onPageFinished("https://example.com/private", "Private page")
 
         coVerify(exactly = 0) { historyRepository.addHistory(any()) }
+    }
+
+    @Test
+    fun `the live web view store is owned by the view model, so navigation cannot destroy the tabs`() {
+        val callbacks = mockk<TabWebViewStore.Callbacks>(relaxed = true)
+
+        val first = viewModel.webViewStore(context, callbacks)
+        val second = viewModel.webViewStore(context, callbacks)
+
+        // The same instance on every call: the browser screen may leave the composition and come
+        // back (Downloads, Settings, bookmarks, history, the player) without its tabs being thrown
+        // away. Before this, the store was a `remember` whose onDispose destroyed every WebView.
+        assertSame(first, second)
+    }
+
+    @Test
+    fun `a dead renderer asks for a new attach pass`() {
+        val before = viewModel.uiState.value.rendererEpoch
+
+        viewModel.onRendererGone(viewModel.uiState.value.currentTabId ?: "tab")
+
+        // The store has already dropped that tab's WebView, so the epoch is what makes the browser
+        // screen run its attach pass again and build a fresh one on the tab's last URL.
+        assertTrue(viewModel.uiState.value.rendererEpoch > before)
     }
 
     @Test

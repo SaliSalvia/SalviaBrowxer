@@ -136,6 +136,8 @@
     <string name="settings_clear_browsing_data">Clear Browsing Data</string>
     <string name="settings_download_directory">Download Directory</string>
     <string name="settings_simultaneous_downloads">Simultaneous Downloads</string>
+    <string name="settings_parallel_connections">Several connections per download</string>
+    <string name="settings_parallel_connections_hint">On by default. A direct file is fetched over a few Range connections at once and joined, which is faster whenever the server limits each connection. Pausing, resuming and retrying still work per piece. A server that cannot serve ranges is detected and the file is fetched on one connection</string>
     <string name="settings_wifi_only">Wi-Fi only downloads</string>
     <string name="settings_wifi_only_hint">Off by default. Downloads use whatever connection you have — mobile data included — until you turn this on</string>
     <string name="settings_export_to_gallery">Show downloads in the gallery</string>
@@ -223,8 +225,59 @@
     <string name="home_noop_moved">You are already on the start screen.</string>
     <string name="home_media_tray_only_hint">This file is from a page — open the media tray above the page to choose it.</string>
 
+    <!-- Browser: page failures the chrome now explains instead of showing an empty tab -->
+    <string name="renderer_gone_reloading">The page stopped responding, so this tab was reloaded</string>
+    <string name="error_page_load_failed">This page could not be loaded</string>
+    <string name="error_page_http">The site answered with %1$s</string>
+    <string name="error_page_certificate">The certificate of this site is not trusted, so the page was not loaded</string>
+
     <!-- Accessibility -->
     <string name="downloads_badge_description">%1$d active downloads</string>
     <string name="media_on_screen">On screen</string>
     <string name="error_blob_stream_unsupported">This player exposes a streaming handle, not a downloadable file; choose a file or playlist if one appears.</string>
+    <!-- Playback recording: the honest alternative when a stream has no file to download -->
+    <string name="action_record_playback">Record playback</string>
+    <string name="record_playback_hint">Only the part of the stream that actually plays is recorded, at the quality the player chose.</string>
+    <string name="action_stop_recording">Stop and save</string>
+    <string name="recording_in_progress">Recording</string>
+    <string name="recording_started">Recording started</string>
+    <string name="recording_saved">Recording saved</string>
+    <string name="recording_saved_capped">Recording reached the size limit and was saved</string>
+    <string name="error_mse_unsupported">Recording playback is not supported by this device\'s WebView.</string>
+    <string name="error_mse_drm">This playback is protected (DRM), so it cannot be recorded. Nothing was saved.</string>
+    <string name="error_mse_no_space">Not enough free space to keep recording</string>
+    <string name="error_mse_empty">Nothing was recorded, so there is nothing to save</string>
+    <!-- The locked folder and the chosen SD-card folder: the two places a download can be kept -->
+    <string name="settings_locked_folder">Password-protected folder</string>
+    <string name="settings_locked_folder_hint">Move a finished download here and it disappears from this list, from the gallery, and from every share sheet until the password is entered. Files stay in the app\'s own folder; the password itself is never stored — only a slow PBKDF2 verifier.</string>
+    <string name="settings_locked_folder_not_set">No password yet. Set one, then a download can be moved in from the list</string>
+    <string name="settings_locked_folder_secured_note">The verifier is kept in an encrypted preference file protected by this device\'s keystore</string>
+    <string name="settings_locked_folder_plain_note">This device\'s keystore is unavailable, so the verifier is kept in the app\'s private preferences instead. It is still not the password</string>
+    <string name="action_set_password">Set password</string>
+    <string name="action_change_password">Change password</string>
+    <string name="action_remove_password">Remove password</string>
+    <string name="locked_folder_password_label">Password</string>
+    <string name="locked_folder_confirm_label">Repeat password</string>
+    <string name="locked_folder_mismatch">The two passwords are not the same</string>
+    <string name="locked_folder_password_short">Use at least %1$d characters</string>
+    <string name="locked_folder_set">Password saved</string>
+    <string name="locked_folder_save_failed">The password could not be saved on this device</string>
+    <string name="locked_folder_removed">Password removed; the files it hid are visible again</string>
+    <string name="locked_folder_wrong_password">Wrong password</string>
+    <string name="locked_folder_not_configured">Set a password in Settings first</string>
+    <string name="downloads_locked_folder">Locked</string>
+    <string name="downloads_locked_count">%1$d hidden until the password is entered</string>
+    <string name="action_unlock_folder">Unlock</string>
+    <string name="action_lock_folder">Lock again</string>
+    <string name="action_lock_download">Move to the locked folder</string>
+    <string name="action_unlock_download">Take out of the locked folder</string>
+    <string name="download_locked">Moved into the locked folder and removed from the gallery. A copy that was already made in your chosen folder is yours and stays there</string>
+    <string name="download_unlocked">Taken out of the locked folder</string>
+    <string name="settings_sd_card_folder">Also copy downloads to a chosen folder</string>
+    <string name="settings_sd_card_none">No folder chosen</string>
+    <string name="action_clear_folder">Stop copying</string>
+    <string name="sd_card_folder_set">Every finished download will also be copied there</string>
+    <string name="sd_card_folder_cleared">The app no longer copies downloads anywhere else</string>
+    <string name="sd_card_grant_failed">That folder cannot be kept for later use, so nothing was saved</string>
+    <string name="session_restored">%1$d tab restored</string>
 </resources>

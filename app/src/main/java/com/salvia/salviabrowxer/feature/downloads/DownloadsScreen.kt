@@ -37,7 +37,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import com.salvia.salviabrowxer.ui.components.PasswordField
+import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -68,6 +77,11 @@ fun DownloadsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    // The password prompt is state of this screen, not of the list: it is a modal question, and the
+    // folder locking again on its own must close it.
+    var showUnlock by remember { mutableStateOf(false) }
+    val lockedFolder = state.lockedFolder
+    LaunchedEffect(lockedFolder.isUnlocked) { if (lockedFolder.isUnlocked) showUnlock = false }
 
     LaunchedEffect(Unit) { viewModel.messages.collectLatest { message -> if (message.isNotBlank()) snackbarHostState.showSnackbar(message) } }
     LaunchedEffect(Unit) {
@@ -100,6 +114,18 @@ fun DownloadsScreen(
                 Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
             }
 
+            // Only drawn when there is something behind it: a lock row on an empty folder would be a
+            // control that changes nothing, and an empty one would be a promise of a feature that was
+            // never set up.
+            if (lockedFolder.isConfigured && lockedFolder.lockedCount > 0) {
+                LockedFolderBar(
+                    isUnlocked = lockedFolder.isUnlocked,
+                    count = lockedFolder.lockedCount,
+                    onUnlockClick = { showUnlock = true },
+                    onLockClick = { viewModel.lockFolder() }
+                )
+            }
+
             TabRow(
                 selectedTabIndex = selectedTabIndex, containerColor = DeepCharcoal, contentColor = PearlWhite,
                 indicator = { tabPositions -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = NebulaVioletLight, height = 2.dp) },
@@ -117,15 +143,78 @@ fun DownloadsScreen(
             if (items.isEmpty()) {
                 EmptyDownloadsState(icon = Icons.Default.ClearAll, message = if (state.isLoading) stringResource(R.string.download_queue) else emptyMessage)
             } else {
-                DownloadList(items = items, viewModel = viewModel)
+                DownloadList(items = items, canLock = lockedFolder.isConfigured, viewModel = viewModel)
             }
+        }
+        if (showUnlock) {
+            UnlockFolderDialog(
+                isUnlocking = lockedFolder.isUnlocking,
+                onDismiss = { showUnlock = false },
+                onConfirm = { password -> viewModel.unlockFolder(password) }
+            )
         }
         SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp))
     }
 }
 
+/**
+ * The one row that says the folder exists.
+ *
+ * It states the count and nothing else: how many files are hidden is not a secret, and the user needs
+ * to know something is there before they can ask for it. Unlocking is offered once and locking again is
+ * offered after — a session lock that cannot be re-locked without closing the app is a half lock.
+ */
 @Composable
-private fun DownloadList(items: List<DownloadEntity>, viewModel: DownloadsViewModel) {
+private fun LockedFolderBar(isUnlocked: Boolean, count: Int, onUnlockClick: () -> Unit, onLockClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(14.dp)).background(CharcoalElevated).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
+            contentDescription = null,
+            tint = if (isUnlocked) AuroraTeal else SilverMid
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.downloads_locked_folder), style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
+            Text(
+                text = stringResource(R.string.downloads_locked_count, count),
+                style = MaterialTheme.typography.bodySmall,
+                color = SilverMid
+            )
+        }
+        TextButton(onClick = if (isUnlocked) onLockClick else onUnlockClick) {
+            Text(
+                text = stringResource(if (isUnlocked) R.string.action_lock_folder else R.string.action_unlock_folder),
+                color = AuroraTeal
+            )
+        }
+    }
+}
+
+@Composable
+private fun UnlockFolderDialog(isUnlocking: Boolean, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!isUnlocking) onDismiss() },
+        title = { Text(stringResource(R.string.downloads_locked_folder), color = PearlWhite) },
+        text = { PasswordField(value = password, onValueChange = { password = it }, hint = stringResource(R.string.locked_folder_password_label)) },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(password) }, enabled = !isUnlocking) {
+                Text(stringResource(R.string.action_unlock_folder), color = AuroraTeal)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
+        },
+        containerColor = CharcoalElevated
+    )
+}
+
+@Composable
+private fun DownloadList(items: List<DownloadEntity>, canLock: Boolean, viewModel: DownloadsViewModel) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
         items(items, key = { it.id }, contentType = { it.status }) { download ->
             DownloadItem(
@@ -144,7 +233,9 @@ private fun DownloadList(items: List<DownloadEntity>, viewModel: DownloadsViewMo
                 onRetryClick = { viewModel.retryDownload(download.id) },
                 onDeleteClick = { viewModel.deleteDownload(download.id) },
                 onShareClick = { viewModel.shareDownload(download.id) },
-                onExportClick = { viewModel.exportDownload(download.id) }
+                onExportClick = { viewModel.exportDownload(download.id) },
+                onLockClick = if (canLock) ({ viewModel.setDownloadLocked(download.id, true) }) else null,
+                onUnlockClick = if (canLock) ({ viewModel.setDownloadLocked(download.id, false) }) else null
             )
         }
     }

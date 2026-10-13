@@ -28,6 +28,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
@@ -73,4 +77,33 @@ fun ListEmptyState(text: String, actionLabel: String? = null, onAction: () -> Un
             TextButton(onClick = onAction) { Text(actionLabel, color = AuroraTeal) }
         }
     }
+}
+
+/**
+ * A masked field for the two places a password is typed: setting one in settings and entering one to
+ * open the locked folder. `PasswordVisualTransformation` is what keeps it out of screenshots and
+ * shoulder-surfing distance; the keyboard hint asks the platform for a password keyboard, which is
+ * also what stops most IMEs from remembering it.
+ */
+@Composable
+fun PasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    hint: String,
+    modifier: Modifier = Modifier
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+        textStyle = TextStyle(color = PearlWhite),
+        cursorBrush = SolidColor(AuroraTeal),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(CharcoalSurface, RoundedCornerShape(10.dp))
+            .padding(12.dp)
+            .semantics { contentDescription = hint }
+    )
 }

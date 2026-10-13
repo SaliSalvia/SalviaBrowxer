@@ -33,7 +33,8 @@ object Constants {
     const val WRITE_TIMEOUT_SECONDS = 30L
 
     const val DATABASE_NAME = "salviabrowxer_db"
-    const val DATABASE_VERSION = 2
+    /** Must match `AppDatabase.version`; the schema is upgraded by the Room migrations, never by this. */
+    const val DATABASE_VERSION = 5
 
     const val NOTIFICATION_CHANNEL_ID = "download_channel"
     const val NOTIFICATION_CHANNEL_NAME = "Downloads"

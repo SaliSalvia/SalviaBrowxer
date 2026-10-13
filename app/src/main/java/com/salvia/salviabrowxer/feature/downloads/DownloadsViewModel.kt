@@ -2,6 +2,7 @@ package com.salvia.salviabrowxer.feature.downloads
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,7 @@ import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
+import com.salvia.salviabrowxer.data.security.LockedFolderStore
 import com.salvia.salviabrowxer.service.DownloadService
 import com.salvia.salviabrowxer.ui.utils.getMimeTypeFromExtension
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,22 +30,46 @@ import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
+/**
+ * The password-protected folder as the list sees it.
+ *
+ * [isUnlocked] is a session, not a setting: closing the app locks the folder again, which is the whole
+ * point of a lock. [isSecured] is the truth about where the verifier lives, so the screen can say
+ * "protected by the device keystore" only when that is actually the case.
+ */
+data class LockedFolderUiState(
+    val isConfigured: Boolean = false,
+    val isUnlocked: Boolean = false,
+    val isUnlocking: Boolean = false,
+    val lockedCount: Int = 0,
+    val isSecured: Boolean = false
+)
+
 data class DownloadsUiState(
     val isLoading: Boolean = true,
     val all: List<DownloadEntity> = emptyList(),
     val active: List<DownloadEntity> = emptyList(),
     val queued: List<DownloadEntity> = emptyList(),
     val completed: List<DownloadEntity> = emptyList(),
-    val failed: List<DownloadEntity> = emptyList()
+    val failed: List<DownloadEntity> = emptyList(),
+    val lockedFolder: LockedFolderUiState = LockedFolderUiState()
 ) { val inFlightCount: Int get() = active.size + queued.size }
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val mediaStoreExporter: MediaStoreExporter,
+    private val lockedFolderStore: LockedFolderStore,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(DownloadsUiState())
+    private val _uiState = MutableStateFlow(
+        DownloadsUiState(
+            lockedFolder = LockedFolderUiState(
+                isConfigured = lockedFolderStore.isConfigured(),
+                isSecured = lockedFolderStore.isSecured
+            )
+        )
+    )
     val uiState: StateFlow<DownloadsUiState> = _uiState.asStateFlow()
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
@@ -59,16 +85,72 @@ class DownloadsViewModel @Inject constructor(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             downloadRepository.getAllDownloads().distinctUntilChanged().collectLatest { downloads ->
-                _uiState.update { state -> state.copy(
-                    isLoading = false, all = downloads,
-                    active = downloads.filter { it.status == DownloadState.DOWNLOADING || it.status == DownloadState.RESOLVING || it.status == DownloadState.PREPARING || it.status == DownloadState.PROCESSING || it.status == DownloadState.PAUSED },
-                    queued = downloads.filter { it.status == DownloadState.QUEUED || it.status == DownloadState.RETRYING },
-                    completed = downloads.filter { it.status == DownloadState.COMPLETED },
-                    failed = downloads.filter { it.status == DownloadState.FAILED || it.status == DownloadState.CANCELLED }
-                )}
+                _uiState.update { state ->
+                    // A locked row is not drawn until the password has been entered — the list is where
+                    // "hidden" has to mean something. The underlying rows are all still in `all`, so the
+                    // count is honest even while the files themselves are not on screen.
+                    val unlocked = state.lockedFolder.isUnlocked
+                    val visible = if (unlocked) downloads else downloads.filter { !it.isLocked }
+                    state.copy(
+                        isLoading = false, all = downloads,
+                        active = visible.filter { it.status == DownloadState.DOWNLOADING || it.status == DownloadState.RESOLVING || it.status == DownloadState.PREPARING || it.status == DownloadState.PROCESSING || it.status == DownloadState.PAUSED },
+                        queued = visible.filter { it.status == DownloadState.QUEUED || it.status == DownloadState.RETRYING },
+                        completed = visible.filter { it.status == DownloadState.COMPLETED },
+                        failed = visible.filter { it.status == DownloadState.FAILED || it.status == DownloadState.CANCELLED },
+                        lockedFolder = state.lockedFolder.copy(lockedCount = downloads.count { it.isLocked })
+                    )
+                }
             }
         }
         DownloadService.processQueue(context)
+    }
+
+    /**
+     * Checks the password. Off the main thread on purpose: the whole value of a PBKDF2 verifier is
+     * that checking it is slow, and slow on the UI thread is a frozen list.
+     */
+    fun unlockFolder(password: String) {
+        if (_uiState.value.lockedFolder.isUnlocking) return
+        _uiState.update { it.copy(lockedFolder = it.lockedFolder.copy(isUnlocking = true)) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val unlocked = lockedFolderStore.verify(password)
+            _uiState.update { it.copy(lockedFolder = it.lockedFolder.copy(isUnlocking = false, isUnlocked = unlocked)) }
+            if (!unlocked) _messages.trySend(context.getString(R.string.locked_folder_wrong_password))
+        }
+    }
+
+    /** Locks the folder again without closing the app. */
+    fun lockFolder() {
+        _uiState.update { it.copy(lockedFolder = it.lockedFolder.copy(isUnlocked = false)) }
+    }
+
+    /**
+     * Moves a finished file into or out of the locked folder.
+     *
+     * Locking also removes the copy that was published to the shared gallery and forgets it in the row:
+     * a lock that leaves the file in the device's photo library is not a lock. A file that leaves the
+     * folder simply becomes visible again — nothing is copied or deleted.
+     */
+    fun setDownloadLocked(downloadId: String, locked: Boolean) {
+        if (locked && !_uiState.value.lockedFolder.isConfigured) {
+            _messages.trySend(context.getString(R.string.locked_folder_not_configured))
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadRepository.setDownloadLocked(downloadId, locked)
+            if (locked) withdrawPublishedCopy(downloadId)
+            _messages.trySend(context.getString(if (locked) R.string.download_locked else R.string.download_unlocked))
+        }
+    }
+
+    /** Deletes the gallery copy of a file that has just been locked, if it had one. */
+    private suspend fun withdrawPublishedCopy(downloadId: String) {
+        val download = downloadRepository.getDownloadById(downloadId) ?: return
+        val uri = download.exportedUri?.takeIf { it.startsWith("content://") } ?: return
+        // Only the app's own MediaStore entry: a tree the user chose is the user's folder, not ours to
+        // reach into, and FilesProvider refuses a delete it did not create anyway.
+        runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
+        downloadRepository.clearExportedUri(downloadId)
     }
 
     fun retryDownload(downloadId: String) { viewModelScope.launch(Dispatchers.IO) { downloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED); DownloadService.enqueueDownload(context, downloadId) } }

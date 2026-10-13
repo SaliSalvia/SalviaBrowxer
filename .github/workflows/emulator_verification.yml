@@ -19,6 +19,8 @@ on:
 
 permissions:
   contents: read
+  # The failure report is posted as a comment, so it is readable without exporting the job log.
+  pull-requests: write
 
 jobs:
   instrumented:
@@ -68,6 +70,48 @@ jobs:
             sleep 8
             echo "--- app process ---"
             adb shell pidof com.salvia.salviabrowxer
+
+      # The emulator runner keeps the test output in its own log; the JUnit XML that the annotations
+      # and the PR comment are built from survives in the workspace, so the failure is readable
+      # without the log export.
+      - name: Report instrumented failures
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import glob
+          import xml.etree.ElementTree as ET
+
+          lines = []
+          for xml_path in sorted(glob.glob("**/build/outputs/androidTest-results/**/*.xml", recursive=True)):
+              try:
+                  tree = ET.parse(xml_path)
+              except (ET.ParseError, OSError):
+                  continue
+              for case in tree.iter("testcase"):
+                  for bad in list(case.findall("failure")) + list(case.findall("error")):
+                      where = f"{case.get('classname')}.{case.get('name')}"
+                      message = " ".join((bad.get("message") or bad.text or "").split())
+                      lines.append(f"{where}: {message[:600]}")
+          chunk = "\n".join(lines) or "No instrumented result XML was found on the runner."
+          Path("instrumented-failure.txt").write_text(chunk)
+          print("----- INSTRUMENTED FAILURE -----")
+          print(chunk)
+          for line in chunk.splitlines():
+              print(f"::error title=Instrumented::{line.replace('%', '%25')}")
+          PY
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            {
+              echo 'Instrumented (emulator) run failed. Test failures:'
+              echo
+              echo '```'
+              cat instrumented-failure.txt 2>/dev/null || echo 'No instrumented result XML was found on the runner.'
+              echo '```'
+            } > failure-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file failure-comment.md || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload instrumented test reports
         if: always()

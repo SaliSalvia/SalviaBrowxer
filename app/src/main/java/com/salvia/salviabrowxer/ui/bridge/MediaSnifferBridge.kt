@@ -21,7 +21,8 @@ import com.salvia.salviabrowxer.core.model.SniffOrigin
 class MediaSnifferBridge(
     private val onAdmitted: (MediaCandidate) -> Unit,
     private val onVisible: (String, String) -> Unit = { _, _ -> },
-    private val onExpired: (String, String) -> Unit = { _, _ -> }
+    private val onExpired: (String, String) -> Unit = { _, _ -> },
+    private val onEncrypted: (String, String) -> Unit = { _, _ -> }
 ) {
 
     @JavascriptInterface
@@ -69,6 +70,20 @@ class MediaSnifferBridge(
     fun onVisibleMedia(pageUrl: String, url: String) {
         if (pageUrl.length > 4096 || url.length > 8192) return
         onVisible(pageUrl, url)
+    }
+
+    /**
+     * The page is playing protected media: a key system answered an `encrypted` event, or one was
+     * attached to the element when playback began.
+     *
+     * This is the refusal the recording path depends on. The bytes of an encrypted stream do not
+     * decode, so recording one produces a file the user cannot open; the honest answer is to stop and
+     * say so. It arrives on the same string bridge as everything else the script reports.
+     */
+    @JavascriptInterface
+    fun onMseEncrypted(pageUrl: String, mimeType: String) {
+        if (pageUrl.length > 4096 || mimeType.length > 256) return
+        onEncrypted(pageUrl, mimeType)
     }
 
     companion object {

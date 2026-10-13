@@ -44,7 +44,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +84,7 @@ import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.SplashNebulaBrush
 import com.salvia.salviabrowxer.ui.utils.Constants
+import com.salvia.salviabrowxer.ui.utils.PageErrorKind
 import java.io.File
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -117,27 +117,42 @@ fun BrowserScreen(
 
     var pageAreaSize by remember { mutableStateOf(IntSize.Zero) }
 
-    // One WebView per live tab. The store owns render state; the view model owns tab metadata.
-    val store = remember(context, viewModel) {
-        TabWebViewStore(
-            context = context,
-            callbacks = object : TabWebViewStore.Callbacks {
-                override fun onPageStarted(tabId: String, url: String) = viewModel.onPageStarted(tabId, url)
-                override fun onPageFinished(tabId: String, url: String, title: String?) = viewModel.onPageFinished(tabId, url, title)
-                override fun onHistoryUrlChanged(tabId: String, url: String) = viewModel.onHistoryUrlChanged(tabId, url)
-                override fun onProgress(tabId: String, progress: Int) = viewModel.onProgressChanged(tabId, progress)
-                override fun onNavigationState(tabId: String, canGoBack: Boolean, canGoForward: Boolean) = viewModel.updateNavigationState(tabId, canGoBack, canGoForward)
-                override fun onPageHtml(tabId: String, pageUrl: String, html: String) = viewModel.onPageHtml(tabId, pageUrl, html)
-                override fun onMediaDetected(tabId: String, candidate: MediaCandidate) = viewModel.onMediaIntercepted(tabId, candidate)
-                override fun onVisibleMedia(tabId: String, pageUrl: String, mediaUrl: String) = viewModel.onVisibleMedia(tabId, pageUrl, mediaUrl)
-                override fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String) = viewModel.onMediaExpired(tabId, pageUrl, mediaUrl)
-                override fun onBlobCaptured(pageUrl: String, blobUrl: String, file: File, mimeType: String) = viewModel.onBlobCaptured(pageUrl, blobUrl, file, mimeType)
-                override fun onTabHibernated(tabId: String, url: String, title: String) = viewModel.onTabHibernated(tabId, url, title)
-                override fun onFindResult(tabId: String, matches: Int, activeMatch: Int) = viewModel.onFindResult(tabId, matches, activeMatch)
-                override fun onExternalScheme(url: String): Boolean = viewModel.openExternalScheme(url)
-            }
-        )
+    // One WebView per live tab. The store owns render state, the view model owns tab metadata, and
+    // the store instance itself lives in the view model: a `remember`ed store died with this
+    // composable, so opening Downloads, Settings or the player destroyed every WebView and coming
+    // back reloaded the page from the network.
+    val storeCallbacks = remember(viewModel) {
+        object : TabWebViewStore.Callbacks {
+            override fun onPageStarted(tabId: String, url: String) = viewModel.onPageStarted(tabId, url)
+            override fun onPageFinished(tabId: String, url: String, title: String?) = viewModel.onPageFinished(tabId, url, title)
+            override fun onHistoryUrlChanged(tabId: String, url: String) = viewModel.onHistoryUrlChanged(tabId, url)
+            override fun onProgress(tabId: String, progress: Int) = viewModel.onProgressChanged(tabId, progress)
+            override fun onNavigationState(tabId: String, canGoBack: Boolean, canGoForward: Boolean) = viewModel.updateNavigationState(tabId, canGoBack, canGoForward)
+            override fun onPageHtml(tabId: String, pageUrl: String, html: String) = viewModel.onPageHtml(tabId, pageUrl, html)
+            override fun onMediaDetected(tabId: String, candidate: MediaCandidate) = viewModel.onMediaIntercepted(tabId, candidate)
+            override fun onVisibleMedia(tabId: String, pageUrl: String, mediaUrl: String) = viewModel.onVisibleMedia(tabId, pageUrl, mediaUrl)
+            override fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String) = viewModel.onMediaExpired(tabId, pageUrl, mediaUrl)
+            override fun onBlobCaptured(tabId: String, pageUrl: String, blobUrl: String, file: File, mimeType: String) = viewModel.onBlobCaptured(tabId, pageUrl, blobUrl, file, mimeType)
+            override fun onMseOpen(tabId: String, mimeType: String, sourceOrigin: String?, isMainFrame: Boolean) = viewModel.onMseOpen(tabId, mimeType, sourceOrigin, isMainFrame)
+            override fun onMseSegment(tabId: String, bytes: ByteArray, sourceOrigin: String?, isMainFrame: Boolean) = viewModel.onMseSegment(tabId, bytes, sourceOrigin, isMainFrame)
+            override fun onMseCap(tabId: String) = viewModel.onMseCap(tabId)
+            override fun onMseEncrypted(tabId: String) = viewModel.onMseEncrypted(tabId)
+            override fun onTabHibernated(tabId: String, url: String, title: String) = viewModel.onTabHibernated(tabId, url, title)
+            override fun onFindResult(tabId: String, matches: Int, activeMatch: Int) = viewModel.onFindResult(tabId, matches, activeMatch)
+            override fun onExternalScheme(url: String): Boolean = viewModel.openExternalScheme(url)
+            override fun onRendererGone(tabId: String) = viewModel.onRendererGone(tabId)
+            override fun onPageError(tabId: String, kind: PageErrorKind, description: String) = viewModel.onPageError(tabId, kind, description)
+            override fun onDownloadRequested(
+                tabId: String,
+                url: String,
+                userAgent: String?,
+                contentDisposition: String?,
+                mimeType: String?,
+                contentLength: Long
+            ) = viewModel.onDownloadRequested(tabId, url, userAgent, contentDisposition, mimeType, contentLength)
+        }
     }
+    val store = remember(context, viewModel, storeCallbacks) { viewModel.webViewStore(context, storeCallbacks) }
 
     // POST_NOTIFICATIONS is requested in context, the first time a download is enqueued.
     // Denying it never blocks the transfer; it only means no progress notification.
@@ -446,6 +461,10 @@ fun BrowserScreen(
             )
         }
 
+        // Remembered unconditionally, above the sheet: a conditional remember would change the
+        // composition's slot usage when a sheet opens with recording unavailable.
+        val recordPlayback = remember(viewModel) { { viewModel.recordPlayback() } }
+        val stopRecording = remember(viewModel) { { viewModel.stopMseRecording() } }
         state.qualitySheet?.let { sheet ->
             MediaQualitySelectionSheet(
                 mediaInfo = sheet.mediaInfo,
@@ -457,16 +476,15 @@ fun BrowserScreen(
                         ensureNotificationPermission()
                         viewModel.handleFormatSelected(format)
                     }
-                }
+                },
+                // Recording is offered only where the device can do it, and while the sheet is open
+                // the action follows the recording the view model owns: one button that starts, then
+                // stops, with the bytes written so far beside it.
+                recording = state.mseRecording,
+                onRecord = recordPlayback.takeIf { sheet.canRecord },
+                onStopRecording = stopRecording
             )
         }
     }
 
-    DisposableEffect(store) {
-        onDispose {
-            // Leaving the browser releases the WebViews. The view model keeps every tab's URL
-            // and title, so coming back restores the current tab from its last committed URL.
-            store.destroyAll()
-        }
-    }
 }

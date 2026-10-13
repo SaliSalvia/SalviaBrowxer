@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Build
 import android.webkit.WebView
 import coil.Coil
+import com.salvia.salviabrowxer.core.session.WebViewCookies
 import coil.ImageLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -20,5 +21,9 @@ class SalviaBrowxerApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching { WebView.setDataDirectorySuffix("main") }
         }
+        // The same rule for the cookie store: a download reads it from a background thread, and the
+        // store's first access is what initialises the WebView provider. Warm it up here, on the main
+        // thread, before anything can race it. It reads nothing.
+        WebViewCookies.warmUp()
     }
 }

@@ -22,8 +22,16 @@ data to the developer, and it collects nothing about you.
   (`Android/data/com.salvia.salviabrowxer/files/Downloads`) and stay there until you delete or share
   them. Finished files are handed to Android's media scanner so they also appear in the system
   downloads view.
+- **The session a download belongs to.** A file is fetched the way the page that offered it would
+  fetch it: with the same cookies your WebView already holds for that site, the page as a `Referer`
+  (the full address to that site, only the origin to a different one) and the same user-agent the
+  page was loaded with. Your cookie store is only ever read — a download can never change it, add to
+  it or sign you out. This is what lets media that only plays while you are signed in download
+  successfully instead of being refused by the site's own server.
 - **Local history and bookmarks.** Download queue, bookmarks and browsing history are stored in a
-  local database on your device. Private tabs are not written to history.
+  local database on your device. Each download row also remembers the page and user-agent it was
+  started with, so a queued transfer can resume with the session it belongs to. Private tabs are not
+  written to history.
 - **Settings.** Your preferences are stored on your device only.
 - **Network requests.** The app makes a network request only to load a page you opened, to probe
   media the page already exposed, or to download something you started. There is no background
@@ -73,3 +81,17 @@ same URL.
 ## Contact
 
 Questions about this policy: [CONTACT EMAIL].
+
+## Local storage added by the download settings
+
+Two things the download settings may store, both on the device and neither sent anywhere:
+
+- **a password verifier** for the locked folder — a PBKDF2 derivation of the password (120,000
+  iterations, a random salt), never the password itself. It is kept in a preference file encrypted
+  with a key held by the device keystore; if that keystore cannot be opened, it is kept in the app's
+  private preferences instead and the settings screen says which of the two happened
+- **a folder reference** — the storage-access-framework tree the user picked for a second copy of
+  each finished download, as a URI plus the permission Android granted through its own picker
+
+Removing the password deletes the verifier, unlocks every file it was hiding, and takes no copy of
+anything.

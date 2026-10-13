@@ -4,6 +4,7 @@ import com.salvia.salviabrowxer.core.model.DashManifest
 import com.salvia.salviabrowxer.core.model.DashRenditionId
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
+import com.salvia.salviabrowxer.core.model.SessionReferer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
@@ -14,23 +15,35 @@ class DirectMediaResolver(
     private val okHttpClient: OkHttpClient
 ) : MediaResolver {
 
-    override suspend fun resolve(url: String): MediaInfo = withContext(Dispatchers.IO) {
+    override suspend fun resolve(url: String): MediaInfo = probe(url, pageUrl = null, userAgent = null)
+
+    override suspend fun resolve(url: String, pageUrl: String?, userAgent: String?): MediaInfo =
+        probe(url, pageUrl, userAgent)
+
+    private suspend fun probe(url: String, pageUrl: String?, userAgent: String?): MediaInfo = withContext(Dispatchers.IO) {
         var contentLength: Long? = null
         var mimeType: String = ""
         var filename: String? = null
 
-        val ua = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36"
+        // The page's own client when there is one; the generic one otherwise. A probe that arrives as
+        // a different client than the page is the other half of why a hotlink-guarded URL resolved to
+        // nothing while it played in the WebView the whole time.
+        val ua = userAgent?.takeIf { it.isNotBlank() }
+            ?: "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36"
+        // Same-site pages keep their full URL, cross-site pages only their origin — the browser's own
+        // referrer policy (see SessionReferer).
+        val referer = SessionReferer.headerFor(pageUrl, url)
 
         // When the URL path itself names a manifest, its playlist fetch is independent of the
         // metadata probe, so the two run together. The quality sheet used to wait for the probe
         // (HEAD, sometimes a ranged GET) and *then* the playlist: a serial pair of round trips.
         // Overlapping them is what makes the sheet fill in sooner on adaptive pages.
         val hint = manifestHint(url)
-        val hlsDeferred = if (hint == ManifestHint.HLS) async { tryParseHlsVariants(url, ua) } else null
-        val dashDeferred = if (hint == ManifestHint.DASH) async { tryParseDash(url, ua) } else null
+        val hlsDeferred = if (hint == ManifestHint.HLS) async { tryParseHlsVariants(url, ua, pageUrl) } else null
+        val dashDeferred = if (hint == ManifestHint.DASH) async { tryParseDash(url, ua, pageUrl) } else null
 
         // Try HEAD first; fall back to GET with Range if HEAD is rejected
-        val headRequest = Request.Builder().url(url).head().header("User-Agent", ua).build()
+        val headRequest = Request.Builder().url(url).head().header("User-Agent", ua).apply { referer?.let { header("Referer", it) } }.build()
         runCatching { okHttpClient.newCall(headRequest).execute() }.getOrNull()?.use { r ->
             if (r.isSuccessful) {
                 contentLength = r.header("Content-Length")?.toLongOrNull() ?: r.body?.contentLength()?.takeIf { it > 0 }
@@ -40,7 +53,7 @@ class DirectMediaResolver(
         }
 
         if (mimeType.isBlank() || contentLength == null) {
-            val getRequest = Request.Builder().url(url).get().header("User-Agent", ua).header("Range", "bytes=0-0").build()
+            val getRequest = Request.Builder().url(url).get().header("User-Agent", ua).header("Range", "bytes=0-0").apply { referer?.let { header("Referer", it) } }.build()
             runCatching { okHttpClient.newCall(getRequest).execute() }.getOrNull()?.use { r ->
                 if (mimeType.isBlank()) mimeType = r.header("Content-Type")?.substringBefore(';')?.trim().orEmpty()
                 if (contentLength == null) {
@@ -63,7 +76,7 @@ class DirectMediaResolver(
         // save (dynamic, multi-period, DRM, an unknown segment form) still resolves to no formats
         // at all, and the UI keeps its explanation instead of starting a doomed transfer.
         if (isDash) {
-            val manifest = dashDeferred?.await() ?: tryParseDash(url, ua)
+            val manifest = dashDeferred?.await() ?: tryParseDash(url, ua, pageUrl)
             if (manifest != null) {
                 val dash = dashMediaInfo(title, url, manifest)
                 if (dash.combinedFormats.isNotEmpty() || dash.audioFormats.isNotEmpty()) return@withContext dash
@@ -77,7 +90,7 @@ class DirectMediaResolver(
 
         // Expand the HLS master playlist into one selectable quality per variant.
         if (isHls) {
-            val hlsFormats = hlsDeferred?.await() ?: tryParseHlsVariants(url, ua)
+            val hlsFormats = hlsDeferred?.await() ?: tryParseHlsVariants(url, ua, pageUrl)
             if (hlsFormats.isNotEmpty()) {
                 return@withContext MediaInfo(
                     title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
@@ -122,9 +135,10 @@ class DirectMediaResolver(
      *  Bounded: at most 8 variants, 48 KiB of playlist body, and capped to 4s of network time via OkHttp timeouts
      *  so this adds zero jank for non-HLS URLs and stays fast even on hostile CDNs.
      */
-    private fun tryParseHlsVariants(masterUrl: String, userAgent: String): List<MediaFormat> {
+    private fun tryParseHlsVariants(masterUrl: String, userAgent: String, pageUrl: String?): List<MediaFormat> {
         val body = runCatching {
-            val req = Request.Builder().url(masterUrl).get().header("User-Agent", userAgent).header("Accept", "*/*").build()
+            val req = Request.Builder().url(masterUrl).get().header("User-Agent", userAgent).header("Accept", "*/*")
+                .apply { SessionReferer.headerFor(pageUrl, masterUrl)?.let { header("Referer", it) } }.build()
             okHttpClient.newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return emptyList()
                 val bytes = r.body?.bytes() ?: return emptyList()
@@ -172,10 +186,11 @@ class DirectMediaResolver(
     }
 
     /** Fetches the manifest body, bounded to 1 MiB, and parses it. Null means "cannot be saved". */
-    private fun tryParseDash(manifestUrl: String, userAgent: String): DashManifest? {
+    private fun tryParseDash(manifestUrl: String, userAgent: String, pageUrl: String?): DashManifest? {
         val xml = runCatching {
             val req = Request.Builder().url(manifestUrl).get()
-                .header("User-Agent", userAgent).header("Accept", "*/*").build()
+                .header("User-Agent", userAgent).header("Accept", "*/*")
+                .apply { SessionReferer.headerFor(pageUrl, manifestUrl)?.let { header("Referer", it) } }.build()
             okHttpClient.newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return null
                 val bytes = r.body?.bytes() ?: return null

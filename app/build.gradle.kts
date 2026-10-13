@@ -150,6 +150,10 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    // The locked folder's password verifier is kept in an encrypted preference file whose key lives in
+    // the device keystore. The fallback path (a broken keystore is a real device state) is documented
+    // in LockedFolderStore, and the settings screen says which one is in use.
+    implementation("androidx.security:security-crypto:1.0.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("io.coil-kt:coil-compose:2.5.0")
@@ -163,6 +167,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.2.1")
 
     testImplementation("junit:junit:4.13.2")
+    // The unit-test classpath has no real org.json (the android.jar stub returns defaults, which would
+    // make every JSON assertion meaningless), and the recording-port decoder is pure JSON work.
+    testImplementation("org.json:json:20231013")
     // Robolectric runs the real framework code on the JVM at a chosen SDK level, which is the only
     // way to exercise the API 24–28 media-store export path without a device.
     testImplementation("org.robolectric:robolectric:4.13")

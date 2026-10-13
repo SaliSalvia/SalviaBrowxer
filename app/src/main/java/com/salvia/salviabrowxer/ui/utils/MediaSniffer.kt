@@ -36,7 +36,18 @@ object MediaSniffer {
     /** The `JavascriptInterface` name the page reports on. Registered by `TabWebViewStore`. */
     const val BRIDGE_NAME: String = "SalviaMedia"
 
+    /**
+     * The `WebViewCompat.addWebMessageListener` object the recording hook posts to.
+     *
+     * Its whole reason to exist is the payload type: a segment is handed over as an `ArrayBuffer`,
+     * which crosses the bridge as bytes. The `JavascriptInterface` path can only take strings, and
+     * base64 would add a third more memory per segment — on a 4 MB segment that is a copy the phone
+     * cannot afford every few seconds, on top of the copy the page already holds.
+     */
+    const val MSE_PORT_NAME: String = "SalviaMsePort"
+
     val script: String = SNIFFER_TEMPLATE
+        .replace("__MSE_PORT__", MSE_PORT_NAME)
         .replace("__MEDIA_EXT__", MediaUrlRules.EXTENSION_ALTERNATION)
         .replace("__NON_MEDIA_EXT__", MediaUrlRules.NON_MEDIA_ALTERNATION)
         .replace("__SEGMENT_EXT__", MediaUrlRules.SEGMENT_ALTERNATION)
@@ -61,6 +72,8 @@ object MediaSniffer {
     var mediaObjects = Object.create(null);
     var objectOrder = [];
     var sourceObjects = new WeakMap();
+    // MIME per SourceBuffer (not per MediaSource): the recording hook only ever sees the buffer.
+    var sourceBuffers = new WeakMap();
 
     function resetForPage() {
         if (lastPage === location.href) return;
@@ -254,6 +267,7 @@ object MediaSniffer {
                 var result = addOrig.apply(this, arguments); // do not report a rejected codec
                 try {
                     var clean = (mime || '').split(';')[0].trim().toLowerCase();
+                    try { sourceBuffers.set(result, clean); } catch (e) {}
                     var info = sourceObjects.get(this) || {urls: [], mime: ''};
                     // Prefer video when separate audio/video SourceBuffers share one MediaSource.
                     if (!info.mime || clean.indexOf('video/') === 0) info.mime = clean;
@@ -357,6 +371,140 @@ object MediaSniffer {
             }
         } catch (e) {}
     }
+
+    // 5. MSE recording — off until the user asks for it, and honest about what it can produce.
+    //
+    //    Nothing here changes what the page sees: the page's own appendBuffer runs first, always, and
+    //    the bytes we keep are a copy it cannot observe. Playback is never delayed by our work, and
+    //    no failure in here may reach the player (every branch ends in a catch).
+    //
+    //    The recording is a single stream, chosen by the hint the app armed it with: the video stream
+    //    for a video, the audio one for audio-only playback. A MediaSource that feeds separate audio
+    //    and video buffers would otherwise interleave two streams into a file no player can open
+    //    without a real muxer, and this app has none.
+    var recording = {armed: false, kind: 'video', mime: '', opened: false, bytes: 0};
+    var RECORD_LIMIT_BYTES = 512 * 1024 * 1024;
+
+    function msePort() {
+        try { return window.__MSE_PORT__ || null; } catch (e) { return null; }
+    }
+
+    // Every frame announces itself once, through the same port a recording uses — the only channel
+    // where the app also learns the origin WebKit attributes to the frame, which is the one thing a
+    // page cannot forge. With the frames of a document known, a sighting can be attributed to a frame
+    // that is really there instead of being taken on a page's word. Nothing is sent when the WebView
+    // has no port to send on, so an older WebView keeps working exactly as it did.
+    try {
+        if (!window.__salviaFrameAnnounced) {
+            window.__salviaFrameAnnounced = true;
+            var announcePort = msePort();
+            if (announcePort) {
+                announcePort.postMessage(JSON.stringify({
+                    t: 'frame',
+                    u: location.href,
+                    m: window.top === window
+                }));
+            }
+        }
+    } catch (e) {}
+
+    // Encrypted Media is where recording stops. This is a refusal, not a limitation we work around:
+    // the bytes of an encrypted stream do not play back, so keeping them would produce a file nobody
+    // can open. The app says so instead of writing it.
+    function refuseEncrypted() {
+        recording.armed = false;
+        recording.opened = false;
+        try {
+            var b = window.SalviaMedia;
+            if (b && b.onMseEncrypted) b.onMseEncrypted(location.href, recording.mime);
+        } catch (e) {}
+    }
+
+    function hasMediaKeys() {
+        try {
+            if (!document.querySelectorAll) return false;
+            var nodes = document.querySelectorAll('video,audio');
+            for (var i = 0; i < nodes.length; i++) {
+                if (nodes[i] && nodes[i].mediaKeys) return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    // Called by the app when the user asks to record the stream that is playing in this tab.
+    // Returns false when this WebView cannot do it (no message port) or the page is protected.
+    window.__salviaMseArm = function (kind) {
+        try {
+            if (!window.SourceBuffer || !window.SourceBuffer.prototype.appendBuffer) return false;
+            if (!msePort()) return false;
+            recording.kind = (kind === 'audio') ? 'audio' : 'video';
+            recording.mime = '';
+            recording.opened = false;
+            recording.bytes = 0;
+            if (hasMediaKeys()) { refuseEncrypted(); return false; }
+            recording.armed = true;
+            return true;
+        } catch (e) { return false; }
+    };
+
+    window.__salviaMseDisarm = function () {
+        try { recording.armed = false; recording.opened = false; } catch (e) {}
+    };
+
+    // What the app asks for when the user stops: what was captured, and whether it is still running.
+    window.__salviaMseState = function () {
+        try { return {armed: recording.armed, bytes: recording.bytes, mime: recording.mime}; }
+        catch (e) { return {armed: false, bytes: 0, mime: ''}; }
+    };
+
+    try {
+        document.addEventListener('encrypted', function () {
+            if (recording.armed) refuseEncrypted();
+        }, true);
+    } catch (e) {}
+
+    try {
+        if (document.addEventListener) {
+            // A key system can be attached to the element rather than signalled by an event.
+            document.addEventListener('play', function () {
+                if (recording.armed && hasMediaKeys()) refuseEncrypted();
+            }, true);
+        }
+    } catch (e) {}
+
+    try {
+        var sbAppendProto = window.SourceBuffer && window.SourceBuffer.prototype;
+        if (sbAppendProto && sbAppendProto.appendBuffer) {
+            var appendOrig = sbAppendProto.appendBuffer;
+            sbAppendProto.appendBuffer = function (data) {
+                var result = appendOrig.apply(this, arguments);
+                try {
+                    if (!recording.armed || !data || !data.byteLength) return result;
+                    var mime = sourceBuffers.get(this) || '';
+                    var isAudio = mime.indexOf('audio/') === 0;
+                    if (isAudio !== (recording.kind === 'audio')) return result;
+                    var port = msePort();
+                    if (!port) return result;
+                    if (!recording.opened) {
+                        recording.opened = true;
+                        recording.mime = mime;
+                        port.postMessage(JSON.stringify({t: 'open', mime: mime}));
+                    }
+                    if (recording.bytes + data.byteLength > RECORD_LIMIT_BYTES) {
+                        recording.armed = false;
+                        port.postMessage(JSON.stringify({t: 'cap', bytes: recording.bytes}));
+                        return result;
+                    }
+                    var copy = data.slice ? data.slice(0)
+                        : (data.buffer ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) : null);
+                    if (!copy) return result;
+                    recording.bytes += copy.byteLength;
+                    port.postMessage(copy);
+                } catch (e) {}
+                return result;
+            };
+        }
+    } catch (e) {}
 
     function scan() {
         try {

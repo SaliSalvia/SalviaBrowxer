@@ -19,6 +19,17 @@ object WifiOnlyPolicy {
 }
 
 /**
+ * What a transfer held by Wi-Fi-only mode carries in its `error` column.
+ *
+ * Deliberately *not* a localised string. The value is written when a transfer is held and compared
+ * again when Wi-Fi comes back — possibly after the user changed the app language. A translated
+ * value stops matching at that point, and the transfer then waits for Wi-Fi forever with no way to
+ * release it. The queue screen renders its own localised label for paused rows and never shows this
+ * text, so nothing user-facing is lost by keeping it stable.
+ */
+const val WIFI_HOLD_MARKER: String = "__salvia_wifi_hold__"
+
+/**
  * The active connection, reduced to what the download policy and the settings readout care about.
  * Off by default the app uses all of these; this only ever describes, it never restricts.
  */
