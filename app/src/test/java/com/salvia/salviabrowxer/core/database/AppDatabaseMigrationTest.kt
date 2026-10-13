@@ -47,4 +47,55 @@ class AppDatabaseMigrationTest {
         }
         verify(exactly = 2) { database.execSQL(any<String>()) }
     }
+
+    /** The v3 -> v4 upgrade adds the rendition choice, the gallery copy and the duration. */
+    @Test
+    fun `migration 3 to 4 only adds the rendition export and duration columns`() {
+        val database: SupportSQLiteDatabase = mockk(relaxed = true)
+
+        AppDatabase.MIGRATION_3_4.migrate(database)
+
+        verifyOrder {
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `renditionId` TEXT")
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `exportedUri` TEXT")
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `durationMs` INTEGER")
+        }
+        verify(exactly = 3) { database.execSQL(any<String>()) }
+    }
+
+    /**
+     * The v4 -> v5 upgrade adds the session a transfer belongs to: the page it was started from and
+     * the user agent that page used. Both nullable, so an installed user's queue survives and a row
+     * written by an older build simply sends none.
+     */
+    @Test
+    fun `migration 4 to 5 only adds the page and user agent columns`() {
+        val database: SupportSQLiteDatabase = mockk(relaxed = true)
+
+        AppDatabase.MIGRATION_4_5.migrate(database)
+
+        verifyOrder {
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `pageUrl` TEXT")
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `userAgent` TEXT")
+        }
+        verify(exactly = 2) { database.execSQL(any<String>()) }
+    }
+
+
+    /**
+     * The v5 -> v6 upgrade adds the locked-folder flag. Additive, with an explicit default, for the
+     * same two reasons as every migration before it: an installed user's rows must survive, and Room
+     * compares the migrated schema against the entity and refuses to open the database on a mismatch —
+     * so "not locked" is spelled out rather than left to SQLite's implicit default.
+     */
+    @Test
+    fun `migration 5 to 6 only adds the locked flag`() {
+        val database: SupportSQLiteDatabase = mockk(relaxed = true)
+
+        AppDatabase.MIGRATION_5_6.migrate(database)
+
+        verify(exactly = 1) {
+            database.execSQL("ALTER TABLE `downloads` ADD COLUMN `isLocked` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

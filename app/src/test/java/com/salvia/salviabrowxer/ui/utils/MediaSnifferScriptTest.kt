@@ -54,6 +54,14 @@ class MediaSnifferScriptTest {
     }
 
     @Test
+    fun `every frame announces itself exactly once per document`() {
+        // The announcement is what lets a report be attributed to a frame that really is in the
+        // document: it travels on the one channel where WebKit also reports the frame's own origin.
+        assertTrue(script.contains("__salviaFrameAnnounced"))
+        assertTrue(script.contains("t: 'frame'"))
+    }
+
+    @Test
     fun `a media element reports the type its markup declared`() {
         // `<source type="video/mp4">` and lazy data-* players name the container in the markup.
         // Carrying it across the bridge is what lets an extension-less source URL be admitted on

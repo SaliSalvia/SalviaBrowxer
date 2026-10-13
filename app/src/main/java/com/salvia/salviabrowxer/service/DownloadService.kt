@@ -25,9 +25,12 @@ import com.salvia.salviabrowxer.core.model.DashSelection
 import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.model.MediaUrlRules
+import com.salvia.salviabrowxer.core.model.SessionReferer
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
+import com.salvia.salviabrowxer.core.storage.SafDocumentExporter
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
+import com.salvia.salviabrowxer.data.storage.SafDestinationStore
 import com.salvia.salviabrowxer.media.downloader.AbortReason
 import com.salvia.salviabrowxer.media.downloader.DownloadAbortedException
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
@@ -67,6 +70,8 @@ class DownloadService : Service() {
     @Inject lateinit var mediaMetadataReader: MediaMetadataReader
     @Inject lateinit var mediaStoreExporter: MediaStoreExporter
     @Inject lateinit var settingsDataStore: SettingsDataStore
+    @Inject lateinit var safDestinationStore: SafDestinationStore
+    @Inject lateinit var safDocumentExporter: SafDocumentExporter
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val queue = Channel<String>(Channel.UNLIMITED)
@@ -76,16 +81,18 @@ class DownloadService : Service() {
     private val channelId = "download_channel"
     private var lastSummaryTime = 0L
     private var pendingSummaryRefresh = false
-    private var lastPersistTime = 0L
-    private var lastPersistJob: Job? = null
+    // Per-download, so three transfers running at once cannot cancel each other's progress writes.
+    private val progressThrottle by lazy { ProgressPersistThrottle(scope) }
     // One limiter for the service lifetime: retuning it never strands in-flight permits.
     private val limiter = SlotLimiter(3)
     private lateinit var connectivityGate: ConnectivityGate
     private var wifiOnly = false
 
+    /** Range connections one direct file may use; retuned live from settings like the limiter. */
+    @Volatile private var parallelConnections = 1
+
     /** True while the Wi-Fi-only setting is holding work, so the service stays alive to resume it. */
     @Volatile private var wifiHoldActive = false
-    private val wifiHoldMarker: String get() = getString(R.string.download_waiting_for_wifi)
 
     private val notificationManager: NotificationManager get() = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -98,6 +105,9 @@ class DownloadService : Service() {
         promoteToForeground(buildSummaryNotification(getString(R.string.downloads_title), 0L, 0L))
         scope.launch {
             settingsDataStore.maxSimultaneousDownloads.collect { count -> limiter.setLimit(count) }
+        }
+        scope.launch {
+            settingsDataStore.parallelConnections.collect { count -> parallelConnections = count }
         }
         observeNetworkPolicy()
     }
@@ -130,7 +140,7 @@ class DownloadService : Service() {
         wifiHoldActive = true
         active.forEach { download ->
             downloadManager.cancel(download.id)
-            downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.PAUSED, error = wifiHoldMarker)
+            downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.PAUSED, error = WIFI_HOLD_MARKER)
         }
         refreshSummaryThrottled(force = true)
     }
@@ -138,7 +148,7 @@ class DownloadService : Service() {
     private suspend fun releaseWifiHolds() {
         wifiHoldActive = false
         val held = runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.PAUSED)).first() }
-            .getOrNull().orEmpty().filter { it.error == wifiHoldMarker }
+            .getOrNull().orEmpty().filter { it.error == WIFI_HOLD_MARKER }
         if (held.isEmpty()) return
         held.forEach { download ->
             downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.QUEUED, error = null)
@@ -175,13 +185,19 @@ class DownloadService : Service() {
         processorJob = scope.launch {
             while (isActive) {
                 val downloadId = queue.receive()
+                // The id counts as in flight the moment it leaves the queue, *before* any
+                // suspension. It used to be claimed inside processDownload, after the Room read and
+                // the Wi-Fi check; in that window another transfer's completion saw an empty queue
+                // and an idle counter, called stopSelf() and cancelled this one mid-startup.
+                inFlight.incrementAndGet()
                 // Each download runs under the concurrency semaphore — InShot allows N parallel.
                 launch {
                     try { processDownload(downloadId) }
                     catch (cancellation: CancellationException) { throw cancellation }
                     catch (error: Exception) { Log.w(TAG, "Download $downloadId failed", error) }
                     finally {
-                        if (inFlight.get() == 0 && queue.isEmpty) stopWhenIdle()
+                        progressThrottle.forget(downloadId)
+                        if (inFlight.decrementAndGet() == 0 && queue.isEmpty) stopWhenIdle()
                     }
                 }
             }
@@ -195,14 +211,15 @@ class DownloadService : Service() {
             if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED) return
             if (WifiOnlyPolicy.shouldHold(wifiOnly, connectivityGate.isOnWifi())) {
                 wifiHoldActive = true
-                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.PAUSED, error = wifiHoldMarker)
+                downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.PAUSED, error = WIFI_HOLD_MARKER)
                 refreshSummaryThrottled(force = true)
                 return
             }
-            inFlight.incrementAndGet()
             try {
                 downloadRepository.updateDownloadState(downloadId, DownloadState.PREPARING)
-                val finalUrl = runCatching { downloadManager.getFinalUrl(stored.url) }.getOrNull()?.takeIf { it.isNotBlank() } ?: stored.url
+                val finalUrl = runCatching {
+                    downloadManager.getFinalUrl(stored.url, sessionUserAgent(stored), sessionReferer(stored, stored.url))
+                }.getOrNull()?.takeIf { it.isNotBlank() } ?: stored.url
                 val preparing = stored.copy(finalUrl = finalUrl, status = DownloadState.DOWNLOADING, error = null, temporaryPath = temporaryPathFor(stored).absolutePath, updatedAt = System.currentTimeMillis())
                 downloadRepository.updateDownload(preparing)
                 refreshSummaryThrottled(force = true)
@@ -241,7 +258,7 @@ class DownloadService : Service() {
             } catch (network: IOException) {
                 downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.FAILED, error = network.localizedMessage ?: getString(R.string.error_connection_unavailable))
             } catch (cancellation: CancellationException) { throw cancellation }
-            finally { inFlight.decrementAndGet(); refreshSummaryThrottled(force = true) }
+            finally { refreshSummaryThrottled(force = true) }
         } finally {
             limiter.release()
         }
@@ -299,9 +316,37 @@ class DownloadService : Service() {
     private fun isHlsStream(finalUrl: String, mimeType: String?): Boolean =
         finalUrl.contains(".m3u8", ignoreCase = true) || mimeType?.contains("mpegurl", ignoreCase = true) == true
 
+    /**
+     * The session a transfer belongs to: the page it was started from, sent as `Referer`, and the
+     * user agent that page was loaded with. Both are replayed on every request the transfer makes —
+     * first byte, resumed byte, segment, key and manifest — so a server that guards its media by
+     * origin or client sees the request it would have served to the page itself. Cookies are not part
+     * of this: they live in the shared OkHttp jar (see `SessionCookieJar`) and are never copied around.
+     */
+    private fun sessionUserAgent(stored: DownloadEntity): String =
+        stored.userAgent?.takeIf { it.isNotBlank() } ?: FileDownload.DEFAULT_DOWNLOAD_USER_AGENT
+
+    /**
+     * Derived per request URL, not copied: a browser sends the whole page to its own site and only the
+     * origin to anyone else, and strips the header entirely on a downgrade. Same rule here, so a
+     * hotlink check passes and no third party learns the path the user was reading.
+     */
+    private fun sessionReferer(stored: DownloadEntity, targetUrl: String): String? =
+        SessionReferer.headerFor(stored.pageUrl, targetUrl)
+
     private suspend fun directTransfer(stored: DownloadEntity, downloadId: String, finalUrl: String): Transfer {
         val result = downloadManager.download(
-            download = FileDownload(id = stored.id, url = finalUrl, directory = stored.destination, filename = stored.filename),
+            download = FileDownload(
+                id = stored.id,
+                url = finalUrl,
+                directory = stored.destination,
+                filename = stored.filename,
+                userAgent = sessionUserAgent(stored),
+                referer = sessionReferer(stored, finalUrl)
+            ),
+            // A direct file may use several Range connections; a server that cannot serve them is
+            // detected by the probe, not assumed, and the transfer falls back to one stream.
+            parallelConnections = parallelConnections,
             onProgress = { snapshot ->
                 handleProgress(downloadId, snapshot)
                 refreshSummaryThrottled()
@@ -315,7 +360,14 @@ class DownloadService : Service() {
         val base = baseName(stored.filename)
         // The playlist is assembled as a raw transport stream; it becomes an MP4 in finalizeTransfer.
         val result = hlsDownloader.download(
-            download = FileDownload(id = stored.id, url = finalUrl, directory = stored.destination, filename = "$base.hls.ts"),
+            download = FileDownload(
+                id = stored.id,
+                url = finalUrl,
+                directory = stored.destination,
+                filename = "$base.hls.ts",
+                userAgent = sessionUserAgent(stored),
+                referer = sessionReferer(stored, finalUrl)
+            ),
             onProgress = { snapshot ->
                 handleProgress(downloadId, snapshot)
                 refreshSummaryThrottled()
@@ -336,6 +388,7 @@ class DownloadService : Service() {
         representation: DashRepresentation,
         target: File,
         userAgent: String,
+        referer: String?,
         reuseCompleted: Boolean,
         onProgress: suspend (DownloadSnapshot) -> Unit,
         shouldAbort: suspend () -> AbortReason?
@@ -346,7 +399,7 @@ class DownloadService : Service() {
             }
             target.delete()
         }
-        return dashDownloader.downloadRepresentation(representation, target, userAgent, null, onProgress = onProgress, shouldAbort = shouldAbort)
+        return dashDownloader.downloadRepresentation(representation, target, userAgent, referer, onProgress = onProgress, shouldAbort = shouldAbort)
     }
 
     /** Re-reads the manifest and downloads the chosen DASH representation(s). */
@@ -357,8 +410,11 @@ class DownloadService : Service() {
         selection: DashSelection,
         reuseCompleted: Boolean
     ): Transfer {
-        val userAgent = FileDownload.DEFAULT_DOWNLOAD_USER_AGENT
-        val manifest = dashDownloader.fetchManifest(manifestUrl, userAgent, null)
+        val userAgent = sessionUserAgent(stored)
+        // Segments and keys inherit the manifest's referer: they come from the same host as the
+        // manifest that named them.
+        val referer = sessionReferer(stored, manifestUrl)
+        val manifest = dashDownloader.fetchManifest(manifestUrl, userAgent, referer)
             ?: throw IOException(getString(R.string.error_dash_unsupported))
         val base = baseName(stored.filename)
         val directory = File(stored.destination).also { if (!it.exists()) it.mkdirs() }
@@ -372,13 +428,13 @@ class DownloadService : Service() {
             is DashSelection.Video -> {
                 val representation = manifest.representationById(selection.videoId)
                     ?: throw IOException("DASH video rendition is no longer in the manifest")
-                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, reuseCompleted, progress, abort)
+                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, referer, reuseCompleted, progress, abort)
                 Transfer(result.file, representation.mimeType, remuxToMp4 = true)
             }
             is DashSelection.Audio -> {
                 val representation = manifest.representationById(selection.audioId)
                     ?: throw IOException("DASH audio rendition is no longer in the manifest")
-                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, reuseCompleted, progress, abort)
+                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, referer, reuseCompleted, progress, abort)
                 Transfer(result.file, representation.mimeType, remuxToMp4 = true)
             }
             is DashSelection.Merged -> {
@@ -388,8 +444,8 @@ class DownloadService : Service() {
                     ?: throw IOException("DASH audio rendition is no longer in the manifest")
                 val videoRaw = File(directory, "$base.video.tmp")
                 val audioRaw = File(directory, "$base.audio.tmp")
-                fetchDashRepresentation(videoRepresentation, videoRaw, userAgent, reuseCompleted, progress, abort)
-                fetchDashRepresentation(audioRepresentation, audioRaw, userAgent, reuseCompleted, progress, abort)
+                fetchDashRepresentation(videoRepresentation, videoRaw, userAgent, referer, reuseCompleted, progress, abort)
+                fetchDashRepresentation(audioRepresentation, audioRaw, userAgent, referer, reuseCompleted, progress, abort)
                 val merged = DownloadManager.nonConflicting(File(directory, "$base.mp4"))
                 if (trackMerger.merge(videoRaw, audioRaw, merged)) {
                     videoRaw.delete(); audioRaw.delete()
@@ -437,11 +493,24 @@ class DownloadService : Service() {
         val thumbnailFile = File(cacheDir, "salvia_thumb_${stored.id}.jpg")
         val thumbnailPath = if (mediaMetadataReader.saveThumbnail(file, thumbnailFile)) android.net.Uri.fromFile(thumbnailFile).toString() else null
 
+        // A locked file is published nowhere: a lock that leaks the file into a gallery or into a
+        // folder anyone with the card can read is not a lock.
         var exportedUri: String? = null
-        val exportEnabled = runCatching { settingsDataStore.isExportToGallery.first() }.getOrDefault(true)
-        if (exportEnabled && mediaStoreExporter.isPermissionFree()) {
-            val isVideo = file.extension.lowercase() in MediaUrlRules.VIDEO_EXTENSIONS || MediaUrlRules.isVideoMime(mimeType)
-            exportedUri = mediaStoreExporter.export(file, file.name, mimeType, isVideo)
+        if (!stored.isLocked) {
+            // The folder the user picked with the system picker comes first: it was an explicit
+            // request, and the gallery export below is a setting. A tree that cannot be reached is
+            // skipped rather than fatal — the download itself is already complete.
+            val destination = runCatching { safDestinationStore.destination.first() }.getOrNull()
+            if (destination != null) {
+                exportedUri = safDocumentExporter.copyInto(destination.treeUri, file, mimeType, file.name)
+            }
+            if (exportedUri == null) {
+                val exportEnabled = runCatching { settingsDataStore.isExportToGallery.first() }.getOrDefault(true)
+                if (exportEnabled && mediaStoreExporter.isPermissionFree()) {
+                    val isVideo = file.extension.lowercase() in MediaUrlRules.VIDEO_EXTENSIONS || MediaUrlRules.isVideoMime(mimeType)
+                    exportedUri = mediaStoreExporter.export(file, file.name, mimeType, isVideo)
+                }
+            }
         }
 
         return Finalized(file, mimeType, durationMs, thumbnailPath, exportedUri)
@@ -455,17 +524,7 @@ class DownloadService : Service() {
         }
 
     private suspend fun handleProgress(downloadId: String, snapshot: DownloadSnapshot) {
-        val now = System.currentTimeMillis()
-        if (now - lastPersistTime >= 800) {
-            lastPersistTime = now
-            persistProgress(downloadId, snapshot)
-        } else {
-            lastPersistJob?.cancel()
-            lastPersistJob = scope.launch {
-                kotlinx.coroutines.delay(800)
-                persistProgress(downloadId, snapshot)
-            }
-        }
+        progressThrottle.submit(downloadId) { persistProgress(downloadId, snapshot) }
     }
 
     private suspend fun pauseRequested(downloadId: String) {

@@ -20,6 +20,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.salvia.salviabrowxer.core.session.WebViewCookies
 import com.salvia.salviabrowxer.feature.bookmarks.BookmarksScreen
 import com.salvia.salviabrowxer.feature.browser.BrowserScreen
 import com.salvia.salviabrowxer.feature.downloads.DownloadsScreen
@@ -59,6 +60,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * The queue outlives this process, so the session it belongs to has to as well. The WebView keeps
+     * its cookies in memory until something flushes them; doing it here is what lets a download that
+     * is resumed after a restart still arrive as the page that started it.
+     */
+    override fun onStop() {
+        super.onStop()
+        WebViewCookies.flush()
     }
 
     // androidx.activity 1.9 exposes a non-null onNewIntent(Intent); matching that

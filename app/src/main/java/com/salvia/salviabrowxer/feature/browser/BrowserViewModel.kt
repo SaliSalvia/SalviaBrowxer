@@ -17,22 +17,33 @@ import com.salvia.salviabrowxer.core.model.MediaCandidateIndex
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
 import com.salvia.salviabrowxer.core.model.Tab
+import com.salvia.salviabrowxer.data.datastore.SessionCodec
+import com.salvia.salviabrowxer.data.datastore.SessionRestorer
+import com.salvia.salviabrowxer.data.datastore.SessionTab
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
+import com.salvia.salviabrowxer.media.downloader.DownloadManager
+import com.salvia.salviabrowxer.media.downloader.MseRecorder
 import com.salvia.salviabrowxer.core.model.PastedLink
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.service.DownloadService
+import com.salvia.salviabrowxer.service.MseRecordingController
 import com.salvia.salviabrowxer.ui.utils.AddressBarResolver
 import com.salvia.salviabrowxer.ui.utils.CleartextPolicy
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.MediaOfferability
+import com.salvia.salviabrowxer.ui.utils.MseRecordingUiState
+import com.salvia.salviabrowxer.ui.utils.PageErrorKind
 import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
+import com.salvia.salviabrowxer.ui.utils.filenameFromContentDisposition
+import com.salvia.salviabrowxer.ui.utils.getMimeTypeFromExtension
 import com.salvia.salviabrowxer.ui.utils.sanitizeFilename
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -97,7 +108,21 @@ data class BrowserUiState(
     /** Tabs whose WebView was destroyed to stay under the live-tab cap; they reload on select. */
     val hibernatedTabIds: Set<String> = emptySet(),
     val isTabSwitcherVisible: Boolean = false,
-    val findInPage: FindInPageState? = null
+    val findInPage: FindInPageState? = null,
+    /**
+     * What the media sheet can honestly say about recording the current playback.
+     *
+     * It is in the UI state rather than read from the recorder on demand because it changes while the
+     * sheet is open — bytes grow, the recording stops — and a sheet that only knew the state at the
+     * moment it opened would show a frozen byte count.
+     */
+    val mseRecording: MseRecordingUiState = MseRecordingUiState(),
+    /**
+     * Bumped when a page's renderer process dies. The tab's WebView is gone by then, so the browser
+     * screen has to run its attach pass again for that tab; a new state value is what recomposes it
+     * and makes it build a fresh WebView on the tab's last committed URL.
+     */
+    val rendererEpoch: Int = 0
 ) {
     val isMediaDetected: Boolean get() = detectedMedia.isNotEmpty()
     val currentTab: Tab? get() = tabs.firstOrNull { it.id == currentTabId }
@@ -114,7 +139,14 @@ data class QualitySheetState(
     val mediaInfo: MediaInfo,
     val isResolving: Boolean = false,
     /** Set when the candidate cannot be downloaded at all; the sheet explains instead of offering. */
-    val unsupported: UnsupportedMedia? = null
+    val unsupported: UnsupportedMedia? = null,
+    /**
+     * Whether recording the playback is on offer for this candidate.
+     *
+     * It is exactly the case where the file download is not: a device that can hand the app a
+     * segment as bytes, and a stream that is not live — a live stream is never recorded, by design.
+     */
+    val canRecord: Boolean = false
 )
 
 @HiltViewModel
@@ -125,11 +157,15 @@ class BrowserViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val mediaDetector: MediaDetector,
     private val mediaResolver: MediaResolver,
+    private val sessionRestorer: SessionRestorer,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BrowserUiState())
     val uiState: StateFlow<BrowserUiState> = _uiState.asStateFlow()
+
+    /** Completed once the session question is answered: restore, or nothing to restore. */
+    private val sessionRestoreSettled = CompletableDeferred<Unit>()
 
     private val _commands = Channel<BrowserCommand>(Channel.BUFFERED)
     val commands: Flow<BrowserCommand> = _commands.receiveAsFlow()
@@ -139,6 +175,13 @@ class BrowserViewModel @Inject constructor(
 
     private var detectJob: Job? = null
     private var fabSaveJob: Job? = null
+
+    /**
+     * The one authority over what a page may write into a recording, shared by every tab this view
+     * model holds. Lazily built because it is the first thing that would touch the cache directory,
+     * and most sessions never record anything.
+     */
+    private val mseRecording by lazy { MseRecordingController(File(context.cacheDir, "mse")) }
 
     init {
         openTab(url = Constants.DEFAULT_HOMEPAGE, isPrivate = false, navigate = false)
@@ -175,6 +218,93 @@ class BrowserViewModel @Inject constructor(
         }
         observeSettingsLive()
         observeDownloadQueue()
+        observeMseRecording()
+        observeSession()
+    }
+
+    /**
+     * The tab list, kept across process death.
+     *
+     * Persisting is a collector over the tabs already in the state rather than a call at every place
+     * that touches them: one hook cannot be forgotten when a new tab operation is added later. Private
+     * tabs never reach the file — a private tab is a promise about what outlives the session.
+     */
+    private fun observeSession() {
+        viewModelScope.launch {
+            if (sessionRestorer.claimRestore()) {
+                val saved = runCatching { sessionRestorer.saved() }.getOrDefault(emptyList())
+                if (saved.isNotEmpty()) restoreSession(saved)
+            }
+            // Reached on every path, including "there was nothing to restore".
+            sessionRestoreSettled.complete(Unit)
+        }
+        viewModelScope.launch {
+            // Writing before the restore has been decided would save the placeholder tab over the very
+            // session this process is about to bring back.
+            sessionRestoreSettled.await()
+            uiState
+                .map { state -> state.tabs }
+                .distinctUntilChanged()
+                .collectLatest { tabs ->
+                    // collectLatest cancels the previous wait, so a burst of tab operations settles into
+                    // one write instead of a write per keystroke of the address bar.
+                    delay(SESSION_PERSIST_SETTLE_MILLIS)
+                    sessionRestorer.persist(
+                        tabs.filter { !it.isPrivate && it.url.isNotBlank() }
+                            .map { tab -> SessionTab(id = tab.id, url = tab.url, title = tab.title) }
+                    )
+                }
+        }
+    }
+
+    /**
+     * Puts the saved tabs back.
+     *
+     * The tab list and the current tab change, which is what the browser surface watches: it attaches
+     * the first restored tab and loads the URL it was left on, the same way it opens any tab it has not
+     * attached yet. A page that cannot load shows its own error rather than an empty window, and the
+     * user is told how many tabs came back — a browser that silently reappears with different tabs than
+     * it had is worse than one that says so.
+     */
+    private fun restoreSession(saved: List<SessionTab>) {
+        val restored = saved
+            .filter { SessionCodec.isRestorable(it.url) }
+            .mapIndexed { index, tab ->
+                Tab(id = tab.id, title = tab.title.ifBlank { tab.url }, url = tab.url, position = index)
+            }
+        if (restored.isEmpty()) return
+        // The tab the browser opened with is not being restored, so its view (if one was already built)
+        // must not be left attached to a tab that no longer exists.
+        webViewStore?.destroyAll()
+        val current = restored.first()
+        _uiState.update { state ->
+            state.copy(
+                tabs = restored,
+                currentTabId = current.id,
+                url = current.url,
+                addressBarInput = current.url,
+                title = current.title,
+                isLoading = true,
+                progress = 0
+            )
+        }
+        _messages.trySend(context.getString(R.string.session_restored, restored.size))
+    }
+
+    /** The recorder is the source of truth for a running recording; the sheet only draws it. */
+    private fun observeMseRecording() {
+        viewModelScope.launch {
+            mseRecording.active.collectLatest { session ->
+                _uiState.update { state ->
+                    state.copy(
+                        mseRecording = state.mseRecording.copy(
+                            isRecording = session != null,
+                            bytes = session?.bytes ?: 0L
+                        )
+                    )
+                }
+            }
+        }
     }
 
     private fun observeSettingsLive() {
@@ -248,6 +378,9 @@ class BrowserViewModel @Inject constructor(
                 hibernatedTabIds = state.hibernatedTabIds - tabId
             )
         }
+        // A recording belongs to its tab: closing the tab ends it, and the bytes written so far are
+        // kept rather than thrown away — the user asked for them.
+        if (mseRecording.active.value?.tabId == tabId) stopMseRecording()
         // Closing the last tab must not leave a dead browser behind.
         if (_uiState.value.tabs.isEmpty()) createNewTab()
     }
@@ -438,7 +571,7 @@ class BrowserViewModel @Inject constructor(
 
     fun onVisibleMedia(tabId: String, pageUrl: String, mediaUrl: String) {
         _uiState.update { state ->
-            if (tabId != state.currentTabId || pageUrl != state.url) return@update state
+            if (tabId != state.currentTabId || !isOnCurrentDocument(tabId, pageUrl)) return@update state
             // Only a previously admitted candidate may become the selected on-screen item.
             val selected = mediaUrl.takeIf { url -> state.detectedMedia.any { it.mediaUrl == url } }
             if (selected == state.visibleMediaUrl) state else state.copy(
@@ -453,17 +586,31 @@ class BrowserViewModel @Inject constructor(
 
     fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String) {
         _uiState.update { state ->
-            if (tabId != state.currentTabId || pageUrl != state.url) return@update state
+            if (tabId != state.currentTabId || !isOnCurrentDocument(tabId, pageUrl)) return@update state
             state.copy(detectedMedia = state.detectedMedia.filterNot { it.mediaUrl == mediaUrl },
                 visibleMediaUrl = state.visibleMediaUrl.takeUnless { it == mediaUrl },
                 qualitySheet = state.qualitySheet.takeUnless { it?.candidate?.mediaUrl == mediaUrl })
         }
     }
 
+    /**
+     * Whether [pageUrl] belongs to the document the current tab is showing.
+     *
+     * The page itself always counts. A frame counts when the store has seen that frame announce itself
+     * in this document, which is how media inside an iframe stops being invisible without letting any
+     * page claim another site's URL. On a WebView that cannot verify frames the answer is the old one:
+     * only the page itself, and behaviour is exactly what it was before.
+     */
+    private fun isOnCurrentDocument(tabId: String?, pageUrl: String): Boolean {
+        if (pageUrl == _uiState.value.url) return true
+        val id = tabId ?: return false
+        return webViewStore?.isDocumentUrl(id, pageUrl) == true
+    }
+
     private fun mergeCandidates(tabId: String?, pageUrl: String, candidates: List<MediaCandidate>) {
         if (candidates.isEmpty()) return
         _uiState.update { state ->
-            if (tabId != state.currentTabId || pageUrl != state.url) return@update state
+            if (tabId != state.currentTabId || !isOnCurrentDocument(tabId, pageUrl)) return@update state
             val merged = MediaCandidateIndex.merge(state.detectedMedia, candidates, state.visibleMediaUrl)
             if (merged == state.detectedMedia) state else state.copy(detectedMedia = merged)
         }
@@ -495,14 +642,18 @@ class BrowserViewModel @Inject constructor(
         // back: it is a link the user handed over on purpose, not something a page exposed.
         val sightedOnAnotherPage = _uiState.value.url.isNotBlank() &&
             candidate.pageUrl != candidate.mediaUrl &&
-            candidate.pageUrl != _uiState.value.url
+            !isOnCurrentDocument(_uiState.value.currentTabId, candidate.pageUrl)
         if (unsupported == null && sightedOnAnotherPage) {
             _messages.trySend(context.getString(R.string.home_media_tray_only_hint))
             return
         }
         val info = mediaInfoFrom(candidate)
+        // Asked once per sheet, on the thread that owns the WebView: whether this device can hand the
+        // app a segment as bytes decides whether the recording action is offered or explained away.
+        val deviceCanRecord = webViewStore?.supportsMseRecording() == true
         _uiState.update {
             it.copy(
+                mseRecording = it.mseRecording.copy(isSupported = deviceCanRecord),
                 isMediaTrayVisible = false,
                 qualitySheet = QualitySheetState(
                     candidate = candidate,
@@ -513,7 +664,8 @@ class BrowserViewModel @Inject constructor(
                         videoFormats = emptyList(), combinedFormats = emptyList()
                     ),
                     isResolving = unsupported == null,
-                    unsupported = unsupported
+                    unsupported = unsupported,
+                    canRecord = deviceCanRecord && !candidate.isLive
                 )
             )
         }
@@ -524,7 +676,12 @@ class BrowserViewModel @Inject constructor(
         // No explicit dispatcher: the resolver already switches to IO internally, and staying on the
         // view-model's own scope keeps the probe ordered behind the sheet state it updates.
         viewModelScope.launch {
-            val resolved = runCatching { mediaResolver.resolve(candidate.mediaUrl) }.getOrNull()
+            // Probe as the page: the sheet is built from what this call returns, and a bare probe
+            // against a session-guarded CDN answered nothing at all while the media played fine.
+            val probeUserAgent = _uiState.value.currentTabId?.let { webViewStore?.userAgent(it) }
+            val resolved = runCatching {
+                mediaResolver.resolve(candidate.mediaUrl, candidate.pageUrl.takeIf { it.isNotBlank() }, probeUserAgent)
+            }.getOrNull()
             val synthesized = mediaInfoFrom(candidate)
             // When the probe described the stream, its rows are the truth. Several DASH renditions
             // share one manifest URL, so they must not be de-duplicated by URL — the fallback is
@@ -591,8 +748,187 @@ class BrowserViewModel @Inject constructor(
     }
     // endregion
 
+    // region playback recording
+    /**
+     * Records what the page is playing, because the user asked for exactly that.
+     *
+     * This is not a download and the sheet says so: what lands on disk is the part of the stream the
+     * session actually played, at the quality the player chose. Nothing about the page's own traffic
+     * changes, and nothing that is protected (DRM) is kept — the page's hook refuses those and this
+     * class turns the refusal into an explanation.
+     *
+     * Arm order matters: the view model records *why* it is recording (the tab, the page, the title)
+     * before the page is asked to start, because the first segment can arrive before the JS call
+     * returns.
+     */
+    fun recordPlayback() {
+        val sheet = _uiState.value.qualitySheet ?: return
+        val tabId = _uiState.value.currentTabId ?: return
+        val store = webViewStore
+        if (store == null || !store.supportsMseRecording()) {
+            _uiState.update { it.copy(mseRecording = it.mseRecording.copy(isSupported = false)) }
+            _messages.trySend(context.getString(R.string.error_mse_unsupported))
+            return
+        }
+        if (_uiState.value.mseRecording.isRecording) return
+        val info = sheet.mediaInfo
+        val pageUrl = info.webpageUrl.takeIf { it.isNotBlank() }
+            ?: sheet.candidate.pageUrl.takeIf { it.isNotBlank() }
+        // Which stream is kept, not which one is played: an audio-only offer records audio, anything
+        // else records video with its audio track inside the same file.
+        val kind = if (info.videoFormats.isEmpty() && info.audioFormats.isNotEmpty()) "audio" else "video"
+        val title = info.title.takeIf { it.isNotBlank() }
+            ?: DownloadManager.nameFromUrl(sheet.candidate.mediaUrl).substringBeforeLast('.', "").ifBlank { "recording" }
+        // The frame allowed to feed this recording is the page itself, and the page is the main frame
+        // the sheet was opened on. A player inside a cross-origin frame is out of reach for the same
+        // reason `evaluateJavascript` cannot enter one; the README says so plainly.
+        mseRecording.arm(
+            tabId = tabId,
+            kind = kind,
+            pageUrl = pageUrl,
+            frameOrigin = pageUrl,
+            title = title
+        )
+        store.armMseRecording(tabId, kind) { armed ->
+            if (!armed) {
+                // The page has no recording hook: an old WebView, or a player the hook cannot see.
+                // A recording that writes nothing must not look like it started.
+                mseRecording.disarm(tabId)
+                mseRecording.abandon(tabId)
+                _messages.trySend(context.getString(R.string.error_mse_unsupported))
+            }
+        }
+    }
+
+    /** Stops the recording the user started and files whatever was captured. */
+    fun stopMseRecording() {
+        val tabId = mseRecording.active.value?.tabId ?: return
+        webViewStore?.disarmMseRecording(tabId)
+        val finished = mseRecording.finish(tabId)
+        if (finished == null) {
+            _messages.trySend(context.getString(R.string.error_mse_empty))
+            return
+        }
+        saveRecording(finished, capped = finished.recording.capped)
+    }
+
+    /**
+     * A page says it is about to feed the recording armed for its tab.
+     *
+     * Nothing here trusts the caller: [MseRecordingController.onOpen] decides, and its answer is what
+     * this turns into a message. A refusal is silent on purpose — a page that posts without being
+     * asked is not the user's business.
+     */
+    fun onMseOpen(tabId: String, mimeType: String, sourceOrigin: String?, @Suppress("UNUSED_PARAMETER") isMainFrame: Boolean) {
+        when (mseRecording.onOpen(tabId, mimeType, sourceOrigin)) {
+            MseRecordingController.Open.RECORDING -> {
+                // Confirmed once, when the first bytes are about to arrive, not when the button was
+                // pressed: the difference is the whole point of the recording.
+                if (_uiState.value.mseRecording.bytes == 0L && tabId == _uiState.value.currentTabId) {
+                    _messages.trySend(context.getString(R.string.recording_started))
+                }
+            }
+            MseRecordingController.Open.NO_ROOM -> {
+                webViewStore?.disarmMseRecording(tabId)
+                mseRecording.abandon(tabId)
+                _messages.trySend(context.getString(R.string.error_mse_no_space))
+            }
+            MseRecordingController.Open.NOT_ARMED, MseRecordingController.Open.DENIED_FRAME -> Unit
+        }
+    }
+
+    /** One segment, exactly as the page appended it. */
+    fun onMseSegment(tabId: String, bytes: ByteArray, sourceOrigin: String?, @Suppress("UNUSED_PARAMETER") isMainFrame: Boolean) {
+        when (mseRecording.onSegment(tabId, bytes, sourceOrigin)) {
+            MseRecorder.Append.CONTINUED, MseRecorder.Append.IGNORED -> Unit
+            MseRecorder.Append.STOPPED_DISK -> {
+                mseRecording.abandon(tabId)
+                _messages.trySend(context.getString(R.string.error_mse_no_space))
+            }
+            MseRecorder.Append.STOPPED_ENCRYPTED -> {
+                // The first segment's head carried a protection payload. Nothing decodable was kept,
+                // and the recording ends here rather than growing into a file nothing can open.
+                mseRecording.abandon(tabId)
+                _messages.trySend(context.getString(R.string.error_mse_drm))
+            }
+            MseRecorder.Append.STOPPED_CAP -> finishRecording(tabId, capped = true)
+        }
+    }
+
+    /** The page hit the recording ceiling it was given: what it sent is all there is. */
+    fun onMseCap(tabId: String) = finishRecording(tabId, capped = true)
+
+    /** The stream is protected. Nothing was kept, and saying so is the honest answer. */
+    fun onMseEncrypted(tabId: String) {
+        val had = mseRecording.active.value?.tabId == tabId
+        mseRecording.abandon(tabId)
+        if (had && tabId == _uiState.value.currentTabId) {
+            _messages.trySend(context.getString(R.string.error_mse_drm))
+        }
+    }
+
+    private fun finishRecording(tabId: String, capped: Boolean) {
+        webViewStore?.disarmMseRecording(tabId)
+        val finished = mseRecording.finish(tabId)
+        if (finished == null) {
+            if (tabId == _uiState.value.currentTabId) _messages.trySend(context.getString(R.string.error_mse_empty))
+            return
+        }
+        saveRecording(finished, capped)
+    }
+
+    /**
+     * Moves a finished recording out of the cache and into the download list.
+     *
+     * It becomes a completed download row, like a captured blob: the bytes are already on disk, so
+     * there is nothing to transfer, and the row is what makes the file visible in the app, shareable
+     * and findable in the system gallery.
+     */
+    private fun saveRecording(finished: MseRecordingController.Finished, capped: Boolean) {
+        val recording = finished.recording
+        val session = finished.session
+        viewModelScope.launch(Dispatchers.IO) {
+            val extension = MseRecorder.containerExtensionFor(recording.mimeType)
+            val title = session.title?.takeIf { it.isNotBlank() } ?: "recording"
+            val filename = sanitizeFilename(DownloadManager.generateFilename(title, extension))
+            val destination = runCatching { downloadRepository.getDefaultDownloadDestination() }.getOrNull()?.takeIf { it.isNotBlank() }
+                ?: context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.absolutePath ?: context.filesDir.absolutePath
+            val destDir = File(destination).also { if (!it.exists()) it.mkdirs() }
+            val target = DownloadManager.nonConflicting(File(destDir, filename))
+            val moved = runCatching {
+                recording.file.copyTo(target, overwrite = false)
+                recording.file.delete()
+                true
+            }.getOrDefault(false)
+            if (!moved || !target.exists() || target.length() == 0L) {
+                _messages.trySend(context.getString(R.string.error_disk_full))
+                return@launch
+            }
+            val entity = DownloadEntity(
+                url = session.pageUrl ?: target.name,
+                finalUrl = target.absolutePath,
+                filename = target.name,
+                mimeType = recording.mimeType.ifBlank { "video/mp4" },
+                destination = destination,
+                totalBytes = target.length(),
+                downloadedBytes = target.length(),
+                status = DownloadState.COMPLETED,
+                mediaTitle = title,
+                selectedQuality = extension.uppercase(),
+                finalPath = target.absolutePath,
+                pageUrl = session.pageUrl
+            )
+            downloadRepository.addDownload(entity)
+            runCatching { MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), null, null) }
+            _messages.trySend(
+                context.getString(if (capped) R.string.recording_saved_capped else R.string.recording_saved)
+            )
+        }
+    }
+    // endregion
+
     // region blob handling — called from BlobDownloadBridge on the JS thread, posts to IO dispatcher
-    fun onBlobCaptured(pageUrl: String, blobUrl: String, stagedFile: File, mimeType: String) {
+    fun onBlobCaptured(tabId: String, pageUrl: String, blobUrl: String, stagedFile: File, mimeType: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val candidate = _uiState.value.detectedMedia.firstOrNull { it.mediaUrl == blobUrl }
             val title = candidate?.title?.takeIf { it.isNotBlank() } ?: pageUrl.substringAfterLast('/').substringBefore('?').ifBlank { "video" }
@@ -625,7 +961,10 @@ class BrowserViewModel @Inject constructor(
                 mimeType = mimeType.ifBlank { "video/mp4" }, destination = destination,
                 totalBytes = finalFile.length(), downloadedBytes = finalFile.length(),
                 status = DownloadState.COMPLETED, mediaTitle = title, thumbnail = candidate?.thumbnailUrl,
-                selectedQuality = ext.uppercase(), finalPath = finalFile.absolutePath
+                selectedQuality = ext.uppercase(), finalPath = finalFile.absolutePath,
+                // Local file, so no request is made — the page is kept for provenance and for a later
+                // re-fetch of the same media.
+                pageUrl = pageUrl.takeIf { it.isNotBlank() }
             )
             downloadRepository.addDownload(entity)
             runCatching { MediaScannerConnection.scanFile(context, arrayOf(finalFile.absolutePath), null, null) }
@@ -651,6 +990,111 @@ class BrowserViewModel @Inject constructor(
         enqueueDownload(format)
     }
 
+    // region live web views
+    private var webViewStore: TabWebViewStore? = null
+
+    /**
+     * The one store that owns the live WebViews, held here rather than by the composition.
+     *
+     * It used to be a `remember` in `BrowserScreen` with an `onDispose { destroyAll() }`, so leaving
+     * the browser for Downloads, Settings, Bookmarks, History or the player destroyed every WebView,
+     * and coming back reloaded the page from the network — losing scroll position, half-typed forms
+     * and the back/forward stack. This view model lives as long as the browser's back-stack entry, so
+     * the tabs now survive both in-app navigation and rotation; [onCleared] is the single place that
+     * releases them.
+     */
+    fun webViewStore(context: Context, callbacks: TabWebViewStore.Callbacks): TabWebViewStore =
+        webViewStore ?: TabWebViewStore(context, callbacks).also { webViewStore = it }
+
+    override fun onCleared() {
+        // A recording cannot outlive the process that would file it: the file is deleted rather than
+        // left in the cache as an orphan nothing points at.
+        runCatching { mseRecording.abandonAll() }
+        webViewStore?.destroyAll()
+        webViewStore = null
+        super.onCleared()
+    }
+
+    /**
+     * The tab's renderer process crashed. Nothing but the message is this class's job: the store has
+     * already dropped (and destroyed) that WebView, and the epoch makes the screen re-attach the tab,
+     * which loads the URL the tab still holds.
+     */
+    fun onRendererGone(tabId: String) {
+        _uiState.update { it.copy(rendererEpoch = it.rendererEpoch + 1, isLoading = false) }
+        if (tabId == _uiState.value.currentTabId) _messages.trySend(context.getString(R.string.renderer_gone_reloading))
+    }
+
+    /** A main-frame load failed; the tab is told why instead of just sitting on an empty page. */
+    fun onPageError(tabId: String, kind: PageErrorKind, description: String) {
+        if (tabId != _uiState.value.currentTabId) return
+        _uiState.update { it.copy(isLoading = false) }
+        _messages.trySend(
+            when (kind) {
+                PageErrorKind.NETWORK -> context.getString(R.string.error_page_load_failed)
+                PageErrorKind.HTTP -> context.getString(R.string.error_page_http, description)
+                PageErrorKind.CERTIFICATE -> context.getString(R.string.error_page_certificate)
+            }
+        )
+    }
+
+    /**
+     * A file the page offered that is not media: a PDF, an archive, an installer.
+     *
+     * It joins the same Room queue as everything else, so pause, resume, retry and the notification
+     * come for free, instead of the click doing nothing at all — which is what a browser with no
+     * download listener does.
+     */
+    fun onDownloadRequested(
+        tabId: String,
+        url: String,
+        userAgent: String?,
+        contentDisposition: String?,
+        mimeType: String?,
+        contentLength: Long
+    ) {
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) return
+        // Read on the caller's thread, which for a download listener is the main one: the page the
+        // request came from is the Referer the server will expect, and the WebView's own user agent is
+        // the client it already answered. Both are stored with the row so a later resume still has
+        // them. A storage row that cannot name its session is the reason so many downloads 403.
+        val pageUrl = webViewStore?.currentUrl(tabId)?.takeIf { it.isNotBlank() }
+            ?: _uiState.value.tabs.firstOrNull { it.id == tabId }?.url?.takeIf { it.isNotBlank() }
+        val sessionUserAgent = userAgent?.takeIf { it.isNotBlank() } ?: webViewStore?.userAgent(tabId)
+        viewModelScope.launch(Dispatchers.IO) {
+            val fromHeader = filenameFromContentDisposition(contentDisposition)
+            val extension = fromHeader?.substringAfterLast('.', "")?.takeIf { it.isNotBlank() }
+                ?: DownloadManager.extensionFromUrl(url)
+            val title = fromHeader?.substringBeforeLast('.')
+                ?.takeIf { it.isNotBlank() && it != fromHeader }
+                ?: DownloadManager.nameFromUrl(url).substringBeforeLast('.', "").takeIf { it.isNotBlank() }
+            // A non-Latin name sanitises down to separators — "ویدیوی آموزشی.mp4" becomes ".mp4",
+            // a hidden file with no base. Such a name falls back to the URL-derived one instead.
+            val fromHeaderSafe = sanitizeFilename(fromHeader.orEmpty())
+                .takeIf { it.isNotBlank() && it.substringBefore('.').isNotBlank() }
+            val filename = fromHeaderSafe ?: DownloadManager.generateFilename(title, extension)
+            val destination = runCatching { downloadRepository.getDefaultDownloadDestination() }.getOrNull()?.takeIf { it.isNotBlank() }
+                ?: context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.absolutePath
+                ?: context.filesDir.absolutePath
+            val resolvedMime = mimeType?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+                ?: extension?.let { getMimeTypeFromExtension(it) }
+            val entity = downloadRepository.createDownloadEntity(
+                url = url,
+                filename = filename,
+                destination = destination,
+                mediaTitle = title,
+                mimeType = resolvedMime,
+                totalBytes = contentLength.takeIf { it > 0L },
+                pageUrl = pageUrl,
+                userAgent = sessionUserAgent
+            )
+            downloadRepository.addDownload(entity)
+            DownloadService.enqueueDownload(context, entity.id)
+            _messages.trySend(context.getString(R.string.download_enqueued))
+        }
+    }
+    // endregion
+
     // region downloads
     fun enqueueDownload(format: MediaFormat) {
         // Blob reads must stay inside the owning WebView and only follow an explicit selection.
@@ -664,13 +1108,31 @@ class BrowserViewModel @Inject constructor(
             _messages.trySend(context.getString(messageFor(unsupported)))
             return
         }
+        // Read on this (main) thread: a WebView is main-thread-only, and the coroutine below runs on IO.
+        val sessionUserAgent = _uiState.value.currentTabId?.let { webViewStore?.userAgent(it) }
         viewModelScope.launch(Dispatchers.IO) {
             val title = sheet.mediaInfo.title.takeIf { it.isNotBlank() } ?: candidate.pageUrl
             val extension = format.extension.takeIf { it.isNotBlank() } ?: com.salvia.salviabrowxer.media.downloader.DownloadManager.extensionFromUrl(format.url)
             val filename = sanitizeFilename(com.salvia.salviabrowxer.media.downloader.DownloadManager.generateFilename(title, extension))
             val destination = runCatching { downloadRepository.getDefaultDownloadDestination() }.getOrNull()?.takeIf { it.isNotBlank() }
                 ?: context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.absolutePath ?: context.filesDir.absolutePath
-            val entity = downloadRepository.createDownloadEntity(url = format.url, filename = filename, destination = destination, mediaTitle = title, thumbnail = candidate.thumbnailUrl, selectedQuality = format.format, mimeType = format.mimeType, totalBytes = format.size?.takeIf { it > 0L }, renditionId = format.id.takeIf { format.isDash }).copy(status = DownloadState.QUEUED)
+            // The candidate remembers the page it was found on; the tab supplies the client. Both go
+            // into the row so the transfer can present the same session the page did.
+            val entity = downloadRepository.createDownloadEntity(
+                url = format.url,
+                filename = filename,
+                destination = destination,
+                mediaTitle = title,
+                thumbnail = candidate.thumbnailUrl,
+                selectedQuality = format.format,
+                mimeType = format.mimeType,
+                totalBytes = format.size?.takeIf { it > 0L },
+                renditionId = format.id.takeIf { format.isDash },
+                // A pasted direct link reports itself as its own "page"; a request must never refer
+                // to itself, so such a row carries no page at all.
+                pageUrl = candidate.pageUrl.takeIf { it.isNotBlank() && it != format.url },
+                userAgent = sessionUserAgent
+            ).copy(status = DownloadState.QUEUED)
             downloadRepository.addDownload(entity)
             DownloadService.enqueueDownload(context, entity.id)
             _uiState.update { it.copy(qualitySheet = null) }
@@ -796,5 +1258,10 @@ class BrowserViewModel @Inject constructor(
     private fun resolveTargetUrl(input: String): String? =
         AddressBarResolver.resolve(input, _uiState.value.searchEngine)
 
-    companion object { private const val TAG = "BrowserViewModel" }
+    companion object {
+        private const val TAG = "BrowserViewModel"
+
+        /** Long enough that opening a tab and typing in it are one write, short enough to survive a kill. */
+        private const val SESSION_PERSIST_SETTLE_MILLIS = 900L
+    }
 }

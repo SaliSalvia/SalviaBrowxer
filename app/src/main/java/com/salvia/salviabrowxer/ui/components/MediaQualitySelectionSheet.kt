@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +31,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,6 +73,7 @@ import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverDeep
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.SilverShine
+import com.salvia.salviabrowxer.ui.utils.MseRecordingUiState
 import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 import com.salvia.salviabrowxer.ui.utils.formatFileSize
 
@@ -85,9 +89,24 @@ fun MediaQualitySelectionSheet(
      * The reason text comes from the same [UnsupportedMedia] the tray uses, so a candidate the app
      * admits but cannot save gets one honest explanation everywhere it appears.
      */
-    unsupported: UnsupportedMedia? = null
+    unsupported: UnsupportedMedia? = null,
+    /**
+     * What the playback recorder can say about itself right now: whether this device can record at
+     * all, whether one is running for this tab, and how much has been written.
+     */
+    recording: MseRecordingUiState = MseRecordingUiState(),
+    /**
+     * Starts recording the playback. Null when recording is not on offer for this stream — a live
+     * stream is not recorded by design, and a page whose player the hook cannot reach is told why.
+     */
+    onRecord: (() -> Unit)? = null,
+    /** Stops the running recording and keeps what was captured. */
+    onStopRecording: (() -> Unit)? = null
 ) {
     val formats = if (unsupported != null) emptyList() else mediaInfo.combinedFormats.ifEmpty { mediaInfo.formats }
+    // The recording block is drawn whether or not a format is offered: recording is precisely what
+    // the user is left with when a stream cannot be downloaded as a file (a blob, a live-ish player).
+    val canRecord = onRecord != null && recording.isSupported && !recording.isRecording
     var selectedFormat by remember(mediaInfo.title, formats.size) { mutableStateOf<MediaFormat?>(formats.firstOrNull()) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -237,6 +256,16 @@ fun MediaQualitySelectionSheet(
                         }
                     }
                 }
+                if (recording.isRecording) {
+                    Spacer(Modifier.height(14.dp))
+                    RecordingInProgress(
+                        bytes = recording.bytes,
+                        onStop = onStopRecording
+                    )
+                } else if (canRecord) {
+                    Spacer(Modifier.height(14.dp))
+                    RecordPlaybackAction(onRecord = onRecord!!)
+                }
                 Spacer(Modifier.height(16.dp))
                 Button(
                     onClick = { selectedFormat?.let { onQualitySelected(it) } },
@@ -263,6 +292,94 @@ fun MediaQualitySelectionSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * The recording action: one button, and the sentence that keeps it honest.
+ *
+ * What it produces is the part of the stream the session actually played, at the quality the player
+ * chose — not a different rendition fetched from the server. The sheet says that in plain words
+ * instead of letting the user discover it after a download that is not the resolution they expected.
+ */
+@Composable
+private fun RecordPlaybackAction(onRecord: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            // A floor, not a fixed height: the label grows with the font scale.
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, AuroraTeal.copy(alpha = 0.6f)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = AuroraTeal),
+            onClick = onRecord
+        ) {
+            Icon(
+                imageVector = Icons.Default.FiberManualRecord,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(text = stringResource(R.string.action_record_playback), style = MaterialTheme.typography.titleSmall)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.record_playback_hint),
+            style = MaterialTheme.typography.labelSmall,
+            color = SilverDeep,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/** A running recording: how much has been written, and the one way out of it. */
+@Composable
+private fun RecordingInProgress(bytes: Long, onStop: (() -> Unit)?) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.FiberManualRecord,
+                contentDescription = null,
+                tint = NebulaVioletLight,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = stringResource(R.string.recording_in_progress),
+                style = MaterialTheme.typography.titleSmall,
+                color = PearlWhite
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = formatFileSize(bytes),
+                style = MaterialTheme.typography.labelMedium,
+                color = AuroraTeal
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, NebulaViolet.copy(alpha = 0.7f)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = NebulaVioletLight),
+            onClick = { onStop?.invoke() }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Stop,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(text = stringResource(R.string.action_stop_recording), style = MaterialTheme.typography.titleSmall)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.record_playback_hint),
+            style = MaterialTheme.typography.labelSmall,
+            color = SilverDeep,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

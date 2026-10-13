@@ -5,6 +5,7 @@ import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
+import com.salvia.salviabrowxer.data.security.LockedFolderStore
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -36,13 +37,14 @@ class DownloadsViewModelTest {
     private lateinit var viewModel: DownloadsViewModel
     private val mockDownloadRepository: DownloadRepository = mockk(relaxed = true)
     private val mockMediaStoreExporter: MediaStoreExporter = mockk(relaxed = true)
+    private val mockLockedFolderStore: LockedFolderStore = mockk(relaxed = true)
     private val mockContext: android.content.Context = mockk(relaxed = true)
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(emptyList())
-        viewModel = DownloadsViewModel(mockDownloadRepository, mockMediaStoreExporter, mockContext)
+        viewModel = DownloadsViewModel(mockDownloadRepository, mockMediaStoreExporter, mockLockedFolderStore, mockContext)
     }
 
     @Test
@@ -137,7 +139,7 @@ class DownloadsViewModelTest {
         )
         coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(downloads)
 
-        val vm = DownloadsViewModel(mockDownloadRepository, mockMediaStoreExporter, mockContext)
+        val vm = DownloadsViewModel(mockDownloadRepository, mockMediaStoreExporter, mockLockedFolderStore, mockContext)
         // The ViewModel collects on Dispatchers.IO, so the buckets are published by a real
         // background thread. Reading uiState.value straight after construction raced that thread
         // and passed or failed depending on scheduling. Waiting on the default dispatcher keeps

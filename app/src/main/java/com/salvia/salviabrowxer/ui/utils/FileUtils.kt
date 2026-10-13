@@ -80,3 +80,35 @@ fun getMimeTypeFromExtension(extension: String?): String {
         else -> "application/octet-stream"
     }
 }
+
+/**
+ * The filename a `Content-Disposition` header asks for, or `null` when it does not name one.
+ *
+ * Only the name is taken — the browser must not act on `attachment`, let alone trust a path.
+ * Both forms the header is allowed to use are handled: `filename*=UTF-8''…` (RFC 5987, already
+ * percent-encoded) and the plain `filename="…"` quoted form, with the RFC 5987 form winning because
+ * it is the one that survives non-ASCII names.
+ */
+fun filenameFromContentDisposition(header: String?): String? {
+    val value = header?.takeIf { it.isNotBlank() } ?: return null
+    val extended = Regex("""filename\*\s*=\s*([^'";]+)''([^;]+)""", RegexOption.IGNORE_CASE).find(value)
+    if (extended != null) {
+        val encoded = extended.groupValues[2].trim().trim('"')
+        val decoded = runCatching { java.net.URLDecoder.decode(encoded, "UTF-8") }.getOrNull()
+        return filenameOrNull(decoded)
+    }
+    val plain = Regex("""filename\s*=\s*(?:"([^"]*)"|([^;]+))""", RegexOption.IGNORE_CASE).find(value)
+    if (plain != null) {
+        val raw = plain.groupValues[1].ifBlank { plain.groupValues[2] }
+        return filenameOrNull(raw)
+    }
+    return null
+}
+
+/** Keeps the last path segment only: a header is not allowed to point outside the download folder. */
+private fun filenameOrNull(raw: String?): String? = raw
+    ?.trim()
+    ?.trim('"')
+    ?.substringAfterLast('/')
+    ?.substringAfterLast('\\')
+    ?.takeIf { it.isNotBlank() && it != "." && it != ".." }

@@ -1,5 +1,9 @@
 package com.salvia.salviabrowxer.feature.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.salvia.salviabrowxer.data.security.PasswordVault
+import com.salvia.salviabrowxer.ui.components.PasswordField
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -101,7 +105,7 @@ import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 import java.util.Locale
 import kotlinx.coroutines.flow.collectLatest
 
-private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, ClearData }
+private enum class SettingsDialog { None, SearchEngine, Homepage, Downloads, ButtonSize, Password, ClearData }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,6 +127,12 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             }
             Unit
         }
+    }
+
+    // The system picker is the only way an app may write into a folder it did not create, and the one
+    // place the user can point at a removable card. The grant is persisted in the view model.
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) viewModel.onSafTreePicked(uri.toString())
     }
 
     // The app language is the device language, or an app-only one chosen on Android 13+. The row
@@ -205,7 +215,13 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Download, stringResource(R.string.settings_downloads))
                 SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryPath.ifBlank { stringResource(R.string.settings_download_directory_hint) })
+                SettingsItem(Icons.Default.Security, stringResource(R.string.settings_locked_folder), stringResource(if (state.isPasswordFolderSet) R.string.settings_locked_folder_hint else R.string.settings_locked_folder_not_set)) { dialog = SettingsDialog.Password }
+                SettingsItem(Icons.Default.Storage, stringResource(R.string.settings_sd_card_folder), state.safDestinationLabel ?: stringResource(R.string.settings_sd_card_none)) { pickFolder.launch(null) }
+                if (state.safDestinationLabel != null) {
+                    SettingsItem(Icons.Default.Clear, stringResource(R.string.action_clear_folder), null) { viewModel.clearSafDestination() }
+                }
                 SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), stringResource(R.string.settings_downloads_at_a_time, state.maxSimultaneousDownloads)) { dialog = SettingsDialog.Downloads }
+                SwitchSettingsItem(Icons.Default.Sync, stringResource(R.string.settings_parallel_connections), stringResource(R.string.settings_parallel_connections_hint), state.parallelConnections > 1) { viewModel.updateParallelDownload(it) }
                 SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint), state.isWifiOnly) { viewModel.updateWifiOnly(it) }
                 SwitchSettingsItem(Icons.Default.Folder, stringResource(R.string.settings_export_to_gallery), stringResource(R.string.settings_export_to_gallery_hint), state.isExportToGallery) { viewModel.updateExportToGallery(it) }
                 SettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_connection_label), connectionLabel(connectionKind))
@@ -277,6 +293,13 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             label = stringResource(R.string.settings_dp_value, state.floatingButtonSize),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { v -> viewModel.updateFloatingButtonSize(v.toInt()); dialog = SettingsDialog.None }
+        )
+        SettingsDialog.Password -> PasswordDialog(
+            hasPassword = state.isPasswordFolderSet,
+            isSecured = state.isPasswordFolderSecured,
+            onDismiss = { dialog = SettingsDialog.None },
+            onConfirm = { password -> viewModel.setPasswordFolderPassword(password); dialog = SettingsDialog.None },
+            onRemove = { viewModel.removePasswordFolder(); dialog = SettingsDialog.None }
         )
         SettingsDialog.ClearData -> ConfirmationDialog(
             title = stringResource(R.string.settings_clear_browsing_data),
@@ -415,6 +438,69 @@ private fun SelectionDialog(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Setting, changing and removing the password of the locked folder.
+ *
+ * Two fields rather than one: a mistyped password that hides the user's own files from them is the one
+ * failure this dialog must not allow, and the confirm button stays disabled until the two match. The
+ * note about where the verifier is kept is drawn from the store, not assumed.
+ */
+@Composable
+private fun PasswordDialog(
+    hasPassword: Boolean,
+    isSecured: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var repeated by remember { mutableStateOf("") }
+    val tooShort = password.length < PasswordVault.MIN_PASSWORD_CHARS
+    val mismatch = repeated != password
+    val canConfirm = !tooShort && !mismatch
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(if (hasPassword) R.string.action_change_password else R.string.action_set_password), color = PearlWhite) },
+        text = {
+            Column {
+                Text(stringResource(R.string.settings_locked_folder_hint), style = MaterialTheme.typography.bodySmall, color = SilverMid)
+                Spacer(Modifier.height(12.dp))
+                PasswordField(value = password, onValueChange = { password = it }, hint = stringResource(R.string.locked_folder_password_label))
+                Spacer(Modifier.height(8.dp))
+                PasswordField(value = repeated, onValueChange = { repeated = it }, hint = stringResource(R.string.locked_folder_confirm_label))
+                if (mismatch && repeated.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.locked_folder_mismatch), style = MaterialTheme.typography.bodySmall, color = BlushPink)
+                } else if (tooShort && password.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.locked_folder_password_short, PasswordVault.MIN_PASSWORD_CHARS), style = MaterialTheme.typography.bodySmall, color = BlushPink)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = stringResource(if (isSecured) R.string.settings_locked_folder_secured_note else R.string.settings_locked_folder_plain_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SilverMid
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(password) }, enabled = canConfirm) {
+                Text(stringResource(R.string.action_ok), color = if (canConfirm) AuroraTeal else SilverMid)
+            }
+        },
+        dismissButton = {
+            Row {
+                if (hasPassword) {
+                    TextButton(onClick = onRemove) { Text(stringResource(R.string.action_remove_password), color = BlushPink) }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
+            }
+        },
+        containerColor = CharcoalElevated
+    )
+}
+
 @Composable
 private fun TextEditDialog(
     title: String,

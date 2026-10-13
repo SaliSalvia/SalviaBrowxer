@@ -1,13 +1,15 @@
 package com.salvia.salviabrowxer.ui.utils
 
+import android.net.http.SslError
 import android.util.Log
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.salvia.salviabrowxer.core.model.MediaCandidate
-import com.salvia.salviabrowxer.core.model.MediaRequestAdmission
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Request-only fallback for explicit media URLs. Response MIME belongs to MediaSniffer: Accept
@@ -20,13 +22,63 @@ class WebViewClientWrapper(
     private val onHistoryUrlChangedHook: (String) -> Unit = {},
     private val onMediaDetectedHook: (MediaCandidate) -> Unit = {},
     /** Return true when a non-web scheme (tel:, mailto:, intent:, market:) was handed to the system. */
-    private val onExternalSchemeHook: (String) -> Boolean = { false }
+    private val onExternalSchemeHook: (String) -> Boolean = { false },
+    /**
+     * The page's renderer process died. Only `destroy()` may be called on [WebView] afterwards —
+     * stopLoading, removeJavascriptInterface and even setWebViewClient throw on a dead renderer.
+     */
+    private val onRenderProcessGoneHook: (WebView) -> Unit = {},
+    /** A main-frame load failed. Sub-resource failures are deliberately not reported. */
+    private val onPageErrorHook: (kind: PageErrorKind, description: String) -> Unit = { _, _ -> }
 ) : WebViewClient() {
 
     @Volatile private var currentPageUrl = ""
 
-    // URL -> last emit timestamp (ms)
-    private val lastEmit = ConcurrentHashMap<String, Long>()
+    /**
+     * The document's requests, through the same observer a service worker's requests go through:
+     * one admission rule and one dedupe window for both, so a URL that arrives by either route is
+     * reported once.
+     */
+    private val requestObserver = MediaRequestObserver(
+        pageUrlProvider = { currentPageUrl },
+        onCandidate = { candidate -> safe("onMediaDetected") { onMediaDetectedHook(candidate) } }
+    )
+
+    /**
+     * Returning `true` says the crash was handled. Returning `false` — the default — makes the
+     * framework treat a dead renderer as an unrecoverable app error and kill the whole process, so a
+     * single bad page would take the browser down with it.
+     */
+    override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+        val target = view ?: return true
+        safe("onRenderProcessGone") { onRenderProcessGoneHook(target) }
+        return true
+    }
+
+    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+        super.onReceivedError(view, request, error)
+        // Every blocked ad frame and missing pixel raises this; only the document itself matters.
+        if (request?.isForMainFrame != true) return
+        val description = runCatching { error?.description?.toString().orEmpty() }.getOrDefault("")
+        safe("onReceivedError") { onPageErrorHook(PageErrorKind.NETWORK, description) }
+    }
+
+    override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: WebResourceResponse?) {
+        super.onReceivedHttpError(view, request, errorResponse)
+        if (request?.isForMainFrame != true) return
+        val status = errorResponse?.statusCode ?: return
+        safe("onReceivedHttpError") { onPageErrorHook(PageErrorKind.HTTP, "HTTP $status") }
+    }
+
+    /**
+     * An untrusted certificate is never overridden — this browser does not offer "proceed anyway" —
+     * but the user is told why the tab stayed empty instead of being left with a blank page.
+     */
+    override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+        val description = runCatching { error?.primaryError?.toString().orEmpty() }.getOrDefault("")
+        safe("onReceivedSslError") { onPageErrorHook(PageErrorKind.CERTIFICATE, description) }
+        handler?.cancel()
+    }
 
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
         val url = request?.url?.toString() ?: return false
@@ -46,7 +98,7 @@ class WebViewClientWrapper(
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         super.onPageStarted(view, url, favicon)
         currentPageUrl = url.orEmpty()
-        lastEmit.clear()
+        requestObserver.reset()
         view?.let { safe("onPageStarted") { onPageStartedHook(it, url, favicon) } }
     }
 
@@ -65,21 +117,8 @@ class WebViewClientWrapper(
     }
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-        if (request != null && request.method.equals("GET", ignoreCase = true)) {
-            val range = request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value
-            val candidate = MediaRequestAdmission.admit(currentPageUrl, request.url.toString(), range)
-            if (candidate != null) {
-                val now = System.currentTimeMillis()
-                val url = candidate.mediaUrl
-                val last = lastEmit[url] ?: 0L
-                if (now - last >= 5000) {
-                    // Bounded even on an infinite feed. The UI has its own URL-keyed cap.
-                    if (lastEmit.size >= 120) lastEmit.clear()
-                    lastEmit[url] = now
-                    safe("onMediaDetected") { onMediaDetectedHook(candidate) }
-                }
-            }
-        }
+        val range = request?.requestHeaders?.entries?.firstOrNull { it.key.equals("Range", true) }?.value
+        requestObserver.onRequest(request?.url?.toString(), request?.method, range)
         return super.shouldInterceptRequest(view, request)
     }
 

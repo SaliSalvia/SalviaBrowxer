@@ -79,8 +79,23 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         dataStore.edit { preferences -> preferences[ARE_COOKIES_ENABLED] = enabled }
     }
 
+    // A few connections per direct file, on by default: on a server that limits each connection this
+    // is the difference between the file arriving at the speed of the line and at the speed of one
+    // stream. 1 turns it off, and a server that cannot serve ranges is detected rather than assumed.
+    override val parallelConnections: Flow<Int> = dataStore.data
+        .map { preferences ->
+            (preferences[PARALLEL_CONNECTIONS] ?: SettingsDataStore.DEFAULT_PARALLEL_CONNECTIONS)
+                .coerceIn(1, SettingsDataStore.MAX_PARALLEL_CONNECTIONS)
+        }
+
     override suspend fun setMaxSimultaneousDownloads(count: Int) {
         dataStore.edit { preferences -> preferences[MAX_SIMULTANEOUS_DOWNLOADS] = count }
+    }
+
+    override suspend fun setParallelConnections(count: Int) {
+        dataStore.edit { preferences ->
+            preferences[PARALLEL_CONNECTIONS] = count.coerceIn(1, SettingsDataStore.MAX_PARALLEL_CONNECTIONS)
+        }
     }
 
     override suspend fun setWifiOnly(enabled: Boolean) {
@@ -117,6 +132,8 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         private val IS_JAVASCRIPT_ENABLED = booleanPreferencesKey("is_javascript_enabled")
         private val ARE_COOKIES_ENABLED = booleanPreferencesKey("are_cookies_enabled")
         private val MAX_SIMULTANEOUS_DOWNLOADS = intPreferencesKey("max_simultaneous_downloads")
+        private val PARALLEL_CONNECTIONS = intPreferencesKey("parallel_connections")
+
         private val IS_WIFI_ONLY = booleanPreferencesKey("is_wifi_only")
         private val EXPORT_TO_GALLERY = booleanPreferencesKey("export_to_gallery")
         private val ALLOW_CLEARTEXT = booleanPreferencesKey("allow_cleartext")

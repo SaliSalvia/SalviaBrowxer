@@ -11,6 +11,11 @@ interface SettingsDataStore {
     val isJavaScriptEnabled: Flow<Boolean>
     val areCookiesEnabled: Flow<Boolean>
     val maxSimultaneousDownloads: Flow<Int>
+    /**
+     * How many Range connections one direct file may use. 1 is the single-stream download; the
+     * default is a few, because on a per-connection limited server that is the speed difference.
+     */
+    val parallelConnections: Flow<Int>
     val isWifiOnly: Flow<Boolean>
     /** Publish finished downloads to the shared media store so galleries can see them. */
     val isExportToGallery: Flow<Boolean>
@@ -26,10 +31,19 @@ interface SettingsDataStore {
     suspend fun setJavaScriptEnabled(enabled: Boolean)
     suspend fun setCookiesEnabled(enabled: Boolean)
     suspend fun setMaxSimultaneousDownloads(count: Int)
+    suspend fun setParallelConnections(count: Int)
     suspend fun setWifiOnly(enabled: Boolean)
     suspend fun setExportToGallery(enabled: Boolean)
     suspend fun setCleartextAllowed(enabled: Boolean)
     suspend fun setFloatingButtonAlwaysVisible(enabled: Boolean)
     suspend fun setFloatingButtonSize(size: Int)
     suspend fun setFloatingButtonPosition(x: Float, y: Float)
+
+    companion object {
+        /** Four is what the segmented fetcher already uses; more rarely helps and costs memory. */
+        const val DEFAULT_PARALLEL_CONNECTIONS = 4
+
+        /** Past this the connections compete with the player more than they help the download. */
+        const val MAX_PARALLEL_CONNECTIONS = 8
+    }
 }

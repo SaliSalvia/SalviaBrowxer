@@ -47,14 +47,31 @@ versionName `1.0.0`.
   - **request interception** admits explicit HTTP(S) media/playlist GET URLs, not blobs or API
     guesses from outgoing headers. Only an absent Range or `bytes=0-` is considered whole-file
     evidence. Fetch/XHR observation rejects partial responses; segments and web manifests are
-    excluded from DOM and request candidates too.
+    excluded from DOM and request candidates too. The same rule runs over a page's **service worker**
+    requests as well (`ServiceWorkerClientCompat`) — observed, never answered: the app reads the URL,
+    the method and the `Range` header, returns nothing, and no body is ever read. A player that
+    fetches its media inside a worker is no longer invisible.
   - a **DOM scan** of the loaded page (`media`, `source`, lazy `data-*` player attributes,
     `application/ld+json` `contentUrl`, Open Graph / Twitter meta tags, anchors, and JSON or
     plain-text URLs) for whatever the markup itself states. A `<source type="video/mp4">` or a
     lazy `data-video-src` may name only an extension-less URL; the declared media type is then the
     evidence, and the same declared type now travels across the sniffing bridge instead of being
     visible to the DOM scanner and dropped by the sniffer.
-  - **blob reassembly** through the bridge, in Binder-safe 480 KiB chunks.
+  - **blob reassembly** through the bridge, in Binder-safe 480 KiB chunks, bounded to a few
+    transfers at a time and only for a frame the app has verified as part of the page on screen.
+  - **frame attribution**: every frame announces itself once over the recording port — the one
+    channel where WebKit also reports the frame's real origin — so a report can be attributed to a
+    frame the document actually contains, and a frame cannot claim to be another site. Media inside a
+    same-origin or cross-origin `iframe` is therefore visible in the tray (a frame of the current
+    document is a legitimate source), while a sighting claiming an origin the document does not
+    contain lands nowhere. On a WebView too old to carry the message port the app keeps its previous
+    behaviour instead of silently losing detections.
+  - **playback recording** for what none of the above can reach: a page that plays with
+    `SourceBuffer.appendBuffer` never turns its media into a URL, so the injected hook copies each
+    appended segment and posts it to a `WebMessageListener` — as an `ArrayBuffer`, not base64 — and
+    the app writes it to a cache file. The bytes stay on the device and only a recording the user
+    started is kept. Protected streams are refused with an explanation, not recorded into a file
+    that will not open.
 
   Every layer takes its notion of "is this media" from one object, `MediaUrlRules` — previously
   there were five copies and they disagreed, most visibly over `manifest`, which made a PWA's
@@ -80,7 +97,12 @@ versionName `1.0.0`.
   download button while the probe is still running. A size that is not known is reported as
   unavailable rather than guessed.
 - **Downloads** — foreground `dataSync` service, Room-backed queue, pause / cancel / retry,
-  direct files resume over HTTP Range from a `.part` file (including after process death),
+  direct files resume over HTTP Range from a `.part` file (including after process death) and, when
+  the server states the file's length and accepts ranges, are fetched over several connections at
+  once and joined byte for byte (settings: *Several connections per download*, on by default). A
+  server that cannot serve ranges is detected with a one-byte probe, not assumed, and the file then
+  comes down on one connection; every part is resumable, so pausing or being killed mid-transfer
+  keeps what was already fetched, and nothing is joined until every part has its full length,
   VOD HLS playlists are fetched several segments at a time (bounded parallelism) and
   concatenated, DASH representations are fetched the same way and resume too, blob saves land in
   the same queue. An **AES-128 encrypted** HLS playlist is decrypted with the key the manifest names,
@@ -103,6 +125,21 @@ versionName `1.0.0`.
   setting on. The settings screen shows the live connection next to that switch. Finished files are
   shareable through `FileProvider` and play in the in-app Media3 player, which reports a file that
   disappeared behind the queue's back and offers to remove the dead row.
+- **A folder with a password, a folder on the card, and tabs that come back** — a password-protected
+  folder keeps its verifier (PBKDF2, 120,000 iterations, a fresh salt) in a preference file encrypted
+  with a keystore-backed key; the password itself is never stored. Moving a finished download into it
+  hides it from the list, removes the copy that had been published to the gallery and forgets it in
+  the row, and the folder relocks when the app is closed. Files stay in the app's own private
+  directory: the lock decides who *sees* them, it is not encryption of the bytes, and the settings row
+  states which of the two the device actually gave us (a keystore that cannot be opened falls back to
+  private preferences, and says so). A **folder you choose** through the system picker
+  (`ACTION_OPEN_DOCUMENT_TREE`, permission kept across restarts — the only way an app may write to a
+  card) receives a *copy* of every finished download: the app's own file is what pause, resume, the
+  player and delete operate on, a copy already made is the user's to keep even if the file is later
+  locked, and a folder that has gone away costs the copy and nothing else. **Tabs come back** after
+  the process is killed: the list is written a moment after every change, private tabs are never
+  written, only `http(s)` pages are restored, and it happens once per process rather than once per
+  screen.
 - **Library** — downloads in Room, surfaced through the downloads screen; settings in DataStore.
 - **Intents** — `VIEW` (http / https) and `SEND` (`text/plain`) are registered: a link handed to the
   app by another app opens in its own tab, and `tel:` / `mailto:` / `intent:` are passed to the
@@ -145,11 +182,22 @@ protection:
   encoded tracks into an MP4 container) and *muxes* a separate video and audio track together; it
   never re-encodes, so quality is the original. This is what makes a segmented HLS/DASH download
   and a “1080p + audio” adaptive pair produce a normal playable file
-- no worker or service-worker sniffing: the injected script runs in the document, so a player that
-  fetches its media from a worker stays invisible
-- MSE-backed and unproven blob URLs are refused, not offered as downloadable files. Only a
-  witnessed real Blob with media evidence can use the existing page-owned blob save path.
-  Revoked object URLs are removed from candidates; there is no MSE recording or manifest mapping
+- MSE-backed and unproven blob URLs are not offered as *files* — there is no URL for them to
+  download from. Only a witnessed real Blob with media evidence can use the page-owned blob save
+  path; revoked object URLs are removed from candidates. What an MSE-backed player offers instead is
+  **recording**: the sheet records the playback on explicit request and writes exactly what the
+  session played, at the quality the player chose — not the full stream, and not a different
+  rendition fetched from the server. A recording can only be started for the page's own player: a
+  cross-origin `iframe` is out of reach for the same reason `evaluateJavascript` cannot enter one, so
+  a player embedded that way is detected but not recordable
+- recording needs a WebView with `WEB_MESSAGE_LISTENER` and `WEB_MESSAGE_ARRAY_BUFFER` (WebView 116+
+  for the binary channel); on an older WebView the sheet says so instead of offering the button. A
+  stream that turns out to be protected (an `encrypted` event, `MediaKeys`, or a protection payload
+  in the first segment) is stopped immediately and nothing is kept
+- the locked folder is a *lock*, not encryption: files sit in the app's private storage where other
+  apps cannot read them, and the password decides who sees them inside the app. A copy the user
+  themselves asked for in a folder on the card is outside the app's reach and is not withdrawn by
+  locking the file — the moment a file is locked, the app says so
 - no analytics SDK, no ad SDK, no account system, and no network call other than a page load, a
   media probe, or a download the user started. Detection adds none: it reads response headers the
   page already received rather than probing URLs itself
@@ -160,7 +208,7 @@ Claimed behaviour is covered by the cheapest layer that can actually execute it:
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| JVM unit tests | DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`) — including AES-128 decryption, `EXT-X-BYTERANGE`, variant selection and resumable staged parts — resolver HLS-variant expansion against a real server, rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
+| JVM unit tests (plus a Node harness for the injected page script, `scripts/test-media-sniffer.cjs`) | the recorder's segment writer, the recording port's message decoder, the origin rules the bridges are gated on, DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`) — including AES-128 decryption, `EXT-X-BYTERANGE`, variant selection and resumable staged parts — resolver HLS-variant expansion against a real server, rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
 | Robolectric | The media-store export executed against the real framework at **API 24** (public-folder copy, media scanner, no-overwrite) and at **API 33** (`MediaStore` pending-flag protocol, byte fidelity) | `:app` `MediaStoreExporterTest` |
 | Instrumented | The real store publish on a device (bytes read back through `ContentResolver`, the row queryable), a real **AES-128 HLS** download decrypted on-device with Android’s own JCE against a local server, and the launch smoke check | `.github/workflows/emulator_verification.yml` |
 

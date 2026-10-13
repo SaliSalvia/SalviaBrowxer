@@ -38,8 +38,17 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="36">
 
+        <!--
+            Rotation and window resizes are handled without recreating the activity. A recreation
+            disposes the browser composition and re-attaches every live WebView, which is a visible
+            reload of eight pages for a change that should cost nothing. The browser's view model
+            keeps the tabs regardless, so this is about not churning them, not about surviving.
+            `locale` is deliberately absent: the per-app language picker works by recreating the
+            activity, and intercepting it would leave the UI in the old language.
+        -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
             android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">

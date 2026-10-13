@@ -3,7 +3,10 @@ package com.salvia.salviabrowxer.feature.settings
 import android.content.Context
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
+import com.salvia.salviabrowxer.data.security.LockedFolderStore
+import com.salvia.salviabrowxer.data.storage.SafDestinationStore
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -29,6 +32,9 @@ class SettingsViewModelTest {
     private val settingsDataStore: SettingsDataStore = mockk(relaxed = true)
     private val historyRepository: HistoryRepository = mockk(relaxed = true)
     private val storageManager: StorageManager = mockk(relaxed = true)
+    private val downloadRepository: DownloadRepository = mockk(relaxed = true)
+    private val lockedFolderStore: LockedFolderStore = mockk(relaxed = true)
+    private val safDestinationStore: SafDestinationStore = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
 
     @Before
@@ -47,7 +53,11 @@ class SettingsViewModelTest {
         every { settingsDataStore.floatingButtonY } returns flowOf(0f)
         every { storageManager.getDefaultDownloadDirectory() } returns "/storage/emulated/0/Android/data/com.salvia.salviabrowxer/files/Downloads"
 
-        viewModel = SettingsViewModel(settingsDataStore, historyRepository, storageManager, context)
+        every { safDestinationStore.destination } returns flowOf(null)
+        every { lockedFolderStore.isConfigured() } returns false
+        every { lockedFolderStore.isSecured } returns true
+
+        viewModel = SettingsViewModel(settingsDataStore, historyRepository, downloadRepository, storageManager, lockedFolderStore, safDestinationStore, context)
     }
 
     @Test

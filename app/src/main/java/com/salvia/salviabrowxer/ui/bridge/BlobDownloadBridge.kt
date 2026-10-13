@@ -22,18 +22,30 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class BlobDownloadBridge(
     private val onBlobCaptured: (pageUrl: String, blobUrl: String, file: File, mimeType: String) -> Unit,
-    private val cacheDirProvider: () -> File
+    private val cacheDirProvider: () -> File,
+    /**
+     * Whether the page that claims to own this blob is part of the document on screen.
+     *
+     * Every method here is a `JavascriptInterface`, so any frame can call it at any time with any
+     * arguments. The bytes are only ever written for a page the store has verified as a frame of the
+     * current document — the host decides what "verified" means, and this class stays a transport.
+     */
+    private val pageAllowed: (pageUrl: String) -> Boolean = { true }
 ) {
     private data class PendingBlob(val pageUrl: String, val mimeType: String, val chunks: MutableList<String?>, var received: Int)
 
     private val pending = ConcurrentHashMap<String, PendingBlob>()
     private val MAX_SINGLE_DECODE_BYTES = 90 * 1024 * 1024 // ~120M chars of base64
 
+    /** How many blobs may be mid-transfer at once, across every page and frame. */
+    private val MAX_PENDING_BLOBS = 4
+
     @JavascriptInterface
     fun onBlobData(pageUrl: String, blobUrl: String, base64Data: String, mimeType: String) {
         // One-shot path for small blobs (kept for compatibility)
         try {
             if (base64Data.isBlank() || blobUrl.isBlank()) return
+            if (!pageAllowed(pageUrl)) return
             val raw = base64Data.substringAfter(",", base64Data)
             finishBlob(pageUrl, blobUrl, raw, mimeType)
         } catch (e: Exception) {
@@ -45,7 +57,14 @@ class BlobDownloadBridge(
     fun onBlobChunk(pageUrl: String, blobUrl: String, index: Int, total: Int, chunkBase64: String, mimeType: String) {
         try {
             if (chunkBase64.isBlank() || blobUrl.isBlank() || total <= 0 || total > 512) return
+            if (!pageAllowed(pageUrl)) return
             val key = blobUrl
+            // A page can name endless distinct blob URLs. The map is bounded rather than trusted: the
+            // oldest in-flight transfer is what gives way, and a download the user is waiting for is
+            // still one of at most [MAX_PENDING_BLOBS].
+            if (!pending.containsKey(key) && pending.size >= MAX_PENDING_BLOBS) {
+                pending.keys.firstOrNull()?.let { pending.remove(it) }
+            }
             val entry = pending.getOrPut(key) {
                 PendingBlob(pageUrl, mimeType, MutableList(total) { null }, 0)
             }

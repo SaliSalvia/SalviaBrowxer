@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.service.WIFI_HOLD_MARKER
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
@@ -62,7 +65,11 @@ fun DownloadItem(
     onRetryClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onShareClick: () -> Unit = {},
-    onExportClick: () -> Unit = {}
+    onExportClick: () -> Unit = {},
+    /** Offered while the locked folder has a password; null hides the action entirely. */
+    onLockClick: (() -> Unit)? = null,
+    /** Offered on an item that is already in the locked folder. */
+    onUnlockClick: (() -> Unit)? = null
 ) {
     val totalBytes = download.totalBytes
     val progress = if (totalBytes != null && totalBytes > 0) (download.downloadedBytes.toFloat() / totalBytes) else 0f
@@ -107,7 +114,13 @@ fun DownloadItem(
                     )
                 }
                 DownloadState.QUEUED, DownloadState.RETRYING -> Text(text = stringResource(R.string.download_queue), style = MaterialTheme.typography.bodySmall, color = SilverMid)
-                DownloadState.PAUSED -> Text(text = stringResource(R.string.download_pause), style = MaterialTheme.typography.bodySmall, color = SilverMid)
+                // A row the Wi-Fi-only setting is holding names its reason; anything else paused is
+                // simply paused. The marker is a stable sentinel, never shown as text.
+                DownloadState.PAUSED -> Text(
+                    text = if (download.error == WIFI_HOLD_MARKER) stringResource(R.string.download_waiting_for_wifi) else stringResource(R.string.download_pause),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SilverMid
+                )
                 DownloadState.COMPLETED -> Text(text = stringResource(R.string.download_completed), style = MaterialTheme.typography.bodySmall, color = AuroraTeal)
                 DownloadState.FAILED, DownloadState.CANCELLED -> Text(text = download.error ?: stringResource(R.string.download_failed), style = MaterialTheme.typography.bodySmall, color = Color(0xFFFF8A80), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -125,6 +138,11 @@ fun DownloadItem(
                 // the action that asks for the storage permission and does it by hand.
                 if (download.exportedUri == null) {
                     IconButton(onClick = onExportClick) { Icon(Icons.Default.SaveAlt, stringResource(R.string.download_export), tint = AuroraTeal) }
+                }
+                if (download.isLocked) {
+                    onUnlockClick?.let { unlock -> IconButton(onClick = unlock) { Icon(Icons.Default.LockOpen, stringResource(R.string.action_unlock_download), tint = AuroraTeal) } }
+                } else {
+                    onLockClick?.let { lock -> IconButton(onClick = lock) { Icon(Icons.Default.Lock, stringResource(R.string.action_lock_download), tint = SilverMid) } }
                 }
                 IconButton(onClick = onShareClick) { Icon(Icons.Default.Share, stringResource(R.string.download_share), tint = PearlWhite) }
                 IconButton(onClick = onDeleteClick) { Icon(Icons.Default.Close, stringResource(R.string.download_delete), tint = SilverMid) }
