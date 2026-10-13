@@ -17,6 +17,7 @@ import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -54,6 +55,14 @@ class BrowserViewModelTest {
     private val context: Context = mockk(relaxed = true)
     private val sessionRestorer: SessionRestorer = mockk(relaxed = true)
 
+    /**
+     * A real directory, because the view model builds its recording controller from `cacheDir` and a
+     * relaxed mock hands back a *mock* `File` whose internal path is null — `File(mockFile, "mse")`
+     * then throws inside `java.io.File` itself, which is how four unrelated tab tests failed.
+     */
+    private val cacheDir: File =
+        File(System.getProperty("java.io.tmpdir"), "salvia-browser-test-cache").apply { mkdirs() }
+
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
@@ -67,6 +76,7 @@ class BrowserViewModelTest {
         every { settingsDataStore.floatingButtonY } returns flowOf(0f)
         every { downloadRepository.getDownloadsByStates(any()) } returns
             flowOf(emptyList<DownloadEntity>())
+        every { context.cacheDir } returns cacheDir
 
         viewModel = BrowserViewModel(
             historyRepository = historyRepository,

@@ -39,8 +39,11 @@ class MediaRequestObserver(
         val candidate = MediaRequestAdmission.admit(pageUrlProvider(), target, range) ?: return
         val mediaUrl = candidate.mediaUrl
         val at = now()
-        val previous = lastEmit[mediaUrl] ?: 0L
-        if (at - previous < DEDUPE_WINDOW_MILLIS) return
+        // Null, not 0, as "never seen": with a 0 sentinel the *first* sighting is suppressed whenever
+        // the clock happens to read less than the window — which is what a test clock starting near
+        // zero does, and what any clock measured from an arbitrary origin would do.
+        val previous = lastEmit[mediaUrl]
+        if (previous != null && at - previous < DEDUPE_WINDOW_MILLIS) return
         // Bounded even on an infinite feed: a page that requests a new segment URL forever must not
         // grow this map forever. The UI has its own URL-keyed cap as well.
         if (lastEmit.size >= MAX_TRACKED_URLS) lastEmit.clear()
