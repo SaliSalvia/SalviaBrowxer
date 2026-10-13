@@ -93,3 +93,8 @@ npm-debug.log
 
 # Windows
 Thumbs.db
+
+# Generated reports from local/manual build runs: never tracked. Only
+# checked-in documentation lives in git; a summary produced by a run belongs to
+# that run (Actions keeps it as a step summary and an artifact).
+/tmp/
