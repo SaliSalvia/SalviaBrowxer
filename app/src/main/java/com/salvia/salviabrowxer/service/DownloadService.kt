@@ -29,6 +29,7 @@ import com.salvia.salviabrowxer.core.model.SessionReferer
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.core.storage.SafDocumentExporter
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.storage.SafDestinationStore
 import com.salvia.salviabrowxer.service.queue.DownloadWorkQueue
@@ -75,6 +76,7 @@ class DownloadService : Service() {
     @Inject lateinit var settingsDataStore: SettingsDataStore
     @Inject lateinit var safDestinationStore: SafDestinationStore
     @Inject lateinit var safDocumentExporter: SafDocumentExporter
+    @Inject lateinit var artifactCleaner: DownloadArtifactCleaner
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val notificationId = 1
@@ -258,11 +260,13 @@ class DownloadService : Service() {
                 thumbnail = finalized.thumbnailPath,
                 exportedUri = finalized.exportedUri
             )
-            temporaryPathFor(stored).delete()
+            // The staged bytes are no longer needed once the result exists; the result itself is
+            // protected by the cleaner (a DASH file that could not be remuxed keeps its staged name).
+            artifactCleaner.cleanTransferStaging(stored)
             scanFile(finalized.file)
             notifyCompleted(stored, finalized.file)
         } catch (aborted: DownloadAbortedException) {
-            if (aborted.reason == AbortReason.CANCELLED) { temporaryPathFor(stored).delete(); downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel)) }
+            if (aborted.reason == AbortReason.CANCELLED) { artifactCleaner.cleanTransferStaging(stored); downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel)) }
             else downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
         } catch (network: IOException) {
             downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.FAILED, error = network.localizedMessage ?: getString(R.string.error_connection_unavailable))
@@ -544,7 +548,7 @@ class DownloadService : Service() {
     private suspend fun cancelRequested(downloadId: String) {
         val current = downloadRepository.getDownloadById(downloadId)
         downloadManager.cancel(downloadId)
-        current?.let { temporaryPathFor(it).delete() }
+        current?.let { artifactCleaner.cleanTransferStaging(it) }
         if (current != null && current.status != DownloadState.COMPLETED && current.status != DownloadState.CANCELLED) {
             downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel))
         }

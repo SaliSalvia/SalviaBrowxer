@@ -9,6 +9,8 @@ import com.salvia.salviabrowxer.core.database.AppDatabase
 import com.salvia.salviabrowxer.core.session.WebViewCookies
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SessionDataStore
+import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
+import com.salvia.salviabrowxer.data.download.androidArtifactCleaner
 import com.salvia.salviabrowxer.data.datastore.SessionRestorer
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStoreImpl
@@ -97,6 +99,15 @@ object AppModule {
     @Singleton
     fun provideSafDocumentExporter(@ApplicationContext context: Context): com.salvia.salviabrowxer.core.storage.SafDocumentExporter =
         com.salvia.salviabrowxer.core.storage.SafDocumentExporter(context)
+
+    /**
+     * The one deletion path for a download: its own files, staged parts, thumbnail, and the copy it
+     * published — never another app's media, see [DownloadArtifactCleaner].
+     */
+    @Provides
+    @Singleton
+    fun provideDownloadArtifactCleaner(@ApplicationContext context: Context): DownloadArtifactCleaner =
+        androidArtifactCleaner(context)
 
     @Provides
     @Singleton

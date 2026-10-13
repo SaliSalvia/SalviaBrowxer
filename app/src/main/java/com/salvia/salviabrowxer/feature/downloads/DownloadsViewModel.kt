@@ -10,6 +10,7 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
+import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.security.LockedFolderStore
 import com.salvia.salviabrowxer.service.DownloadService
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -60,6 +62,7 @@ class DownloadsViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val mediaStoreExporter: MediaStoreExporter,
     private val lockedFolderStore: LockedFolderStore,
+    private val artifactCleaner: DownloadArtifactCleaner,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
@@ -157,9 +160,17 @@ class DownloadsViewModel @Inject constructor(
     fun pauseDownload(downloadId: String) { viewModelScope.launch(Dispatchers.IO) { downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED); DownloadService.pauseDownload(context, downloadId) } }
     fun resumeDownload(downloadId: String) { viewModelScope.launch(Dispatchers.IO) { downloadRepository.updateDownloadState(downloadId, DownloadState.QUEUED); DownloadService.enqueueDownload(context, downloadId) } }
     fun cancelDownload(downloadId: String) { viewModelScope.launch(Dispatchers.IO) { downloadRepository.updateDownloadState(downloadId, DownloadState.CANCELLED); DownloadService.cancelDownload(context, downloadId) } }
+    /**
+     * Deletes the row and everything the app created for it: the file, the staged parts, the
+     * thumbnail and the published gallery/SAF copy — see [DownloadArtifactCleaner] for what counts
+     * as "ours". This used to delete only `finalPath` and one `.part` file, which left the gallery
+     * copy and every staged segment of a segmented download behind.
+     */
     fun deleteDownload(downloadId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            downloadRepository.getDownloadById(downloadId)?.let { d -> d.finalPath?.takeIf { it.isNotBlank() }?.let { runCatching { File(it).delete() } }; runCatching { File(d.destination, "${d.filename}.part").delete() } }
+            downloadRepository.getDownloadById(downloadId)?.let { row ->
+                runCatching { artifactCleaner.clean(row) }
+            }
             downloadRepository.deleteDownload(downloadId)
         }
     }
@@ -263,8 +274,40 @@ class DownloadsViewModel @Inject constructor(
         _messages.trySend(context.getString(R.string.download_exported))
     }
 
-    fun clearCompletedDownloads() { viewModelScope.launch(Dispatchers.IO) { downloadRepository.deleteDownloadsByState(DownloadState.COMPLETED) } }
-    fun clearFailedDownloads() { viewModelScope.launch(Dispatchers.IO) { downloadRepository.deleteDownloadsByState(DownloadState.FAILED) } }
-    fun clearAllDownloads() { viewModelScope.launch(Dispatchers.IO) { downloadRepository.clearAllDownloads() } }
+    fun clearCompletedDownloads() { clearDownloads(DownloadState.COMPLETED) }
+
+    fun clearFailedDownloads() { clearDownloads(DownloadState.FAILED) }
+
+    /**
+     * Clears the list — finished rows only.
+     *
+     * The list tabs are "all", "completed" and "failed", and the clear action on the first tab used
+     * to delete *every* row, including the ones a transfer is running against; the row is what the
+     * service reads for its next step, so deleting it mid-transfer would abandon work the user never
+     * cancelled. What "clear" removes is therefore every row that has nothing left to do, each with
+     * its own files; a running download has its own cancel action.
+     */
+    fun clearAllDownloads() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val finished = runCatching { downloadRepository.getAllDownloads().first() }
+                .getOrNull().orEmpty()
+                .filter { it.status == DownloadState.COMPLETED || it.status == DownloadState.FAILED || it.status == DownloadState.CANCELLED }
+            finished.forEach { row -> runCatching { artifactCleaner.clean(row) } }
+            finished.forEach { row -> runCatching { downloadRepository.deleteDownload(row.id) } }
+        }
+    }
+
+    /**
+     * The rows are read first and their files deleted before the rows themselves disappear: after a
+     * delete there is no row left that knows which files belonged to it, which is exactly how files
+     * used to be orphaned on disk by the clear actions.
+     */
+    private fun clearDownloads(state: DownloadState) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val rows = runCatching { downloadRepository.getDownloadsByState(state).first() }.getOrNull().orEmpty()
+            rows.forEach { row -> runCatching { artifactCleaner.clean(row) } }
+            downloadRepository.deleteDownloadsByState(state)
+        }
+    }
     fun downloadProgressPercent(download: DownloadEntity): Float { val total = download.totalBytes ?: return 0f; return if (total > 0L) (download.downloadedBytes.toFloat() / total).coerceIn(0f, 1f) else 0f }
 }
