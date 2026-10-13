@@ -70,8 +70,9 @@ object PasswordVault {
     /** Whether the stored value is a verifier this object wrote, rather than anything else. */
     fun isVerifier(value: String?): Boolean {
         val parts = value?.trim()?.split(':') ?: return false
+        // Primitive arrays carry no `isNullOrEmpty`; each half has to be unwrapped on its own.
         return parts.size == 4 && parts[0] == PREFIX && (parts[1].toIntOrNull() ?: 0) > 0 &&
-            !decode(parts[2]).isNullOrEmpty() && !decode(parts[3]).isNullOrEmpty()
+            decode(parts[2])?.isNotEmpty() == true && decode(parts[3])?.isNotEmpty() == true
     }
 
     fun isAcceptable(password: String): Boolean = password.trim().length >= MIN_PASSWORD_CHARS

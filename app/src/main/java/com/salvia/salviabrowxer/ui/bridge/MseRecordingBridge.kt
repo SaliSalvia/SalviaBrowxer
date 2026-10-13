@@ -3,6 +3,7 @@ package com.salvia.salviabrowxer.ui.bridge
 import android.net.Uri
 import android.util.Log
 import android.webkit.WebView
+import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import com.salvia.salviabrowxer.ui.utils.MsePortPayload
@@ -38,7 +39,7 @@ class MseRecordingBridge(
         message: WebMessageCompat,
         sourceOrigin: Uri,
         isMainFrame: Boolean,
-        replyProxy: WebViewCompat.JavaScriptReplyProxy
+        replyProxy: JavaScriptReplyProxy
     ) {
         try {
             val origin = sourceOrigin.toString()

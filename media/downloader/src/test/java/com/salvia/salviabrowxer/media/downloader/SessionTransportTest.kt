@@ -122,6 +122,6 @@ class SessionTransportTest {
         val page = "https://cdn.example.com/watch/9"
 
         assertEquals(page, SessionReferer.headerFor(page, "https://cdn.example.com/clip.mp4"))
-        assertEquals("https://video.example.com/", SessionReferer.headerFor(pageUrl, "https://other.example.net/clip.mp4"))
+        assertEquals(expectedReferer, SessionReferer.headerFor(pageUrl, "https://other.example.net/clip.mp4"))
     }
 }

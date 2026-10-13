@@ -3,7 +3,7 @@ package com.salvia.salviabrowxer.data.security
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.security.crypto.MasterKeys
 
 /**
  * Where the locked folder keeps its password verifier.
@@ -56,13 +56,15 @@ class LockedFolderStore(private val context: Context) {
         const val KEY_VERIFIER = "password_verifier"
 
         fun openEncrypted(context: Context): SharedPreferences? = runCatching {
-            val masterKey = MasterKey.Builder(context, MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
+            // security-crypto 1.0.0: the AES-256-GCM master key is created under an alias in the
+            // Android keystore and handed to `create` as that alias. (`MasterKey.Builder` is the
+            // 1.1-alpha spelling of the same thing; this app ships stable dependencies, so the
+            // deprecated-in-alpha API is the correct one here.)
+            val alias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
             EncryptedSharedPreferences.create(
-                context,
                 ENCRYPTED_FILE,
-                masterKey,
+                alias,
+                context,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )

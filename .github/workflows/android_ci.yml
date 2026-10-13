@@ -62,7 +62,9 @@ jobs:
           set -o pipefail
           # Tee'd like the build steps: when this task is the one that fails, the log it wrote is
           # the only place the compiler and the test report say what went wrong.
-          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --stacktrace --no-daemon 2>&1 | tee gradle-test.log
+          # --continue: Gradle otherwise cancels the remaining tasks at the first failure, so an
+          # early module hides every later one and each push reveals a single error at a time.
+          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --continue --stacktrace --no-daemon 2>&1 | tee gradle-test.log
 
       - name: Upload unit test reports
         if: always()
@@ -183,7 +185,8 @@ jobs:
               if line not in seen:
                   seen.add(line)
                   unique.append(line)
-          chunk = "\n".join(unique[-120:])[:20000] or "No Gradle log and no JUnit failure was found on the runner."
+          # A compile failure can list a hundred errors; the cap is the comment limit, not taste.
+          chunk = "\n".join(unique[-400:])[:40000] or "No Gradle log and no JUnit failure was found on the runner."
           Path("gradle-failure.txt").write_text(chunk)
           print("----- GRADLE FAILURE -----")
           print(chunk)

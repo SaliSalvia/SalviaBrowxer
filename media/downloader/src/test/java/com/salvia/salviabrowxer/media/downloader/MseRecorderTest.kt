@@ -68,15 +68,18 @@ class MseRecorderTest {
 
     @Test
     fun `the cap stops the recording and reports what was kept`() {
-        val recorder = MseRecorder(dir(), maxBytes = 8L)
+        // The init segment has to fit, or the cap trips on the first append and the second one is
+        // simply "not recording" — which is what this test used to assert by accident.
+        val init = plainInitSegment()
+        val recorder = MseRecorder(dir(), maxBytes = init.size + 8L)
         recorder.start("clip", "video/mp4")
-        recorder.append(plainInitSegment())
+        assertEquals(MseRecorder.Append.CONTINUED, recorder.append(init))
 
         assertEquals(MseRecorder.Append.STOPPED_CAP, recorder.append(ByteArray(64)))
 
         val recording = recorder.finish()
         assertTrue(recording!!.capped)
-        assertEquals(plainInitSegment().size.toLong(), recording.bytes)
+        assertEquals(init.size.toLong(), recording.bytes)
     }
 
     @Test
