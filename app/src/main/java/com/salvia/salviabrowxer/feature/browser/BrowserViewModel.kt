@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -626,6 +627,9 @@ class BrowserViewModel @Inject constructor(
 
     fun closeMediaTray() { _uiState.update { it.copy(isMediaTrayVisible = false) } }
 
+    /** The result of one probe: the rows to show, and the honest reason when there are none. */
+    private data class ProbedMedia(val info: MediaInfo, val failure: UnsupportedMedia?, val hasOptions: Boolean)
+
     /**
      * Opens the quality sheet for one tray row. The sheet is filled immediately from what the
      * page already told us and refines itself when the probe returns — the page is never blocked.
@@ -633,6 +637,63 @@ class BrowserViewModel @Inject constructor(
      * manifest is probed, and only becomes a refusal when the probe finds nothing it can segment.
      */
     fun openQualitySheetFor(candidate: MediaCandidate) {
+        if (!presentResolvingSheet(candidate)) return
+        viewModelScope.launch {
+            val probed = probeMediaInfo(candidate)
+            _uiState.update { state ->
+                val current = state.qualitySheet ?: return@update state
+                if (current.candidate.mediaUrl != candidate.mediaUrl) return@update state
+                state.copy(
+                    qualitySheet = current.copy(
+                        mediaInfo = sheetMediaInfo(probed.info, probed.failure),
+                        isResolving = false,
+                        unsupported = probed.failure
+                    )
+                )
+            }
+            if (probed.failure != null) _messages.trySend(context.getString(messageFor(probed.failure)))
+        }
+    }
+
+    /**
+     * A tap on a tray row — or a pasted link — means "save this file", not "open a chooser".
+     *
+     * One probe decides between the two honest outcomes: a stream with exactly one selectable option
+     * is queued straight away (one tap, which is the point of the tray), and the quality sheet is
+     * only opened when there is a real choice to make — or when the file cannot be saved at all,
+     * because the sheet is where that reason is explained. A blob candidate always goes through the
+     * sheet: its bytes exist only inside the page's WebView, so reading it is a different action from
+     * fetching a URL.
+     */
+    fun downloadOrOffer(candidate: MediaCandidate) {
+        if (candidate.isBlobFile || unsupportedReasonFor(candidate) != null || isSightedOnAnotherPage(candidate)) {
+            openQualitySheetFor(candidate)
+            return
+        }
+        _uiState.update { it.copy(isMediaTrayVisible = false) }
+        _messages.trySend(context.getString(R.string.download_preparing))
+        viewModelScope.launch {
+            val probed = probeMediaInfo(candidate)
+            // Rows are compared by id *and* URL: several DASH renditions legitimately share one
+            // manifest URL, so a URL-only comparison would hide a real choice.
+            val options = probed.info.formats.ifEmpty { probed.info.combinedFormats }.distinctBy { it.id to it.url }
+            val single = options.singleOrNull()?.takeIf { probed.failure == null }
+            if (single == null) {
+                presentResolvedSheet(candidate, probed)
+                return@launch
+            }
+            // Read on this (main) thread: a WebView is main-thread-only, and enqueue() switches to IO.
+            val sessionUserAgent = _uiState.value.currentTabId?.let { webViewStore?.userAgent(it) }
+            enqueue(candidate, probed.info.title, single, sessionUserAgent)
+        }
+    }
+
+    /**
+     * Opens the sheet in its resolving state. Returns false when the sheet has already said all it
+     * can: an unsupported stream (the sheet explains instead of offering), or a sighting on a page
+     * the user has since left.
+     */
+    private fun presentResolvingSheet(candidate: MediaCandidate): Boolean {
         val unsupported = unsupportedReasonFor(candidate)
         // A stream no probe can help with is refused on its own terms, whatever page it came from:
         // its honest reason is more useful than a tray hint, and the tray would not offer it either.
@@ -640,76 +701,97 @@ class BrowserViewModel @Inject constructor(
         // user has since left, which is the shape where the sheet would show the wrong page's file.
         // A deliberate pasted file (`pageUrl == mediaUrl`) is not a sighting, so it is never held
         // back: it is a link the user handed over on purpose, not something a page exposed.
-        val sightedOnAnotherPage = _uiState.value.url.isNotBlank() &&
-            candidate.pageUrl != candidate.mediaUrl &&
-            !isOnCurrentDocument(_uiState.value.currentTabId, candidate.pageUrl)
-        if (unsupported == null && sightedOnAnotherPage) {
+        if (unsupported == null && isSightedOnAnotherPage(candidate)) {
             _messages.trySend(context.getString(R.string.home_media_tray_only_hint))
-            return
+            return false
         }
-        val info = mediaInfoFrom(candidate)
-        // Asked once per sheet, on the thread that owns the WebView: whether this device can hand the
-        // app a segment as bytes decides whether the recording action is offered or explained away.
-        val deviceCanRecord = webViewStore?.supportsMseRecording() == true
+        val canRecord = deviceCanRecord()
         _uiState.update {
             it.copy(
-                mseRecording = it.mseRecording.copy(isSupported = deviceCanRecord),
+                mseRecording = it.mseRecording.copy(isSupported = canRecord),
                 isMediaTrayVisible = false,
-                qualitySheet = QualitySheetState(
-                    candidate = candidate,
-                    // An unsupported stream still gets a title and a thumbnail to look at, but no
-                    // format at all: there is nothing selectable to offer.
-                    mediaInfo = if (unsupported == null) info else info.copy(
-                        formats = emptyList(), audioFormats = emptyList(),
-                        videoFormats = emptyList(), combinedFormats = emptyList()
-                    ),
-                    isResolving = unsupported == null,
-                    unsupported = unsupported,
-                    canRecord = deviceCanRecord && !candidate.isLive
-                )
+                qualitySheet = sheetState(candidate, mediaInfoFrom(candidate), unsupported, isResolving = true, deviceCanRecord = canRecord)
             )
         }
         if (unsupported != null) {
             _messages.trySend(context.getString(messageFor(unsupported)))
-            return
+            return false
         }
+        return true
+    }
+
+    /** Opens the sheet with a probe that has already finished, so no URL is fetched twice. */
+    private fun presentResolvedSheet(candidate: MediaCandidate, probed: ProbedMedia) {
+        val canRecord = deviceCanRecord()
+        _uiState.update {
+            it.copy(
+                mseRecording = it.mseRecording.copy(isSupported = canRecord),
+                isMediaTrayVisible = false,
+                qualitySheet = sheetState(candidate, probed.info, probed.failure, isResolving = false, deviceCanRecord = canRecord)
+            )
+        }
+        if (probed.failure != null) _messages.trySend(context.getString(messageFor(probed.failure)))
+    }
+
+    private fun sheetState(
+        candidate: MediaCandidate,
+        info: MediaInfo,
+        unsupported: UnsupportedMedia?,
+        isResolving: Boolean,
+        deviceCanRecord: Boolean
+    ): QualitySheetState = QualitySheetState(
+        candidate = candidate,
+        mediaInfo = sheetMediaInfo(info, unsupported),
+        isResolving = isResolving,
+        unsupported = unsupported,
+        canRecord = deviceCanRecord && !candidate.isLive
+    )
+
+    /** An unsupported sheet keeps a title and a poster but nothing selectable. */
+    private fun sheetMediaInfo(info: MediaInfo, unsupported: UnsupportedMedia?): MediaInfo =
+        if (unsupported == null) info else info.copy(
+            formats = emptyList(), audioFormats = emptyList(),
+            videoFormats = emptyList(), combinedFormats = emptyList()
+        )
+
+    /** Asked once per sheet, on the thread that owns the WebView. */
+    private fun deviceCanRecord(): Boolean = webViewStore?.supportsMseRecording() == true
+
+    private fun isSightedOnAnotherPage(candidate: MediaCandidate): Boolean =
+        _uiState.value.url.isNotBlank() &&
+            candidate.pageUrl != candidate.mediaUrl &&
+            !isOnCurrentDocument(_uiState.value.currentTabId, candidate.pageUrl)
+
+    /**
+     * One probe of the candidate, shaped for both callers: the sheet shows the rows, and the
+     * one-tap path counts them.
+     */
+    private suspend fun probeMediaInfo(candidate: MediaCandidate): ProbedMedia {
         // No explicit dispatcher: the resolver already switches to IO internally, and staying on the
         // view-model's own scope keeps the probe ordered behind the sheet state it updates.
-        viewModelScope.launch {
-            // Probe as the page: the sheet is built from what this call returns, and a bare probe
-            // against a session-guarded CDN answered nothing at all while the media played fine.
-            val probeUserAgent = _uiState.value.currentTabId?.let { webViewStore?.userAgent(it) }
-            val resolved = runCatching {
-                mediaResolver.resolve(candidate.mediaUrl, candidate.pageUrl.takeIf { it.isNotBlank() }, probeUserAgent)
-            }.getOrNull()
-            val synthesized = mediaInfoFrom(candidate)
-            // When the probe described the stream, its rows are the truth. Several DASH renditions
-            // share one manifest URL, so they must not be de-duplicated by URL — the fallback is
-            // only used when the probe found nothing to segment.
-            val hasResolvedFormats = resolved != null && (resolved.combinedFormats.isNotEmpty() || resolved.audioFormats.isNotEmpty())
-            val merged = if (hasResolvedFormats) {
-                val info = resolved!!
-                info.copy(
-                    title = info.title.ifBlank { synthesized.title },
-                    thumbnail = info.thumbnail ?: synthesized.thumbnail,
-                    formats = info.formats.ifEmpty { info.combinedFormats }
-                )
-            } else {
-                synthesized
-            }
-            val failure = if (!hasResolvedFormats && isDashCandidate(candidate)) UnsupportedMedia.DASH else null
-            // An unsupported sheet keeps a title and a poster but nothing selectable, so no row can
-            // ever turn a refused stream into a download.
-            val presented = if (failure == null) merged else merged.copy(
-                formats = emptyList(), audioFormats = emptyList(), videoFormats = emptyList(), combinedFormats = emptyList()
+        // Probe as the page: the sheet is built from what this call returns, and a bare probe
+        // against a session-guarded CDN answered nothing at all while the media played fine.
+        val probeUserAgent = _uiState.value.currentTabId?.let { webViewStore?.userAgent(it) }
+        val resolved = runCatching {
+            mediaResolver.resolve(candidate.mediaUrl, candidate.pageUrl.takeIf { it.isNotBlank() }, probeUserAgent)
+        }.getOrNull()
+        val synthesized = mediaInfoFrom(candidate)
+        // When the probe described the stream, its rows are the truth. Several DASH renditions
+        // share one manifest URL, so they must not be de-duplicated by URL — the fallback is
+        // only used when the probe found nothing to segment.
+        val hasResolvedFormats = resolved != null && (resolved.combinedFormats.isNotEmpty() || resolved.audioFormats.isNotEmpty())
+        val merged = if (hasResolvedFormats) {
+            val info = resolved!!
+            info.copy(
+                title = info.title.ifBlank { synthesized.title },
+                thumbnail = info.thumbnail ?: synthesized.thumbnail,
+                formats = info.formats.ifEmpty { info.combinedFormats }
             )
-            _uiState.update { state ->
-                val current = state.qualitySheet ?: return@update state
-                if (current.candidate.mediaUrl != candidate.mediaUrl) return@update state
-                state.copy(qualitySheet = current.copy(mediaInfo = presented, isResolving = false, unsupported = failure))
-            }
-            if (failure != null) _messages.trySend(context.getString(messageFor(failure)))
+        } else {
+            synthesized
         }
+        val failure = if (!hasResolvedFormats && isDashCandidate(candidate)) UnsupportedMedia.DASH else null
+        return ProbedMedia(merged, failure, hasResolvedFormats)
     }
 
     fun closeQualitySheet() { _uiState.update { it.copy(qualitySheet = null) } }
@@ -1097,8 +1179,6 @@ class BrowserViewModel @Inject constructor(
 
     // region downloads
     fun enqueueDownload(format: MediaFormat) {
-        // Blob reads must stay inside the owning WebView and only follow an explicit selection.
-        if (format.url.startsWith("blob:", ignoreCase = true)) return
         val sheet = _uiState.value.qualitySheet ?: return
         val candidate = sheet.candidate
         // Defence in depth: an unsupported stream must never reach the queue, even if a future
@@ -1111,7 +1191,27 @@ class BrowserViewModel @Inject constructor(
         // Read on this (main) thread: a WebView is main-thread-only, and the coroutine below runs on IO.
         val sessionUserAgent = _uiState.value.currentTabId?.let { webViewStore?.userAgent(it) }
         viewModelScope.launch(Dispatchers.IO) {
-            val title = sheet.mediaInfo.title.takeIf { it.isNotBlank() } ?: candidate.pageUrl
+            enqueue(candidate, sheet.mediaInfo.title, format, sessionUserAgent)
+        }
+    }
+
+    /**
+     * The one place a download row is created and handed to the service.
+     *
+     * Blob reads must stay inside the owning WebView and only follow an explicit selection, so a
+     * `blob:` URL can never become a row through here — the format selection path routes it to the
+     * page's own reader instead.
+     */
+    private suspend fun enqueue(candidate: MediaCandidate, mediaTitle: String, format: MediaFormat, sessionUserAgent: String?) {
+        if (format.url.startsWith("blob:", ignoreCase = true)) return
+        // Defence in depth for the one-tap path, which reaches here without a sheet to check first.
+        val unsupported = unsupportedReasonFor(candidate)
+        if (unsupported != null) {
+            _messages.trySend(context.getString(messageFor(unsupported)))
+            return
+        }
+        withContext(Dispatchers.IO) {
+            val title = mediaTitle.takeIf { it.isNotBlank() } ?: candidate.pageUrl
             val extension = format.extension.takeIf { it.isNotBlank() } ?: com.salvia.salviabrowxer.media.downloader.DownloadManager.extensionFromUrl(format.url)
             val filename = sanitizeFilename(com.salvia.salviabrowxer.media.downloader.DownloadManager.generateFilename(title, extension))
             val destination = runCatching { downloadRepository.getDefaultDownloadDestination() }.getOrNull()?.takeIf { it.isNotBlank() }
@@ -1220,7 +1320,9 @@ class BrowserViewModel @Inject constructor(
         // A deliberate pasted file is not a WebView sighting; it need not match the page URL.
         _uiState.update { state -> state.copy(detectedMedia =
             MediaCandidateIndex.merge(state.detectedMedia, listOf(candidate), state.visibleMediaUrl)) }
-        openQualitySheetFor(candidate)
+        // Same rule as a tray tap: a link that names one file is one tap, and the sheet appears only
+        // when the probe finds a real choice to make.
+        downloadOrOffer(candidate)
     }
 
     /** Opens a URL handed to the app by ACTION_VIEW or ACTION_SEND in its own tab. */

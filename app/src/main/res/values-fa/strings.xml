@@ -49,6 +49,7 @@
     <string name="tab_open">گشودن این زبانه</string>
     <string name="find_query_field">متنی که در صفحه جست‌وجو می‌شود</string>
     <string name="download_enqueued">به صف دانلود افزوده شد</string>
+    <string name="download_preparing">در حال بررسی فایل…</string>
     <string name="download_waiting_for_wifi">در انتظار Wi-Fi</string>
     <string name="notifications_denied_downloads_anyway">دانلود ادامه می‌یابد — اعلان‌ها خاموش می‌مانند</string>
 

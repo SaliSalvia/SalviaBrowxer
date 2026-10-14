@@ -443,7 +443,7 @@ fun BrowserScreen(
                 candidates = state.detectedMedia,
                 visibleMediaUrl = state.visibleMediaUrl,
                 unsupportedReason = remember(viewModel) { { candidate -> viewModel.unsupportedReasonFor(candidate) } },
-                onSelect = remember(viewModel) { { candidate -> viewModel.openQualitySheetFor(candidate) } },
+                onSelect = remember(viewModel) { { candidate -> viewModel.downloadOrOffer(candidate) } },
                 onDismiss = remember(viewModel) { { viewModel.closeMediaTray() } }
             )
         }

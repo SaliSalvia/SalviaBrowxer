@@ -48,6 +48,7 @@
     <string name="tab_open">Open this tab</string>
     <string name="find_query_field">Text to find on the page</string>
     <string name="download_enqueued">Added to download queue</string>
+    <string name="download_preparing">Checking the file…</string>
     <string name="download_waiting_for_wifi">Waiting for Wi-Fi</string>
     <string name="notifications_denied_downloads_anyway">Downloading anyway — notifications stay off</string>
 
