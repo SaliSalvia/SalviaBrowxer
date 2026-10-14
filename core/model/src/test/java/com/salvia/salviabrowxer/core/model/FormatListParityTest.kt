@@ -88,12 +88,25 @@ class FormatListParityTest {
 
     @Test
     fun `a document type is never classified as a playlist or a segment`() {
-        // `manifest`, `m3u8` and byte-range markers are the three shapes that used to misfire; a
-        // document URL must not trip any of them.
+        // `m3u8` names and byte-range query markers are the two shapes that could misfire here.
         for (extension in publishedDocuments) {
-            val url = "https://example.com/hls/manifest.$extension"
+            val url = "https://example.com/files/report.$extension"
             assertFalse(MediaUrlRules.isPlaylistUrl(url), url)
             assertFalse(MediaUrlRules.looksLikeSegment(url), url)
+            assertTrue(MediaUrlRules.looksLikeNonMedia(url), url)
         }
+    }
+
+    @Test
+    fun `a file literally called manifest is a playlist whatever its extension`() {
+        // Deliberate, and the reason the check above uses an ordinary document URL: players and CDNs
+        // serve HLS and DASH manifests with no extension at all, so the name `manifest` is a stronger
+        // signal than a document extension, and the download listener - not the sniffer - owns a file
+        // whose name reads like a document. The rule is written down here so that a future change to
+        // it has to change this test too.
+        assertTrue(MediaUrlRules.isPlaylistUrl("https://example.com/hls/manifest"))
+        assertTrue(MediaUrlRules.isPlaylistUrl("https://example.com/hls/manifest.doc"))
+        assertFalse(MediaUrlRules.isPlaylistUrl("https://example.com/app.webmanifest"))
+        assertFalse(MediaUrlRules.isPlaylistUrl("https://example.com/files/manifest.json"))
     }
 }
