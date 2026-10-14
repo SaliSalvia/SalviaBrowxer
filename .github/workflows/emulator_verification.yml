@@ -97,15 +97,32 @@ jobs:
           lines = []
 
           # First the build itself: an error here means no test ever ran, and the log is the only
-          # place the reason exists.
+          # place the reason exists. Gradle explains itself in a block after 'What went wrong:', so
+          # that block is read as well as any compiler line - and when nothing matched at all, the
+          # tail is reported, because a failure with no explanation is worse than a long one.
           log = Path("gradle-instrumented.log")
           if log.exists():
               stage = ""
-              for raw in log.read_text(errors="replace").splitlines():
-                  if raw.startswith("=== STAGE: "):
-                      stage = raw.replace("=== STAGE: ", "").strip()
-                  elif raw.startswith("e: ") or " error: " in raw or raw.startswith("FAILURE:"):
-                      lines.append(f"[{stage}] {raw.strip()[:400]}")
+              text = log.read_text(errors="replace").splitlines()
+              for index, raw in enumerate(text):
+                  stripped = raw.strip()
+                  if stripped.startswith("=== STAGE: "):
+                      stage = stripped.replace("=== STAGE: ", "").strip().rstrip("=").strip()
+                  elif stripped.startswith("e: "):
+                      lines.append(f"[{stage}] {stripped[:400]}")
+                  elif (
+                      stripped.startswith("FAILURE:")
+                      or stripped.startswith("* What went wrong:")
+                      or (stripped.startswith("> Task ") and stripped.endswith("FAILED"))
+                  ):
+                      lines.append(f"[{stage}] {stripped[:400]}")
+                      if stripped.startswith("* What went wrong:"):
+                          for follow in text[index + 1:index + 8]:
+                              if follow.strip():
+                                  lines.append(f"[{stage}]   {follow.strip()[:400]}")
+              if not lines:
+                  tail = [line.strip() for line in text if line.strip()][-25:]
+                  lines.extend(f"[tail] {line[:400]}" for line in tail)
 
           for xml_path in sorted(glob.glob("**/build/outputs/androidTest-results/**/*.xml", recursive=True)):
               try:
