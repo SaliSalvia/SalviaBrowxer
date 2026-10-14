@@ -107,6 +107,25 @@ class AdBlockerTest {
     }
 
     @Test
+    fun `a playlist by name is not blocked either, because the tray would offer it`() {
+        AdBlockState.isEnabled = true
+
+        // The app's own playlist rule calls anything named `manifest.<x>` (or `.m3u8`) a playlist, and
+        // the media observer admits exactly that. A blocker that disagreed would delete the request
+        // the tray was about to offer.
+        assertFalse(blocker.shouldBlock("https://tracker.io/live/manifest.live", "https://example.com/a"))
+        assertEquals(0, AdBlockState.blockedThisRun)
+    }
+
+    @Test
+    fun `a web app manifest is not a playlist and stays blockable`() {
+        AdBlockState.isEnabled = true
+
+        // `.json`/`.webmanifest`/`.xml` are explicitly not playlists: they are the browser's own files.
+        assertTrue(blocker.shouldBlock("https://tracker.io/manifest.json", "https://example.com/a"))
+    }
+
+    @Test
     fun `a media URL with a query string is still media`() {
         AdBlockState.isEnabled = true
 

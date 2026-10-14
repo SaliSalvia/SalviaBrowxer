@@ -163,9 +163,16 @@ object AdBlockRules {
      */
     fun isMediaRequest(url: String): Boolean {
         val path = url.substringBefore('#').substringBefore('?')
-        val extension = MediaUrlRules.pathExtension(path) ?: return false
-        if (extension in MediaUrlRules.MEDIA_EXTENSIONS) return true
-        if (extension in MediaUrlRules.SEGMENT_EXTENSIONS) return true
-        return extension == MediaUrlRules.DASH_EXTENSION
+        val extension = MediaUrlRules.pathExtension(path)
+        val byExtension = extension != null &&
+            (extension in MediaUrlRules.MEDIA_EXTENSIONS ||
+                extension in MediaUrlRules.SEGMENT_EXTENSIONS ||
+                extension == MediaUrlRules.DASH_EXTENSION)
+        if (byExtension) return true
+        // The same rule the rest of the app calls a playlist, because a URL like `.../manifest.live`
+        // is admitted by the observer and offered in the tray. If the blocker disagreed it would
+        // remove traffic the app itself considers the thing the user came for, and the block list
+        // only holds ad hosts - which are not the hosts serving a page's own playlists.
+        return MediaUrlRules.isPlaylistUrl(url, null)
     }
 }

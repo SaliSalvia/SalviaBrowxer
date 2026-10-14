@@ -51,6 +51,9 @@ class WebViewClientWrapper(
         onCandidate = { candidate -> safe("onMediaDetected") { onMediaDetectedHook(candidate) } }
     )
 
+    /** The order every request meets: the blocker's veto, then the observer. */
+    private val interception = RequestInterception(adBlocker, requestObserver)
+
     /**
      * Returning `true` says the crash was handled. Returning `false` — the default — makes the
      * framework treat a dead renderer as an unrecoverable app error and kill the whole process, so a
@@ -124,13 +127,18 @@ class WebViewClientWrapper(
     }
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-        val url = request?.url?.toString()
-        // The blocker decides first, and a blocked request is answered here: no observer call, no
-        // network, nothing for the tray to report. [AdBlockRules] is what keeps media, playlists,
-        // segments, loopback addresses and the page's own host out of its reach.
-        if (adBlocker.shouldBlock(url, currentPageUrl)) return blockedResponse()
         val range = request?.requestHeaders?.entries?.firstOrNull { it.key.equals("Range", true) }?.value
-        requestObserver.onRequest(url, request?.method, range)
+        // One decision, taken in [RequestInterception]: the blocker first, so a blocked request is
+        // answered here and never observed, never offered in the tray and never sent. [AdBlockRules]
+        // is what keeps media, playlists, segments, loopback addresses and the page's own host out of
+        // the blocker's reach.
+        val decision = interception.decide(
+            url = request?.url?.toString(),
+            method = request?.method,
+            range = range,
+            pageUrl = currentPageUrl
+        )
+        if (decision == RequestInterception.Decision.BLOCKED) return blockedResponse()
         return super.shouldInterceptRequest(view, request)
     }
 
