@@ -20,14 +20,14 @@ object AdBlockState {
     @Volatile
     var disabledSites: Set<String> = emptySet()
 
-    private val blockedThisRun = AtomicInteger(0)
+    private val blockedCounter = AtomicInteger(0)
 
     /** How many requests this run has answered with nothing. Shown next to the settings row. */
-    val blockedThisRun: Int get() = blockedThisRun.get()
+    val blockedThisRun: Int get() = blockedCounter.get()
 
     /** Called once per blocked request; the counter is what makes the feature debuggable. */
     fun recordBlocked() {
-        blockedThisRun.incrementAndGet()
+        blockedCounter.incrementAndGet()
         pendingFlush.incrementAndGet()
     }
 
@@ -38,7 +38,7 @@ object AdBlockState {
     fun resetForTest() {
         isEnabled = false
         disabledSites = emptySet()
-        blockedThisRun.set(0)
+        blockedCounter.set(0)
         pendingFlush.set(0)
     }
 }
