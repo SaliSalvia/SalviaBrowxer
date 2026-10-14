@@ -50,6 +50,10 @@ data class SettingsUiState(
     /** Finished downloads are published to the shared media store so galleries can see them. */
     val isExportToGallery: Boolean = true,
     val isCleartextAllowed: Boolean = false,
+    /** Opt-in ad blocking, plus what it has done: blocked requests and sites the user exempted. */
+    val isAdBlockEnabled: Boolean = false,
+    val adBlockBlockedRequests: Int = 0,
+    val adBlockDisabledSiteCount: Int = 0,
     /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
     val isFloatingButtonAlwaysVisible: Boolean = false,
     val floatingButtonSize: Int = 56,
@@ -177,6 +181,13 @@ class SettingsViewModel @Inject constructor(
             launch { settingsDataStore.isWifiOnly.collectLatest { value -> mutate { copy(isWifiOnly = value) } } }
             launch { settingsDataStore.isExportToGallery.collectLatest { value -> mutate { copy(isExportToGallery = value) } } }
             launch { settingsDataStore.isCleartextAllowed.collectLatest { value -> mutate { copy(isCleartextAllowed = value) } } }
+            launch { settingsDataStore.isAdBlockEnabled.collectLatest { value -> mutate { copy(isAdBlockEnabled = value) } } }
+            launch { settingsDataStore.adBlockBlockedRequests.collectLatest { value -> mutate { copy(adBlockBlockedRequests = value) } } }
+            launch {
+                settingsDataStore.adBlockDisabledSites.collectLatest { value ->
+                    mutate { copy(adBlockDisabledSiteCount = value.size) }
+                }
+            }
             launch {
                 settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { value ->
                     mutate { copy(isFloatingButtonAlwaysVisible = value) }
@@ -243,6 +254,13 @@ class SettingsViewModel @Inject constructor(
         mutate { copy(parallelConnections = connections) }
         viewModelScope.launch {
             runCatching { settingsDataStore.setParallelConnections(connections) }
+        }
+    }
+
+    fun updateAdBlock(enabled: Boolean) {
+        mutate { copy(isAdBlockEnabled = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setAdBlockEnabled(enabled) }
         }
     }
 

@@ -12,6 +12,9 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -108,6 +111,39 @@ class SettingsViewModelTest {
         coVerify(exactly = 1) { settingsDataStore.setCookiesEnabled(false) }
         coVerify(exactly = 1) { settingsDataStore.setWifiOnly(true) }
         coVerify(exactly = 1) { settingsDataStore.setCleartextAllowed(true) }
+    }
+
+    @Test
+    fun `the ad blocker switch persists, and starts off`() {
+        // Default off is the whole safety story of this feature: the app must never start blocking
+        // requests the user did not ask it to block.
+        assertFalse("ad blocking must be off until the user turns it on", viewModel.uiState.value.isAdBlockEnabled)
+
+        viewModel.updateAdBlock(true)
+
+        assertTrue(viewModel.uiState.value.isAdBlockEnabled)
+        coVerify(timeout = 5_000, exactly = 1) { settingsDataStore.setAdBlockEnabled(true) }
+    }
+
+    @Test
+    fun `the ad blocker row reports what it blocked and how many sites are exempt`() = runTest {
+        coEvery { settingsDataStore.adBlockBlockedRequests } returns flowOf(42)
+        coEvery { settingsDataStore.adBlockDisabledSites } returns flowOf(setOf("example.com", "news.example"))
+
+        val fresh = SettingsViewModel(
+            settingsDataStore = settingsDataStore,
+            historyRepository = historyRepository,
+            downloadRepository = downloadRepository,
+            storageManager = storageManager,
+            lockedFolderStore = lockedFolderStore,
+            safDestinationStore = safDestinationStore,
+            context = context
+        )
+
+        val state = withContext(Dispatchers.Default) {
+            withTimeout(5_000L) { fresh.uiState.first { it.adBlockBlockedRequests == 42 } }
+        }
+        assertEquals(2, state.adBlockDisabledSiteCount)
     }
 
     @Test

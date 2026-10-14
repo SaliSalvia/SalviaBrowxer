@@ -140,6 +140,14 @@
     <string name="settings_simultaneous_downloads">Simultaneous Downloads</string>
     <string name="settings_parallel_connections">Several connections per download</string>
     <string name="settings_parallel_connections_hint">On by default. A direct file is fetched over a few Range connections at once and joined, which is faster whenever the server limits each connection. Pausing, resuming and retrying still work per piece. A server that cannot serve ranges is detected and the file is fetched on one connection</string>
+    <string name="settings_ad_block">Block ads and trackers</string>
+    <string name="settings_ad_block_hint">Off by default. Known ad and tracker hosts are answered with an empty response; video, audio, playlists and the page you are on are never blocked.</string>
+    <string name="settings_ad_block_stats">%1$d requests blocked · %2$d sites exempted</string>
+    <string name="ad_block_disable_here">Off for this site</string>
+    <string name="ad_block_enable_here">On for this site</string>
+    <string name="ad_block_off_here">Ad blocking is off on %s</string>
+    <string name="ad_block_on_here">Ad blocking is on again on %s</string>
+    <string name="ad_block_no_site">Open a page first</string>
     <string name="settings_wifi_only">Wi-Fi only downloads</string>
     <string name="settings_wifi_only_hint">Off by default. Downloads use whatever connection you have — mobile data included — until you turn this on</string>
     <string name="settings_export_to_gallery">Show downloads in the gallery</string>

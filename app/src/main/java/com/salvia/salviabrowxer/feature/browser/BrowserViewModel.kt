@@ -31,6 +31,7 @@ import com.salvia.salviabrowxer.core.model.PastedLink
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.service.DownloadService
 import com.salvia.salviabrowxer.service.MseRecordingController
+import com.salvia.salviabrowxer.ui.utils.AdBlockRules
 import com.salvia.salviabrowxer.ui.utils.AddressBarResolver
 import com.salvia.salviabrowxer.ui.utils.CleartextPolicy
 import com.salvia.salviabrowxer.ui.utils.Constants
@@ -92,7 +93,10 @@ data class BrowserUiState(
     val isJavaScriptEnabled: Boolean = true,
     val areCookiesEnabled: Boolean = true,
     val isDesktopSite: Boolean = false,
-    val isCleartextAllowed: Boolean = false,
+    val isCleartextAllowed: Boolean = false
+    /** Opt-in ad blocking, and the sites the user has exempted from it. */
+    val isAdBlockEnabled: Boolean = false,
+    val adBlockDisabledSites: Set<String> = emptySet(),
     /** Set when http:// navigation was refused, so the chrome can explain it and offer to allow. */
     val blockedCleartextUrl: String? = null,
     val activeDownloadCount: Int = 0,
@@ -315,6 +319,16 @@ class BrowserViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { enabled ->
                 _uiState.update { it.copy(isFabAlwaysVisible = enabled) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.isAdBlockEnabled.collectLatest { enabled ->
+                _uiState.update { it.copy(isAdBlockEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.adBlockDisabledSites.collectLatest { sites ->
+                _uiState.update { it.copy(adBlockDisabledSites = sites) }
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -1346,6 +1360,40 @@ class BrowserViewModel @Inject constructor(
     fun openExternalUrl(url: String) {
         val target = AddressBarResolver.resolve(url, _uiState.value.searchEngine) ?: return
         createNewTab(url = target)
+    }
+
+    /**
+     * The host of the page on screen, as the exempt list stores it.
+     *
+     * A page the browser has no URL for cannot be exempted or un-exempted — the honest answer is
+     * "nothing to act on" rather than acting on the wrong site.
+     */
+    private fun currentSiteHost(): String? = AdBlockRules.hostOf(_uiState.value.url)
+
+    /** True when the current site is on the user's exempt list. */
+    fun isAdBlockOffForCurrentSite(): Boolean {
+        val host = currentSiteHost() ?: return false
+        return _uiState.value.adBlockDisabledSites.any { AdBlockRules.matchesDomain(host, it) }
+    }
+
+    /**
+     * Turns ad blocking off (or back on) for the whole site being viewed.
+     *
+     * Exempting a site is the escape hatch every ad blocker needs: a page that breaks when its ad
+     * script is answered with nothing must be fixable without hunting for the global switch, and the
+     * exemption is remembered per host rather than for one tab.
+     */
+    fun toggleAdBlockForCurrentSite() {
+        val host = currentSiteHost()
+        if (host == null) {
+            _messages.trySend(context.getString(R.string.ad_block_no_site))
+            return
+        }
+        val disable = !isAdBlockOffForCurrentSite()
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { settingsDataStore.setAdBlockDisabledForSite(host, disable) }
+        }
+        _messages.trySend(context.getString(if (disable) R.string.ad_block_off_here else R.string.ad_block_on_here, host))
     }
 
     /** Hands tel:, mailto: and intent: URLs to the system; only ACTION_VIEW without a selector. */

@@ -141,6 +141,14 @@
     <string name="settings_simultaneous_downloads">دانلودهای هم‌زمان</string>
     <string name="settings_parallel_connections">چند اتصال برای هر دانلود</string>
     <string name="settings_parallel_connections_hint">به‌طور پیش‌فرض روشن. هر فایل مستقیم روی چند اتصال Range هم‌زمان گرفته و در پایان به هم می‌چسبد؛ هر جا سرور هر اتصال را محدود کند این سریع‌تر است. توقف، ادامه و تلاش دوباره همان‌طور سرِ جای خود کار می‌کنند. اگر سرور Range ندهد، خودش تشخیص داده می‌شود و فایل با یک اتصال گرفته می‌شود</string>
+    <string name="settings_ad_block">مسدودکردن تبلیغ و ردیاب</string>
+    <string name="settings_ad_block_hint">پیش‌فرض خاموش است. میزبان‌های شناخته‌شدهٔ تبلیغ و ردیاب با پاسخ خالی جواب می‌گیرند؛ ویدیو، صدا، فهرست پخش و صفحه‌ای که روی آن هستید هرگز مسدود نمی‌شوند.</string>
+    <string name="settings_ad_block_stats">%1$d درخواست مسدود شد · %2$d سایت مستثنا</string>
+    <string name="ad_block_disable_here">برای این سایت خاموش</string>
+    <string name="ad_block_enable_here">برای این سایت روشن</string>
+    <string name="ad_block_off_here">مسدودسازی روی %s خاموش شد</string>
+    <string name="ad_block_on_here">مسدودسازی روی %s دوباره روشن شد</string>
+    <string name="ad_block_no_site">اول یک صفحه باز کنید</string>
     <string name="settings_wifi_only">دانلود فقط با Wi-Fi</string>
     <string name="settings_wifi_only_hint">به‌طور پیش‌فرض خاموش. تا وقتی این را روشن نکنید، دانلودها با هر اتصالی انجام می‌شوند، از جمله دادهٔ همراه</string>
     <string name="settings_export_to_gallery">نمایش دانلودها در گالری</string>

@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
@@ -223,6 +224,15 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), stringResource(R.string.settings_downloads_at_a_time, state.maxSimultaneousDownloads)) { dialog = SettingsDialog.Downloads }
                 SwitchSettingsItem(Icons.Default.Sync, stringResource(R.string.settings_parallel_connections), stringResource(R.string.settings_parallel_connections_hint), state.parallelConnections > 1) { viewModel.updateParallelDownload(it) }
                 SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint), state.isWifiOnly) { viewModel.updateWifiOnly(it) }
+                // The numbers are part of the row on purpose: an ad blocker that cannot say what it
+                // blocked is indistinguishable from one that is doing nothing at all.
+                SwitchSettingsItem(
+                    Icons.Default.Block,
+                    stringResource(R.string.settings_ad_block),
+                    stringResource(R.string.settings_ad_block_hint) + "\n" +
+                        stringResource(R.string.settings_ad_block_stats, state.adBlockBlockedRequests, state.adBlockDisabledSiteCount),
+                    state.isAdBlockEnabled
+                ) { viewModel.updateAdBlock(it) }
                 SwitchSettingsItem(Icons.Default.Folder, stringResource(R.string.settings_export_to_gallery), stringResource(R.string.settings_export_to_gallery_hint), state.isExportToGallery) { viewModel.updateExportToGallery(it) }
                 SettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_connection_label), connectionLabel(connectionKind))
                 Spacer(Modifier.height(16.dp))

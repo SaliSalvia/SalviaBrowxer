@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Dashboard
@@ -266,6 +267,16 @@ fun BrowserScreen(
             isChecked = state.isDesktopSite,
             showsCheck = true
         ),
+        // Only offered while the feature is on: a per-site switch for a feature that is off is a
+        // menu entry that cannot do anything.
+        if (state.isAdBlockEnabled) {
+            BrowserMenuItem(
+                stringResource(if (viewModel.isAdBlockOffForCurrentSite()) R.string.ad_block_enable_here else R.string.ad_block_disable_here),
+                Icons.Default.Block,
+                onClick = { viewModel.toggleAdBlockForCurrentSite() },
+                isEnabled = hasPage
+            )
+        }
         BrowserMenuItem(stringResource(R.string.downloads), Icons.Default.Download, onClick = onNavigateToDownloads),
         BrowserMenuItem(stringResource(R.string.home_start_screen), Icons.Default.Dashboard, onClick = { onNavigateToHome?.invoke() }, isEnabled = onNavigateToHome != null),
         BrowserMenuItem(stringResource(R.string.settings), Icons.Default.Settings, onClick = onNavigateToSettings)

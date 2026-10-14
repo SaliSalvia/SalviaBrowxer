@@ -24,6 +24,15 @@ interface SettingsDataStore {
     val floatingButtonSize: Flow<Int>
     val floatingButtonX: Flow<Float>
     val floatingButtonY: Flow<Float>
+    /**
+     * Opt-in ad blocking. Off by default: blocking is a product decision the user makes, never a
+     * default the app imposes, and the blocker's own rules keep media out of its reach.
+     */
+    val isAdBlockEnabled: Flow<Boolean>
+    /** Hosts the user exempted ("off for this site"), matched label by label like the block list. */
+    val adBlockDisabledSites: Flow<Set<String>>
+    /** Lifetime count of blocked requests, shown under the settings row. */
+    val adBlockBlockedRequests: Flow<Int>
 
     suspend fun setSearchEngine(engine: String)
     suspend fun setHomepage(url: String)
@@ -38,6 +47,9 @@ interface SettingsDataStore {
     suspend fun setFloatingButtonAlwaysVisible(enabled: Boolean)
     suspend fun setFloatingButtonSize(size: Int)
     suspend fun setFloatingButtonPosition(x: Float, y: Float)
+    suspend fun setAdBlockEnabled(enabled: Boolean)
+    suspend fun setAdBlockDisabledForSite(site: String, disabled: Boolean)
+    suspend fun addAdBlockBlockedRequests(count: Int)
 
     companion object {
         /** Four is what the segmented fetcher already uses; more rarely helps and costs memory. */

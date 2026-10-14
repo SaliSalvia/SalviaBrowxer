@@ -31,6 +31,17 @@ versionName `1.0.0`.
   write history and are never restored (they are **not** a separate cookie jar - the WebView profile
   is shared, and the app says so in the tab switcher instead of implying isolation), find in page, share and copy link, five search engines, JavaScript and cookie
   toggles, and a desktop user-agent toggle that shows its state.
+- **Ad and tracker blocking (opt-in, off by default)** — a short, hand-written list of well-known
+  ad and tracker hosts, matched **label by label** on the request's host: `doubleclick.net` covers
+  `static.doubleclick.net` and never `notdoubleclick.net`. Blocked requests are answered with an
+  empty 200 before anything else looks at them, so a blocked ad cannot appear in the media tray as
+  something to download. Media, playlists and segments are **never** blocked, whatever host serves
+  them, and neither are loopback/private addresses or the page's own host — the app is a downloader
+  first, and a blocker that breaks the video would be a worse bug than an ad. The switch is off
+  until the user turns it on, the menu has **Off for this site** for a page that misbehaves, the
+  settings row shows how many requests were blocked and how many sites are exempt, and the whole
+  decision is local: no list is fetched from anywhere, and nothing about what was blocked leaves the
+  device.
 - **Library screens** — bookmarks (add from the browser menu, remove in the list) and history open
   in the current tab, with in-list search and per-row delete.
 - **Media detection** — four layers feeding one rule set:
@@ -282,7 +293,8 @@ below the automatic step skips silently and the “Save to gallery” action is 
 ## Privacy
 
 Pages are loaded by the sites you visit, downloads stay on the device, and the app has no account
-and no analytics. Backups and device transfer exclude the database, preferences, WebView cookies
+and no analytics. The optional ad blocker decides locally, against a list that ships inside the app:
+it fetches no list, reports nothing, and its counters stay in your settings. Backups and device transfer exclude the database, preferences, WebView cookies
 and cache. **Private tabs** keep no history and are not restored, but they are not a separate
 identity: cookies and site data are shared with normal tabs, the app says so in the tab switcher,
 and no privacy claim here goes further than that. A short privacy policy lives in [`docs/privacy-policy.md`](docs/privacy-policy.md).
