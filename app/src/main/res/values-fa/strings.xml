@@ -50,6 +50,7 @@
     <string name="tab_open">گشودن این زبانه</string>
     <string name="find_query_field">متنی که در صفحه جست‌وجو می‌شود</string>
     <string name="download_enqueued">به صف دانلود افزوده شد</string>
+    <string name="download_convert_needs_local_file">این فایل در پوشه‌ای است که خودتان انتخاب کرده‌اید، پس تبدیل در اینجا ممکن نیست — آن را از همان پوشه باز کنید</string>
     <string name="download_convert">تبدیل به MP4</string>
     <string name="download_convert_progress">در حال تبدیل… %1$d%%</string>
     <string name="download_convert_done">تبدیل شد: %s</string>
@@ -291,6 +292,11 @@
     <string name="action_unlock_download">بیرون آوردن از پوشهٔ رمزدار</string>
     <string name="download_locked">به پوشهٔ رمزدار منتقل شد و از گالری پاک شد. نسخه‌ای که پیش‌تر در پوشهٔ انتخابی شما ساخته شده، مال خودتان است و همان‌جا می‌ماند</string>
     <string name="download_unlocked">از پوشهٔ رمزدار بیرون آمد</string>
+    <string name="settings_destination_chosen_folder">ذخیره در پوشهٔ انتخابی</string>
+    <string name="settings_destination_chosen_folder_hint">فایل‌های تمام‌شده به پوشه‌ای که انتخاب کرده‌اید منتقل می‌شوند. تا پیش از آن، در فضای خود برنامه می‌مانند.</string>
+    <string name="settings_destination_needs_folder">اول یک پوشه انتخاب کنید</string>
+    <string name="settings_destination_chosen">دانلودهای تمام‌شده در پوشهٔ شما ذخیره می‌شوند</string>
+    <string name="settings_destination_internal">دانلودهای تمام‌شده در فضای خود برنامه می‌مانند</string>
     <string name="settings_sd_card_folder">نسخهٔ دوم دانلودها در پوشهٔ انتخابی</string>
     <string name="settings_sd_card_none">پوشه‌ای انتخاب نشده</string>
     <string name="action_clear_folder">توقف نسخه‌برداری</string>

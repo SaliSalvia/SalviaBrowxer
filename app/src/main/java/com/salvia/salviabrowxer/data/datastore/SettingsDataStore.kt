@@ -29,6 +29,14 @@ interface SettingsDataStore {
      * default the app imposes, and the blocker's own rules keep media out of its reach.
      */
     val isAdBlockEnabled: Flow<Boolean>
+    /**
+     * Where a finished download lives: the app's own storage, or the folder the user chose.
+     *
+     * `internal` is the default and keeps every feature (the player, share, the gallery export, the
+     * delete path) on a plain file. `tree` moves each finished file into the chosen folder — the
+     * choice is the user's, and it is the only mode in which the app writes to a provider.
+     */
+    val destinationMode: Flow<String>
     /** Hosts the user exempted ("off for this site"), matched label by label like the block list. */
     val adBlockDisabledSites: Flow<Set<String>>
     /** Lifetime count of blocked requests, shown under the settings row. */
@@ -47,6 +55,7 @@ interface SettingsDataStore {
     suspend fun setFloatingButtonAlwaysVisible(enabled: Boolean)
     suspend fun setFloatingButtonSize(size: Int)
     suspend fun setFloatingButtonPosition(x: Float, y: Float)
+    suspend fun setDestinationMode(mode: String)
     suspend fun setAdBlockEnabled(enabled: Boolean)
     suspend fun setAdBlockDisabledForSite(site: String, disabled: Boolean)
     suspend fun addAdBlockBlockedRequests(count: Int)
@@ -57,5 +66,11 @@ interface SettingsDataStore {
 
         /** Past this the connections compete with the player more than they help the download. */
         const val MAX_PARALLEL_CONNECTIONS = 8
+
+        /** Finished files stay in the app's own directory. */
+        const val DESTINATION_INTERNAL = "internal"
+
+        /** Finished files are moved into the folder the user picked with the system picker. */
+        const val DESTINATION_TREE = "tree"
     }
 }

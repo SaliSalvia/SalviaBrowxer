@@ -49,6 +49,7 @@
     <string name="tab_open">Open this tab</string>
     <string name="find_query_field">Text to find on the page</string>
     <string name="download_enqueued">Added to download queue</string>
+    <string name="download_convert_needs_local_file">This file lives in the folder you chose, so it cannot be converted here — open it from that folder instead</string>
     <string name="download_convert">Convert to MP4</string>
     <string name="download_convert_progress">Converting… %1$d%%</string>
     <string name="download_convert_done">Converted: %s</string>
@@ -290,6 +291,11 @@
     <string name="action_unlock_download">Take out of the locked folder</string>
     <string name="download_locked">Moved into the locked folder and removed from the gallery. A copy that was already made in your chosen folder is yours and stays there</string>
     <string name="download_unlocked">Taken out of the locked folder</string>
+    <string name="settings_destination_chosen_folder">Save into the chosen folder</string>
+    <string name="settings_destination_chosen_folder_hint">Finished files are moved into the folder you picked. Until then they stay in the app\'s own storage.</string>
+    <string name="settings_destination_needs_folder">Choose a folder first</string>
+    <string name="settings_destination_chosen">Finished downloads will be saved in your folder</string>
+    <string name="settings_destination_internal">Finished downloads will stay in the app\'s own storage</string>
     <string name="settings_sd_card_folder">Also copy downloads to a chosen folder</string>
     <string name="settings_sd_card_none">No folder chosen</string>
     <string name="action_clear_folder">Stop copying</string>

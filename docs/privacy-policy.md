@@ -19,6 +19,8 @@ data to the developer, and it collects nothing about you.
   would. The site can see your IP address, your user-agent and the cookies it sets, under that
   site's own privacy policy. The developer of SalviaBrowxer never sees this traffic.
 - **Downloads.** Files you download are written to the app's private storage on your device
+  (or, if you switch on *Save into the chosen folder*, moved into the folder you picked with the
+  system file picker — a folder you chose, using a permission Android gave the app for that folder)
   (`Android/data/com.salvia.salviabrowxer/files/Downloads`) and stay there until you delete or share
   them. Finished files are handed to Android's media scanner so they also appear in the system
   downloads view.

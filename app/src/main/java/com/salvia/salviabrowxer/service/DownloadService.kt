@@ -31,6 +31,7 @@ import com.salvia.salviabrowxer.core.storage.SafDocumentExporter
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
+import com.salvia.salviabrowxer.data.storage.DestinationPolicy
 import com.salvia.salviabrowxer.data.storage.SafDestinationStore
 import com.salvia.salviabrowxer.service.queue.DownloadWorkQueue
 import com.salvia.salviabrowxer.service.queue.SegmentedRetryPolicy
@@ -249,12 +250,12 @@ class DownloadService : Service() {
                 }
             }
 
-            val finalized = finalizeTransfer(stored, transfer)
-            downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.COMPLETED, downloadedBytes = finalized.file.length(), totalBytes = finalized.file.length(), finalPath = finalized.file.absolutePath, mimeType = finalized.mimeType)
+            val finalized = applyDestinationPlan(finalizeTransfer(stored, transfer))
+            downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.COMPLETED, downloadedBytes = finalized.sizeBytes, totalBytes = finalized.sizeBytes, finalPath = finalized.path, mimeType = finalized.mimeType)
             downloadRepository.updateDownloadArtifacts(
                 id = downloadId,
-                finalPath = finalized.file.absolutePath,
-                filename = finalized.file.name,
+                finalPath = finalized.path,
+                filename = finalized.fileName,
                 mimeType = finalized.mimeType,
                 durationMs = finalized.durationMs,
                 thumbnail = finalized.thumbnailPath,
@@ -263,8 +264,8 @@ class DownloadService : Service() {
             // The staged bytes are no longer needed once the result exists; the result itself is
             // protected by the cleaner (a DASH file that could not be remuxed keeps its staged name).
             artifactCleaner.cleanTransferStaging(stored)
-            scanFile(finalized.file)
-            notifyCompleted(stored, finalized.file)
+            finalized.file?.let { file -> scanFile(file); notifyCompleted(stored, file) }
+                ?: notifyCompleted(stored, null, finalized.sizeBytes)
         } catch (aborted: DownloadAbortedException) {
             if (aborted.reason == AbortReason.CANCELLED) { artifactCleaner.cleanTransferStaging(stored); downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel)) }
             else downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
@@ -317,8 +318,19 @@ class DownloadService : Service() {
     /** What a transfer produced, and whether a container rewrite is still owed on it. */
     private class Transfer(val file: File, val contentType: String?, val remuxToMp4: Boolean)
 
+    /**
+     * What a finished transfer produced.
+     *
+     * [path] is what the row stores: an absolute path in the normal case, and the document's
+     * `content://` URI when the user has chosen a folder as the primary destination. [file] is null in
+     * that case — the file is no longer reachable as a `File` — which is why every consumer takes the
+     * path and the size instead of assuming a file.
+     */
     private class Finalized(
-        val file: File,
+        val path: String,
+        val fileName: String,
+        val file: File?,
+        val sizeBytes: Long,
         val mimeType: String?,
         val durationMs: Long?,
         val thumbnailPath: String?,
@@ -512,7 +524,11 @@ class DownloadService : Service() {
             // request, and the gallery export below is a setting. A tree that cannot be reached is
             // skipped rather than fatal — the download itself is already complete.
             val destination = runCatching { safDestinationStore.destination.first() }.getOrNull()
-            if (destination != null) {
+            val mode = runCatching { settingsDataStore.destinationMode.first() }
+                .getOrDefault(SettingsDataStore.DESTINATION_INTERNAL)
+            // In `tree` mode this file is about to *move* into that folder, so copying it here would
+            // leave two identical files in the user's own folder.
+            if (destination != null && mode != SettingsDataStore.DESTINATION_TREE) {
                 exportedUri = safDocumentExporter.copyInto(destination.treeUri, file, mimeType, file.name)
             }
             if (exportedUri == null) {
@@ -524,7 +540,53 @@ class DownloadService : Service() {
             }
         }
 
-        return Finalized(file, mimeType, durationMs, thumbnailPath, exportedUri)
+        return Finalized(
+            path = file.absolutePath,
+            fileName = file.name,
+            file = file,
+            sizeBytes = file.length(),
+            mimeType = mimeType,
+            durationMs = durationMs,
+            thumbnailPath = thumbnailPath,
+            exportedUri = exportedUri
+        )
+    }
+
+    /**
+     * Moves a finished file into the folder the user chose, when that is the chosen destination.
+     *
+     * Everything above this point ran against the app's own storage on purpose: the staging, the
+     * resumable parts and the remux all need a real file, and a provider can offer none of them. Only
+     * the finished result moves — and if the folder cannot be reached (removed card, deleted folder,
+     * revoked grant) the file simply stays where it is. A preference must never cost the user a
+     * download.
+     */
+    private suspend fun applyDestinationPlan(finalized: Finalized): Finalized {
+        val file = finalized.file ?: return finalized
+        val mode = runCatching { settingsDataStore.destinationMode.first() }
+            .getOrDefault(SettingsDataStore.DESTINATION_INTERNAL)
+        if (mode != SettingsDataStore.DESTINATION_TREE) return finalized
+        val tree = runCatching { safDestinationStore.destination.first() }.getOrNull()?.treeUri
+        val plan = DestinationPolicy.decide(
+            mode = mode,
+            treeUri = tree,
+            treeReachable = tree != null && safDocumentExporter.isReachable(tree)
+        )
+        if (plan !is DestinationPolicy.Plan.MoveToTree) return finalized
+        val moved = runCatching {
+            safDocumentExporter.moveInto(plan.treeUri, file, finalized.mimeType, file.name)
+        }.getOrNull() ?: return finalized
+        return Finalized(
+            path = moved.uri,
+            // The provider may have renamed the file on a collision; the row keeps the real name.
+            fileName = moved.displayName,
+            file = null,
+            sizeBytes = finalized.sizeBytes,
+            mimeType = finalized.mimeType,
+            durationMs = finalized.durationMs,
+            thumbnailPath = finalized.thumbnailPath,
+            exportedUri = moved.uri
+        )
     }
 
     private suspend fun abortReasonFor(downloadId: String): AbortReason? =
@@ -615,8 +677,9 @@ class DownloadService : Service() {
             .setProgress(if (totalBytes > 0L) 100 else 0, percent, totalBytes <= 0L).setOngoing(true).setOnlyAlertOnce(true).setPriority(NotificationCompat.PRIORITY_LOW).build()
     }
 
-    private fun notifyCompleted(download: DownloadEntity, file: File) {
-        val notification = NotificationCompat.Builder(this, channelId).setContentTitle(getString(R.string.download_completed)).setContentText("${download.mediaTitle ?: download.filename} · ${formatFileSize(file.length())}")
+    private fun notifyCompleted(download: DownloadEntity, file: File?, sizeBytes: Long = 0L) {
+        val size = file?.length() ?: sizeBytes
+        val notification = NotificationCompat.Builder(this, channelId).setContentTitle(getString(R.string.download_completed)).setContentText("${download.mediaTitle ?: download.filename} · ${formatFileSize(size)}")
             .setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(openDownloadsPendingIntent(NOTIFICATION_COMPLETED_BASE_ID + download.id.hashCode())).setAutoCancel(true).setOngoing(false).setPriority(NotificationCompat.PRIORITY_DEFAULT).build()
         notificationManager.notify(NOTIFICATION_COMPLETED_BASE_ID + download.id.hashCode(), notification)
     }

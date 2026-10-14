@@ -65,6 +65,9 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
     override val isAdBlockEnabled: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[AD_BLOCK_ENABLED] ?: false }
 
+    override val destinationMode: Flow<String> = dataStore.data
+        .map { preferences -> preferences[DESTINATION_MODE] ?: SettingsDataStore.DESTINATION_INTERNAL }
+
     override val adBlockDisabledSites: Flow<Set<String>> = dataStore.data
         .map { preferences -> preferences[AD_BLOCK_DISABLED_SITES] ?: emptySet() }
 
@@ -130,6 +133,10 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         dataStore.edit { preferences -> preferences[FLOATING_BUTTON_SIZE] = size }
     }
 
+    override suspend fun setDestinationMode(mode: String) {
+        dataStore.edit { preferences -> preferences[DESTINATION_MODE] = mode }
+    }
+
     override suspend fun setAdBlockEnabled(enabled: Boolean) {
         dataStore.edit { preferences -> preferences[AD_BLOCK_ENABLED] = enabled }
     }
@@ -174,6 +181,7 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         private val FLOATING_BUTTON_X = floatPreferencesKey("floating_button_x")
         private val FLOATING_BUTTON_Y = floatPreferencesKey("floating_button_y")
 
+        private val DESTINATION_MODE = stringPreferencesKey("destination_mode")
         private val AD_BLOCK_ENABLED = booleanPreferencesKey("ad_block_enabled")
         private val AD_BLOCK_DISABLED_SITES = stringSetPreferencesKey("ad_block_disabled_sites")
         private val AD_BLOCK_BLOCKED_REQUESTS = intPreferencesKey("ad_block_blocked_requests")

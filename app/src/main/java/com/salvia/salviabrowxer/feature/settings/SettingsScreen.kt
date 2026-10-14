@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
@@ -84,6 +85,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.BuildConfig
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.service.ConnectionKind
 import com.salvia.salviabrowxer.service.ConnectivityGate
 import com.salvia.salviabrowxer.ui.utils.Constants
@@ -218,6 +220,14 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryPath.ifBlank { stringResource(R.string.settings_download_directory_hint) })
                 SettingsItem(Icons.Default.Security, stringResource(R.string.settings_locked_folder), stringResource(if (state.isPasswordFolderSet) R.string.settings_locked_folder_hint else R.string.settings_locked_folder_not_set)) { dialog = SettingsDialog.Password }
                 SettingsItem(Icons.Default.Storage, stringResource(R.string.settings_sd_card_folder), state.safDestinationLabel ?: stringResource(R.string.settings_sd_card_none)) { pickFolder.launch(null) }
+                // The switch sits under the picker on purpose: the folder is chosen first, and only
+                // then can it become the destination. Turning it on without a folder says so.
+                SwitchSettingsItem(
+                    Icons.Default.Save,
+                    stringResource(R.string.settings_destination_chosen_folder),
+                    stringResource(R.string.settings_destination_chosen_folder_hint),
+                    state.destinationMode == SettingsDataStore.DESTINATION_TREE
+                ) { viewModel.updateDestinationMode(it) }
                 if (state.safDestinationLabel != null) {
                     SettingsItem(Icons.Default.Clear, stringResource(R.string.action_clear_folder), null) { viewModel.clearSafDestination() }
                 }

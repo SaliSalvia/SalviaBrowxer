@@ -207,6 +207,12 @@ class DownloadsViewModel @Inject constructor(
                 _messages.trySend(context.getString(R.string.download_not_ready))
                 return@launch
             }
+            if (path.startsWith("content://")) {
+                // Re-encoding reads the file many times and writes next to it; a document in another
+                // provider is not a place to do that, and pretending otherwise would half-convert.
+                _messages.trySend(context.getString(R.string.download_convert_needs_local_file))
+                return@launch
+            }
             val source = File(path)
             if (!source.exists() || source.length() == 0L) {
                 _messages.trySend(context.getString(R.string.download_file_missing))
@@ -283,6 +289,19 @@ class DownloadsViewModel @Inject constructor(
             val download = downloadRepository.getDownloadById(downloadId)
             val path = download?.finalPath
             if (download == null || path.isNullOrBlank()) { _messages.trySend(context.getString(R.string.download_not_ready)); return@launch }
+            // A file in the folder the user chose is a document, not a path: it is handed to the
+            // system as its own URI, with the read grant the picker gave us.
+            if (path.startsWith("content://")) {
+                val opened = runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(Uri.parse(path), download.mimeType ?: getMimeTypeFromExtension(File(path).extension))
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                if (opened.isFailure) _messages.trySend(context.getString(R.string.download_open_failed))
+                return@launch
+            }
             val file = File(path)
             if (!file.exists()) { _messages.trySend(context.getString(R.string.download_file_missing)); return@launch }
             val launched = runCatching {
@@ -303,12 +322,13 @@ class DownloadsViewModel @Inject constructor(
             val download = downloadRepository.getDownloadById(downloadId)
             val path = download?.finalPath
             if (download == null || path.isNullOrBlank()) { _messages.trySend(context.getString(R.string.download_not_ready)); return@launch }
-            val file = File(path)
-            if (!file.exists() || file.length() == 0L) { _messages.trySend(context.getString(R.string.download_file_missing)); return@launch }
+            val inTree = path.startsWith("content://")
+            val file = if (inTree) null else File(path)
+            if (!inTree && (file == null || !file.exists() || file.length() == 0L)) { _messages.trySend(context.getString(R.string.download_file_missing)); return@launch }
             val shared = runCatching {
-                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                val uri = if (inTree) Uri.parse(path) else FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file!!)
                 val send = Intent(Intent.ACTION_SEND).apply {
-                    type = download.mimeType ?: getMimeTypeFromExtension(file.extension)
+                    type = download.mimeType ?: getMimeTypeFromExtension(file?.extension ?: download.filename.substringAfterLast('.', ""))
                     putExtra(Intent.EXTRA_STREAM, uri)
                     putExtra(Intent.EXTRA_SUBJECT, download.mediaTitle ?: download.filename)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -347,6 +367,29 @@ class DownloadsViewModel @Inject constructor(
         val download = downloadRepository.getDownloadById(downloadId)
         val path = download?.finalPath
         if (download == null || path.isNullOrBlank()) { _messages.trySend(context.getString(R.string.download_not_ready)); return }
+        if (path.startsWith("content://")) {
+            // The bytes live in the folder the user chose; publishing a gallery copy still works, and
+            // the exporter reads them through the provider.
+            val published = runCatching {
+                mediaStoreExporter.export(
+                    source = Uri.parse(path),
+                    displayName = download.filename,
+                    mimeType = download.mimeType,
+                    isVideo = mediaStoreExporter.isVideoFile(download.filename, download.mimeType)
+                )
+            }.getOrNull()
+            if (published == null) {
+                _messages.trySend(context.getString(R.string.download_export_failed))
+            } else {
+                downloadRepository.updateDownloadArtifacts(
+                    id = downloadId, finalPath = path, filename = download.filename,
+                    mimeType = download.mimeType, durationMs = download.durationMs,
+                    thumbnail = download.thumbnail, exportedUri = published
+                )
+                _messages.trySend(context.getString(R.string.download_exported))
+            }
+            return
+        }
         val file = File(path)
         if (!file.exists() || file.length() == 0L) { _messages.trySend(context.getString(R.string.download_file_missing)); return }
         // After a grant the export proceeds even if the platform still reports the permission as

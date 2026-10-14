@@ -137,6 +137,14 @@ versionName `1.0.0`.
   setting on. The settings screen shows the live connection next to that switch. Finished files are
   shareable through `FileProvider` and play in the in-app Media3 player, which reports a file that
   disappeared behind the queue's back and offers to remove the dead row.
+- **Your folder as the destination (optional)** — pick a folder with the system picker and switch on
+  *Save into the chosen folder*: finished files are **moved** there through the document provider, so
+  the file the list, the player, share and delete all work with is the one in your folder. The
+  transfer itself still runs against the app's own storage, because that is where resumable parts and
+  staging live and where a provider offers nothing; only the finished result moves, and only after the
+  copy is verified byte for byte in length. If the folder is gone, the card is out or the grant was
+  revoked, the file stays in the app's storage and the list says so — a preference never costs you a
+  download.
 - **A folder with a password, a folder on the card, and tabs that come back** — a password-protected
   folder keeps its verifier (PBKDF2, 120,000 iterations, a fresh salt) in a preference file encrypted
   with a keystore-backed key; the password itself is never stored. Moving a finished download into it
