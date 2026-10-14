@@ -91,9 +91,11 @@ class FormatListParityTest {
         // `m3u8` names and byte-range query markers are the two shapes that could misfire here.
         for (extension in publishedDocuments) {
             val url = "https://example.com/files/report.$extension"
-            assertFalse(MediaUrlRules.isPlaylistUrl(url), url)
-            assertFalse(MediaUrlRules.looksLikeSegment(url), url)
-            assertTrue(MediaUrlRules.looksLikeNonMedia(url), url)
+            // Message first: JUnit 4 only has `(String, boolean)`, and a condition-first call does
+            // not compile against it.
+            assertFalse(url, MediaUrlRules.isPlaylistUrl(url))
+            assertFalse(url, MediaUrlRules.looksLikeSegment(url))
+            assertTrue(url, MediaUrlRules.looksLikeNonMedia(url))
         }
     }
 
