@@ -14,6 +14,8 @@ import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.security.LockedFolderStore
+import com.salvia.salviabrowxer.media.downloader.TranscodePlan
+import com.salvia.salviabrowxer.media.downloader.VideoTranscoder
 import com.salvia.salviabrowxer.service.DownloadService
 import com.salvia.salviabrowxer.ui.utils.getMimeTypeFromExtension
 import dagger.hilt.android.lifecycle.HiltViewModel
