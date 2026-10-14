@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.feature.downloads
 
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -54,7 +55,14 @@ data class DownloadsUiState(
     val queued: List<DownloadEntity> = emptyList(),
     val completed: List<DownloadEntity> = emptyList(),
     val failed: List<DownloadEntity> = emptyList(),
-    val lockedFolder: LockedFolderUiState = LockedFolderUiState()
+    val lockedFolder: LockedFolderUiState = LockedFolderUiState(),
+    /**
+     * Rows being re-encoded right now, with the percentage each has reached.
+     *
+     * It lives in the UI state rather than inside the coroutine because a conversion is long: the row
+     * has to show that it is working, and a hidden job would look like a button that did nothing.
+     */
+    val converting: Map<String, Int> = emptyMap()
 ) { val inFlightCount: Int get() = active.size + queued.size }
 
 @HiltViewModel
@@ -63,6 +71,7 @@ class DownloadsViewModel @Inject constructor(
     private val mediaStoreExporter: MediaStoreExporter,
     private val lockedFolderStore: LockedFolderStore,
     private val artifactCleaner: DownloadArtifactCleaner,
+    private val videoTranscoder: VideoTranscoder,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
@@ -174,6 +183,101 @@ class DownloadsViewModel @Inject constructor(
             downloadRepository.deleteDownload(downloadId)
         }
     }
+    /**
+     * Re-encodes a finished download into an MP4 this device's gallery and any other player can open.
+     *
+     * This is the conversion a remux cannot do — HEVC or VP9 video re-encoded to H.264, a non-AAC
+     * audio track to AAC — and it is deliberately a user action on one file: it costs minutes of CPU
+     * and a generation of quality. The original file is never touched. The converted file lands next
+     * to it as `name (converted).mp4` and becomes its own row, so the list says what happened instead
+     * of a file silently changing under the user's finger.
+     *
+     * A container the platform has no demuxer for (AVI, WMV) is refused before any codec runs, with
+     * the reason shown: "cannot convert" is a fact about the file, not a failure of the attempt.
+     */
+    fun convertDownload(downloadId: String) {
+        if (_uiState.value.converting.containsKey(downloadId)) {
+            _messages.trySend(context.getString(R.string.download_convert_already))
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val row = runCatching { downloadRepository.getDownloadById(downloadId) }.getOrNull() ?: return@launch
+            val path = row.finalPath ?: row.temporaryPath
+            if (path.isNullOrBlank()) {
+                _messages.trySend(context.getString(R.string.download_not_ready))
+                return@launch
+            }
+            val source = File(path)
+            if (!source.exists() || source.length() == 0L) {
+                _messages.trySend(context.getString(R.string.download_file_missing))
+                return@launch
+            }
+            when (TranscodePlan.decide(source.name)) {
+                TranscodePlan.Decision.NOT_APPLICABLE -> {
+                    _messages.trySend(context.getString(R.string.download_convert_not_applicable))
+                    return@launch
+                }
+                TranscodePlan.Decision.NO_DEMUXER -> {
+                    // Checked first, on purpose: this is a refusal the user can act on (keep the file,
+                    // or play it elsewhere), not a failure that leaves them wondering.
+                    _messages.trySend(context.getString(R.string.download_convert_no_demuxer))
+                    return@launch
+                }
+                else -> Unit
+            }
+
+            val parent = source.parentFile ?: return@launch
+            val output = File(parent, TranscodePlan.outputNameFor(source.name))
+            setConverting(downloadId, 0)
+            val converted = runCatching {
+                videoTranscoder.transcode(
+                    input = source,
+                    output = output,
+                    onProgress = { percent -> setConverting(downloadId, percent) },
+                    shouldStop = { false }
+                )
+            }.getOrDefault(false)
+            clearConverting(downloadId)
+
+            if (!converted || !output.exists() || output.length() == 0L) {
+                runCatching { if (output.exists()) output.delete() }
+                _messages.trySend(context.getString(R.string.download_convert_failed))
+                return@launch
+            }
+            val convertedRow = row.copy(
+                id = java.util.UUID.randomUUID().toString(),
+                filename = output.name,
+                finalPath = output.absolutePath,
+                temporaryPath = null,
+                mimeType = if (TranscodePlan.decide(source.name) == TranscodePlan.Decision.AUDIO_TO_AAC_M4A) "audio/mp4" else "video/mp4",
+                totalBytes = output.length(),
+                downloadedBytes = output.length(),
+                bytesPerSecond = 0L,
+                etaSeconds = null,
+                status = DownloadState.COMPLETED,
+                error = null,
+                renditionId = null,
+                // A converted file is a new file: it has no gallery copy yet, and the export flow is
+                // what publishes it — claiming an exported URI would be claiming something untrue.
+                exportedUri = null,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                selectedQuality = "MP4"
+            )
+            runCatching { downloadRepository.addDownload(convertedRow) }
+            runCatching { MediaScannerConnection.scanFile(context, arrayOf(output.absolutePath), null, null) }
+            _messages.trySend(context.getString(R.string.download_convert_done, output.name))
+        }
+    }
+
+    private fun setConverting(downloadId: String, percent: Int) {
+        _uiState.update { it.copy(converting = it.converting + (downloadId to percent.coerceIn(0, 100))) }
+    }
+
+    private fun clearConverting(downloadId: String) {
+        _uiState.update { it.copy(converting = it.converting - downloadId) }
+    }
+
     fun openDownload(downloadId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val download = downloadRepository.getDownloadById(downloadId)

@@ -50,6 +50,13 @@
     <string name="tab_open">گشودن این زبانه</string>
     <string name="find_query_field">متنی که در صفحه جست‌وجو می‌شود</string>
     <string name="download_enqueued">به صف دانلود افزوده شد</string>
+    <string name="download_convert">تبدیل به MP4</string>
+    <string name="download_convert_progress">در حال تبدیل… %1$d%%</string>
+    <string name="download_convert_done">تبدیل شد: %s</string>
+    <string name="download_convert_failed">تبدیل انجام نشد — فایل اصلی دست‌نخورده است</string>
+    <string name="download_convert_no_demuxer">چارچوب رسانهٔ این دستگاه نمی‌تواند این ظرف (AVI/WMV) را باز کند، پس تبدیل روی این دستگاه ممکن نیست. فایل ذخیره شده و تغییری نکرده است.</string>
+    <string name="download_convert_not_applicable">چیزی برای تبدیل این فایل وجود ندارد</string>
+    <string name="download_convert_already">این ردیف همین حالا در حال تبدیل است</string>
     <string name="download_preparing">در حال بررسی فایل…</string>
     <string name="download_waiting_for_wifi">در انتظار Wi-Fi</string>
     <string name="notifications_denied_downloads_anyway">دانلود ادامه می‌یابد — اعلان‌ها خاموش می‌مانند</string>

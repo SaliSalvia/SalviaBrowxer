@@ -62,7 +62,10 @@ class DownloadsViewModelTest {
     }
 
     private fun newViewModel() = DownloadsViewModel(
-        mockDownloadRepository, mockMediaStoreExporter, mockLockedFolderStore, artifactCleaner, mockContext
+        mockDownloadRepository, mockMediaStoreExporter, mockLockedFolderStore, artifactCleaner,
+        // A real transcoder: the conversion path needs codecs a unit test does not have, and every
+        // test here exercises the queue and the files, not the encoder.
+        com.salvia.salviabrowxer.media.downloader.VideoTranscoder(), mockContext
     )
 
     @Test

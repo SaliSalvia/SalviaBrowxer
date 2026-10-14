@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
@@ -46,6 +47,7 @@ import com.salvia.salviabrowxer.service.WIFI_HOLD_MARKER
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
@@ -69,7 +71,14 @@ fun DownloadItem(
     /** Offered while the locked folder has a password; null hides the action entirely. */
     onLockClick: (() -> Unit)? = null,
     /** Offered on an item that is already in the locked folder. */
-    onUnlockClick: (() -> Unit)? = null
+    onUnlockClick: (() -> Unit)? = null,
+    /**
+     * Offered on a finished file whose container the app can re-encode. Null while the file is
+     * already MP4-ish or when nothing can be done with it.
+     */
+    onConvertClick: (() -> Unit)? = null,
+    /** 0..100 while this row is being converted; null when it is not. */
+    convertProgress: Int? = null
 ) {
     val totalBytes = download.totalBytes
     val progress = if (totalBytes != null && totalBytes > 0) (download.downloadedBytes.toFloat() / totalBytes) else 0f
@@ -121,7 +130,11 @@ fun DownloadItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = SilverMid
                 )
-                DownloadState.COMPLETED -> Text(text = stringResource(R.string.download_completed), style = MaterialTheme.typography.bodySmall, color = AuroraTeal)
+                DownloadState.COMPLETED -> Text(
+                    text = convertProgress?.let { stringResource(R.string.download_convert_progress, it) } ?: stringResource(R.string.download_completed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AuroraTeal
+                )
                 DownloadState.FAILED, DownloadState.CANCELLED -> Text(text = download.error ?: stringResource(R.string.download_failed), style = MaterialTheme.typography.bodySmall, color = Color(0xFFFF8A80), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -133,6 +146,11 @@ fun DownloadItem(
             DownloadState.FAILED, DownloadState.CANCELLED -> IconButton(onClick = onRetryClick) { Icon(Icons.Default.Refresh, stringResource(R.string.download_retry), tint = AuroraTeal) }
             DownloadState.COMPLETED -> {
                 IconButton(onClick = onOpenClick) { Icon(Icons.AutoMirrored.Filled.OpenInNew, stringResource(R.string.download_open), tint = PearlWhite) }
+                // The conversion is offered per file, never in bulk: it is minutes of CPU and a
+                // generation of quality, and it only exists for containers this app can decode.
+                if (onConvertClick != null && convertProgress == null) {
+                    IconButton(onClick = onConvertClick) { Icon(Icons.Default.Build, stringResource(R.string.download_convert), tint = NebulaVioletLight) }
+                }
                 // Only offered while the file is not in the shared media store yet: on a modern
                 // Android the automatic export already published it, and on an older one this is
                 // the action that asks for the storage permission and does it by hand.

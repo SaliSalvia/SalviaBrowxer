@@ -30,6 +30,7 @@ import com.salvia.salviabrowxer.media.downloader.DashDownloader
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
 import com.salvia.salviabrowxer.media.downloader.MediaMetadataReader
 import com.salvia.salviabrowxer.media.downloader.MediaRemuxer
+import com.salvia.salviabrowxer.media.downloader.VideoTranscoder
 import com.salvia.salviabrowxer.media.downloader.SessionCookieJar
 import com.salvia.salviabrowxer.media.downloader.TrackMerger
 import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
@@ -81,6 +82,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMediaRemuxer(): MediaRemuxer = MediaRemuxer()
+
+    /**
+     * The re-encoder behind "Convert to MP4". A singleton because a conversion holds real codecs:
+     * starting a second one while the first is running is how a phone runs out of them.
+     */
+    @Provides
+    @Singleton
+    fun provideVideoTranscoder(): VideoTranscoder = VideoTranscoder()
 
     @Provides
     @Singleton
