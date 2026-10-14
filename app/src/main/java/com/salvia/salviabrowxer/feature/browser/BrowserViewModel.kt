@@ -319,7 +319,13 @@ class BrowserViewModel @Inject constructor(
         }
         viewModelScope.launch(Dispatchers.IO) {
             settingsDataStore.isCleartextAllowed.collectLatest { allowed ->
-                _uiState.update { it.copy(isCleartextAllowed = allowed) }
+                // The store acknowledging the user's own decision ends the pending state; until then
+                // the decision wins, because an emission of the pre-write value is not news.
+                if (pendingCleartextDecision != null && pendingCleartextDecision == allowed) {
+                    pendingCleartextDecision = null
+                }
+                val effective = pendingCleartextDecision ?: allowed
+                _uiState.update { it.copy(isCleartextAllowed = effective) }
             }
         }
     }
@@ -492,8 +498,19 @@ class BrowserViewModel @Inject constructor(
     fun dismissCleartextBlock() { _uiState.update { it.copy(blockedCleartextUrl = null) } }
 
     /** Turns the setting on and loads the URL the user already asked for. */
+    /**
+     * A cleartext decision the user just made, held until the store echoes it back.
+     *
+     * Persisting is a round trip: the write goes out on IO, and the settings flow can still deliver
+     * the *old* value after the tap — which used to flip the state back to "not allowed" for as long
+     * as it took the write to land, and (with a settings source that never changes, as in a unit
+     * test) permanently. The local decision therefore wins until the store confirms it.
+     */
+    @Volatile private var pendingCleartextDecision: Boolean? = null
+
     fun allowCleartextAndRetry() {
         val target = _uiState.value.blockedCleartextUrl ?: return
+        pendingCleartextDecision = true
         viewModelScope.launch(Dispatchers.IO) { runCatching { settingsDataStore.setCleartextAllowed(true) } }
         _uiState.update { it.copy(isCleartextAllowed = true, blockedCleartextUrl = null) }
         navigate(target)
