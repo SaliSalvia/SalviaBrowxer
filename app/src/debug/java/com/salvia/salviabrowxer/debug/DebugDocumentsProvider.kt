@@ -8,7 +8,6 @@ import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
 
 /**
  * The folder the user would have picked, for instrumentation tests only.
@@ -144,13 +143,20 @@ class DebugDocumentsProvider : DocumentsProvider() {
      * copied from, which is exactly the disagreement [SafDocumentExporter] refuses to trust.
      */
     private fun halfWritingDescriptor(target: File): ParcelFileDescriptor {
+        // Opened here, before anything is returned: the document exists from this moment, so a caller
+        // that checks the length, gives up and deletes it deletes something that is really there -
+        // and the bytes still travelling through the pipe go to an unlinked file, not to a new one.
+        val sink = ParcelFileDescriptor.open(
+            target,
+            ParcelFileDescriptor.MODE_WRITE_ONLY or ParcelFileDescriptor.MODE_CREATE
+        )
         val pipe = ParcelFileDescriptor.createPipe()
         val readEnd = pipe[0]
         val writeEnd = pipe[1]
         Thread {
             runCatching {
                 ParcelFileDescriptor.AutoCloseInputStream(readEnd).use { source ->
-                    FileOutputStream(target).use { sink ->
+                    ParcelFileDescriptor.AutoCloseOutputStream(sink).use { sinkStream ->
                         val buffer = ByteArray(BUFFER_SIZE)
                         var kept = 0L
                         while (true) {
@@ -159,10 +165,10 @@ class DebugDocumentsProvider : DocumentsProvider() {
                             val room = (HALF_WRITE_BYTES - kept).toInt()
                             if (room <= 0) continue
                             val take = minOf(count, room)
-                            sink.write(buffer, 0, take)
+                            sinkStream.write(buffer, 0, take)
                             kept += take
                         }
-                        sink.flush()
+                        sinkStream.flush()
                     }
                 }
             }
@@ -181,7 +187,10 @@ class DebugDocumentsProvider : DocumentsProvider() {
         // under test is about names and bytes, not about a tree.
         val documentId = if (displayName.startsWith(DUPLICATE_PREFIX)) renamed(displayName) else displayName
         fileOf(documentId).parentFile?.mkdirs()
-        return DocumentsContract.buildDocumentUri(authorityOf(), documentId).toString()
+        // A document *id*, not a uri: the framework builds the returned uri from it, and handing it a
+        // uri instead nests one inside the other and makes the id - which the caller reads back as the
+        // display name - a whole uri string.
+        return documentId
     }
 
     override fun deleteDocument(documentId: String) {
