@@ -25,13 +25,19 @@ changing anything. This branch continues the existing Compose app; it does not r
 - Android CI: unit tests (app + model + resolver + detector), `--continue`, reports uploaded.
 - APK workflow: debug APK artifact plus a signed release APK when the signing secrets are present;
   the artifact name says which one it is.
-- Emulator workflow: instrumented suite on a KVM runner.
+- Emulator workflow: instrumented suite on a KVM runner - encrypted HLS, the MediaStore publish and
+  its ownership rules, the conversion, the SAF refusals. A codec or a provider that fails leaves its
+  reason in the device log, which the job reports with the JUnit failures.
 
 ## Open gates
 
 - Real-device matrix and the download/play/gallery/delete loop; notification-denied path; Persian
   RTL at 360 dp and font scale 1.3.
-- Encoder behaviour on real hardware (the conversion path is code-complete and untested on device).
+- Encoder behaviour on real hardware. The conversion path is now exercised on an emulator
+  (`VideoTranscoderInstrumentedTest`, four cases) - vendor hardware is still open.
+- The writable half of the chosen folder: a name collision renamed by the provider, a provider that
+  fails mid-write, a process killed between the copy and the delete. All three need a tree grant,
+  which only the system picker can give, so they are the owner's to try on a device.
 - Private-mode cookie isolation: the wording is honest today; the isolation is not implemented.
 - Worker visibility assessment: document the WebView gap rather than claiming coverage.
 - Live-stream capture: out of scope until a public source shows the competitor doing it and the
