@@ -21,6 +21,14 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadWorkQueueTest {
 
+    /**
+     * Stops the processor the test started. The service does this when it goes idle, and a test has
+     * to do it too: the processor is a receive loop that lives as long as the queue does, so without
+     * this `runTest` would wait for a coroutine that never finishes on its own (which is exactly how
+     * this class failed the first time it ran on CI).
+     */
+    private fun DownloadWorkQueue.finish() = stop()
+
     private class Recorder {
         val started = mutableListOf<String>()
         val finished = mutableListOf<String>()
@@ -47,7 +55,7 @@ class DownloadWorkQueueTest {
         )
 
         repeat(4) { index -> queue.enqueue("d$index") }
-        queue.start(backgroundScope)
+        queue.start(this)
         advanceUntilIdle()
 
         assertEquals("only the two permitted transfers may start", 2, recorder.started.size)
@@ -58,6 +66,7 @@ class DownloadWorkQueueTest {
         assertEquals("four queued ids, never more than the limit running", 2, recorder.maxRunning.get())
         assertEquals("one idle notification for the batch, not one per transfer", 1, recorder.idleCalls.get())
         assertTrue(queue.isIdle)
+        queue.finish()
     }
 
     @Test
@@ -75,7 +84,7 @@ class DownloadWorkQueueTest {
         )
 
         queue.enqueue("a")
-        queue.start(backgroundScope)
+        queue.start(this)
         advanceUntilIdle()
 
         // The id left the channel and is running (suspended inside the transfer). A completion of
@@ -88,6 +97,7 @@ class DownloadWorkQueueTest {
         advanceUntilIdle()
         assertTrue(queue.isIdle)
         assertEquals(1, recorder.idleCalls.get())
+        queue.finish()
     }
 
     @Test
@@ -105,13 +115,14 @@ class DownloadWorkQueueTest {
 
         queue.enqueue("bad")
         queue.enqueue("good")
-        queue.start(backgroundScope)
+        queue.start(this)
         advanceUntilIdle()
 
         assertEquals(listOf("bad", "good"), recorder.started)
         assertEquals(listOf("good"), recorder.finished)
         assertTrue("the failed transfer must not hold the only slot", queue.isIdle)
         assertEquals(1, recorder.idleCalls.get())
+        queue.finish()
     }
 
     @Test
@@ -123,12 +134,13 @@ class DownloadWorkQueueTest {
         )
 
         queue.enqueue("once")
-        queue.start(backgroundScope)
-        queue.start(backgroundScope)
-        queue.start(backgroundScope)
+        queue.start(this)
+        queue.start(this)
+        queue.start(this)
         advanceUntilIdle()
 
         assertEquals(listOf("once"), recorder.finished)
+        queue.finish()
     }
 
     @Test
@@ -146,7 +158,7 @@ class DownloadWorkQueueTest {
 
         queue.enqueue("first")
         queue.enqueue("second")
-        queue.start(backgroundScope)
+        queue.start(this)
         advanceUntilIdle()
         assertEquals(listOf("first"), recorder.started)
 
@@ -158,6 +170,7 @@ class DownloadWorkQueueTest {
 
         gate.complete(Unit)
         advanceUntilIdle()
+        queue.finish()
     }
 
     @Test
@@ -170,9 +183,10 @@ class DownloadWorkQueueTest {
         advanceUntilIdle()
         assertTrue("nothing runs while the processor is stopped", recorder.finished.isEmpty())
 
-        queue.start(backgroundScope)
+        queue.start(this)
         advanceUntilIdle()
         assertEquals(listOf("waiting"), recorder.finished)
+        queue.finish()
     }
 
     @Test
@@ -191,7 +205,7 @@ class DownloadWorkQueueTest {
 
         queue.enqueue("slow")
         queue.enqueue("fast")
-        queue.start(backgroundScope)
+        queue.start(this)
         advanceUntilIdle()
         assertEquals(2L, counter.get())
         assertEquals(listOf("fast"), order)
@@ -199,15 +213,17 @@ class DownloadWorkQueueTest {
         slow.complete(Unit)
         advanceUntilIdle()
         assertTrue(order.containsAll(listOf("slow", "fast")))
+        queue.finish()
     }
 
     @Test
     fun `enqueue never blocks even with a full run of pending work`() = runTest {
         val queue = DownloadWorkQueue(limiter = SlotLimiter(1), process = { })
         repeat(500) { index -> assertTrue(queue.enqueue("d$index")) }
-        queue.start(backgroundScope)
+        queue.start(this)
         advanceUntilIdle()
         assertTrue(queue.isIdle)
+        queue.finish()
     }
 
     @Test
@@ -221,7 +237,7 @@ class DownloadWorkQueueTest {
         )
 
         queue.enqueue("a")
-        val processor = launch { queue.start(backgroundScope) }
+        val processor = launch { queue.start(this) }
         advanceUntilIdle()
         processor.cancel()
         advanceUntilIdle()
