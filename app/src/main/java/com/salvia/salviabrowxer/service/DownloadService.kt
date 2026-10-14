@@ -264,8 +264,8 @@ class DownloadService : Service() {
             // The staged bytes are no longer needed once the result exists; the result itself is
             // protected by the cleaner (a DASH file that could not be remuxed keeps its staged name).
             artifactCleaner.cleanTransferStaging(stored)
-            finalized.file?.let { file -> scanFile(file); notifyCompleted(stored, file) }
-                ?: notifyCompleted(stored, null, finalized.sizeBytes)
+            finalized.file?.let { file -> scanFile(file); notifyCompleted(stored, file, note = finalized.destinationNote) }
+                ?: notifyCompleted(stored, null, finalized.sizeBytes, finalized.destinationNote)
         } catch (aborted: DownloadAbortedException) {
             if (aborted.reason == AbortReason.CANCELLED) { artifactCleaner.cleanTransferStaging(stored); downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.CANCELLED, error = getString(R.string.download_cancel)) }
             else downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
@@ -326,7 +326,7 @@ class DownloadService : Service() {
      * that case — the file is no longer reachable as a `File` — which is why every consumer takes the
      * path and the size instead of assuming a file.
      */
-    private class Finalized(
+    private data class Finalized(
         val path: String,
         val fileName: String,
         val file: File?,
@@ -334,7 +334,9 @@ class DownloadService : Service() {
         val mimeType: String?,
         val durationMs: Long?,
         val thumbnailPath: String?,
-        val exportedUri: String?
+        val exportedUri: String?,
+        /** Set when the file was asked to go to the user's folder and could not. Shown to the user. */
+        val destinationNote: String? = null
     )
 
     private fun baseName(filename: String): String = filename.substringBeforeLast('.', filename).ifBlank { "download" }
@@ -531,7 +533,10 @@ class DownloadService : Service() {
             if (destination != null && mode != SettingsDataStore.DESTINATION_TREE) {
                 exportedUri = safDocumentExporter.copyInto(destination.treeUri, file, mimeType, file.name)
             }
-            if (exportedUri == null) {
+            // `tree` mode is the destination the user stated. Publishing a gallery copy *as well*
+            // would mean two files where they asked for one folder; the per-file "Save to gallery"
+            // action is still there for anyone who wants a copy in the gallery too.
+            if (exportedUri == null && mode != SettingsDataStore.DESTINATION_TREE) {
                 val exportEnabled = runCatching { settingsDataStore.isExportToGallery.first() }.getOrDefault(true)
                 if (exportEnabled && mediaStoreExporter.isPermissionFree()) {
                     val isVideo = file.extension.lowercase() in MediaUrlRules.VIDEO_EXTENSIONS || MediaUrlRules.isVideoMime(mimeType)
@@ -572,7 +577,17 @@ class DownloadService : Service() {
             treeUri = tree,
             treeReachable = tree != null && safDocumentExporter.isReachable(tree)
         )
-        if (plan !is DestinationPolicy.Plan.MoveToTree) return finalized
+        if (plan !is DestinationPolicy.Plan.MoveToTree) {
+            // The file stays in the app's own storage, and the user is told - a destination that
+            // silently falls back is a user who cannot find their download.
+            val unreachable = plan is DestinationPolicy.Plan.KeptPrivate &&
+                plan.reason == DestinationPolicy.Reason.TREE_UNREACHABLE
+            return if (unreachable) {
+                finalized.copy(destinationNote = getString(R.string.download_folder_unreachable))
+            } else {
+                finalized
+            }
+        }
         val moved = runCatching {
             safDocumentExporter.moveInto(plan.treeUri, file, finalized.mimeType, file.name)
         }.getOrNull() ?: return finalized
@@ -677,9 +692,10 @@ class DownloadService : Service() {
             .setProgress(if (totalBytes > 0L) 100 else 0, percent, totalBytes <= 0L).setOngoing(true).setOnlyAlertOnce(true).setPriority(NotificationCompat.PRIORITY_LOW).build()
     }
 
-    private fun notifyCompleted(download: DownloadEntity, file: File?, sizeBytes: Long = 0L) {
+    private fun notifyCompleted(download: DownloadEntity, file: File?, sizeBytes: Long = 0L, note: String? = null) {
         val size = file?.length() ?: sizeBytes
-        val notification = NotificationCompat.Builder(this, channelId).setContentTitle(getString(R.string.download_completed)).setContentText("${download.mediaTitle ?: download.filename} · ${formatFileSize(size)}")
+        val detail = listOfNotNull("${download.mediaTitle ?: download.filename} · ${formatFileSize(size)}", note).joinToString("\n")
+        val notification = NotificationCompat.Builder(this, channelId).setContentTitle(getString(R.string.download_completed)).setContentText(detail)
             .setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(openDownloadsPendingIntent(NOTIFICATION_COMPLETED_BASE_ID + download.id.hashCode())).setAutoCancel(true).setOngoing(false).setPriority(NotificationCompat.PRIORITY_DEFAULT).build()
         notificationManager.notify(NOTIFICATION_COMPLETED_BASE_ID + download.id.hashCode(), notification)
     }

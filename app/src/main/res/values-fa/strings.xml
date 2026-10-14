@@ -292,6 +292,7 @@
     <string name="action_unlock_download">بیرون آوردن از پوشهٔ رمزدار</string>
     <string name="download_locked">به پوشهٔ رمزدار منتقل شد و از گالری پاک شد. نسخه‌ای که پیش‌تر در پوشهٔ انتخابی شما ساخته شده، مال خودتان است و همان‌جا می‌ماند</string>
     <string name="download_unlocked">از پوشهٔ رمزدار بیرون آمد</string>
+    <string name="download_folder_unreachable">در فضای برنامه ذخیره شد: پوشه‌ای که انتخاب کرده‌اید همین حالا در دسترس نیست</string>
     <string name="settings_destination_chosen_folder">ذخیره در پوشهٔ انتخابی</string>
     <string name="settings_destination_chosen_folder_hint">فایل‌های تمام‌شده به پوشه‌ای که انتخاب کرده‌اید منتقل می‌شوند. تا پیش از آن، در فضای خود برنامه می‌مانند.</string>
     <string name="settings_destination_needs_folder">اول یک پوشه انتخاب کنید</string>

@@ -291,6 +291,7 @@
     <string name="action_unlock_download">Take out of the locked folder</string>
     <string name="download_locked">Moved into the locked folder and removed from the gallery. A copy that was already made in your chosen folder is yours and stays there</string>
     <string name="download_unlocked">Taken out of the locked folder</string>
+    <string name="download_folder_unreachable">Saved in app storage: the folder you chose cannot be reached right now</string>
     <string name="settings_destination_chosen_folder">Save into the chosen folder</string>
     <string name="settings_destination_chosen_folder_hint">Finished files are moved into the folder you picked. Until then they stay in the app\'s own storage.</string>
     <string name="settings_destination_needs_folder">Choose a folder first</string>
