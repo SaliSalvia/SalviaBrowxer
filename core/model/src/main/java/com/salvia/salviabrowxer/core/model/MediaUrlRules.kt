@@ -70,11 +70,20 @@ object MediaUrlRules {
      */
     val WEAK_MEDIA_MIME_TYPES: Set<String> = setOf("application/octet-stream", "binary/octet-stream")
 
-    /** Requests the browser makes for itself that are never media. */
+    /**
+     * Requests the browser makes for itself that are never media.
+     *
+     * The document formats in this list are the other half of the download story: a `.pdf`, `.doc`
+     * or `.xls` is not something the tray should offer as media, but it *is* something the user must
+     * be able to save, and the WebView's own download listener is what hands it to the queue. Listing
+     * them here keeps the two paths from overlapping — detection stays about media, downloads stay
+     * about files.
+     */
     val NON_MEDIA_EXTENSIONS: Set<String> = setOf(
         "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "ico", "avif", "heic",
         "css", "js", "mjs", "map", "json", "webmanifest", "xml", "txt", "html", "htm",
-        "woff", "woff2", "ttf", "otf", "eot", "pdf", "zip", "gz", "vtt", "srt"
+        "woff", "woff2", "ttf", "otf", "eot", "pdf", "zip", "gz", "vtt", "srt",
+        "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "csv"
     )
 
     /**

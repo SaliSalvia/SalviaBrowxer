@@ -54,12 +54,42 @@ fun sanitizeFilename(filename: String): String {
 fun getMimeTypeFromExtension(extension: String?): String {
     return when (extension?.lowercase()) {
         "mp4", "webm", "mov", "avi", "3gp", "m4v" -> "video/*"
+        // The rest of the containers this app recognises (the published format lists include avi,
+        // wmv and mov; the tray knows more). A specific type beats a wildcard: it is what decides
+        // which app the system offers to open a finished download with.
+        "mkv" -> "video/x-matroska"
+        "wmv", "asf" -> "video/x-ms-wmv"
+        "flv" -> "video/x-flv"
+        "mpg", "mpeg" -> "video/mpeg"
+        "ogv" -> "video/ogg"
+        "3g2" -> "video/3gpp2"
+        "ts", "m2ts", "mts" -> "video/mp2t"
+        "vob" -> "video/mpeg"
+        "f4v" -> "video/mp4"
         "mp3", "m4a", "aac", "wav", "flac" -> "audio/*"
+        "m4b" -> "audio/mp4"
+        "ogg", "oga" -> "audio/ogg"
+        "opus" -> "audio/opus"
+        "wma" -> "audio/x-ms-wma"
+        "mka" -> "audio/x-matroska"
+        "amr" -> "audio/amr"
+        "aif", "aiff" -> "audio/aiff"
+        "ac3" -> "audio/ac3"
         "jpg", "jpeg", "png", "gif", "webp", "bmp" -> "image/*"
         "pdf" -> "application/pdf"
         "apk" -> "application/vnd.android.package-archive"
         "zip", "rar", "7z", "tar", "gz" -> "application/zip"
         "txt", "csv", "json", "xml", "html", "htm" -> "text/*"
+        // The document formats a downloader is expected to save. These get their real types rather
+        // than `application/octet-stream`, because the type decides which app offers to open the
+        // file once it is downloaded.
+        "doc", "docx" -> "application/msword"
+        "xls", "xlsx" -> "application/vnd.ms-excel"
+        "ppt", "pptx" -> "application/vnd.ms-powerpoint"
+        "odt" -> "application/vnd.oasis.opendocument.text"
+        "ods" -> "application/vnd.oasis.opendocument.spreadsheet"
+        "odp" -> "application/vnd.oasis.opendocument.presentation"
+        "rtf" -> "application/rtf"
         else -> "application/octet-stream"
     }
 }
