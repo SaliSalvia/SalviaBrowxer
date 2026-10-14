@@ -144,7 +144,7 @@ class VideoTranscoder {
                     decoder.start()
                     val encoder = MediaCodec.createEncoderByType(MIME_AAC)
                     audioEncoder = encoder
-                    val result = pumpAudio(extractor, decoder, encoder, muxer!!, tracks, deadline, shouldStop)
+                    val result = pumpAudio(extractor, decoder, encoder, muxer!!, tracks, audioFormat, deadline, shouldStop)
                     if (result != PumpResult.DONE) return false
                 }
             }
@@ -296,22 +296,41 @@ class VideoTranscoder {
         return true
     }
 
-    /** Decodes a non-AAC audio track and encodes it as AAC. */
+    /**
+     * Decodes a non-AAC audio track and encodes it as AAC.
+     *
+     * The loop interleaves all four stages — extractor to decoder, decoder to PCM, PCM to encoder,
+     * encoder to muxer — one buffer at a time instead of finishing one stage before starting the
+     * next. That shape is not a style choice: a `MediaCodec` stops handing out input buffers once
+     * its output buffers are all held by the caller, so feeding a whole decoded buffer into the
+     * encoder before ever reading its output deadlocks as soon as the encoder's (small) buffer pool
+     * fills, and the conversion fails with no better explanation than "false". The PCM of one
+     * decoded buffer is therefore kept in [pcm] and handed over chunk by chunk, with the encoder's
+     * output drained between the chunks.
+     */
     private fun pumpAudio(
         extractor: MediaExtractor,
         decoder: MediaCodec,
         encoder: MediaCodec,
         muxer: MediaMuxer,
         tracks: MediaTracks,
+        sourceFormat: MediaFormat,
         deadline: Long,
         shouldStop: () -> Boolean
     ): PumpResult {
-        // Filled in when the decoder reports the format it actually produces; until then the
-        // defaults below are used, which is what a decoder that omits the change expects.
+        // Filled in when the decoder reports the format it actually produces. Until then the
+        // source's own sample rate and channel count are used, which is what that decoder would
+        // report anyway - and unlike a hardcoded stereo/44.1kHz guess it stays right for mono
+        // recordings and for 48kHz files.
         var decoderOutputFormat: MediaFormat? = null
         var encoderStarted = false
+        var eosQueued = false
+        var decoderEos = false
         val info = MediaCodec.BufferInfo()
-        val pcm = ByteArray(BUFFER_SIZE)
+        var pcm = ByteArray(BUFFER_SIZE)
+        var pendingOffset = 0
+        var pendingSize = 0
+        var pendingPtsUs = 0L
         var inputDone = false
         var outputDone = false
 
@@ -319,6 +338,7 @@ class VideoTranscoder {
             if (shouldStop()) return PumpResult.ABORTED
             if (System.currentTimeMillis() > deadline) return PumpResult.ABORTED
 
+            // ---- 1. the extractor feeds the decoder ----
             if (!inputDone) {
                 val inIndex = decoder.dequeueInputBuffer(TIMEOUT_US)
                 if (inIndex >= 0) {
@@ -334,47 +354,70 @@ class VideoTranscoder {
                 }
             }
 
-            val outIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US)
-            if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                decoderOutputFormat = decoder.outputFormat
-            } else if (outIndex >= 0) {
-                val buffer = decoder.getOutputBuffer(outIndex)
-                if (buffer != null && info.size > 0) {
-                    if (!encoderStarted) {
-                        val channels = decoderOutputFormat?.getIntegerOrNull(MediaFormat.KEY_CHANNEL_COUNT) ?: 2
-                        val sampleRate = decoderOutputFormat?.getIntegerOrNull(MediaFormat.KEY_SAMPLE_RATE) ?: 44_100
-                        val format = MediaFormat.createAudioFormat(MIME_AAC, sampleRate, channels).apply {
-                            setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-                            setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE)
-                            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, pcm.size)
-                        }
-                        runCatching { encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE) }
-                            .getOrElse { return PumpResult.ENDED }
-                        runCatching { encoder.start() }.getOrElse { return PumpResult.ENDED }
-                        encoderStarted = true
+            // ---- 2. the decoder becomes PCM, one buffer at a time ----
+            if (pendingSize == 0 && !decoderEos) {
+                val outIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US)
+                if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    decoderOutputFormat = decoder.outputFormat
+                } else if (outIndex >= 0) {
+                    val buffer = decoder.getOutputBuffer(outIndex)
+                    if (buffer != null && info.size > 0) {
+                        // A decoder is allowed to hand back more PCM than the buffer this loop
+                        // started with; growing is what keeps the sample from being cut short.
+                        if (info.size > pcm.size) pcm = ByteArray(info.size)
+                        buffer.position(info.offset)
+                        buffer.limit(info.offset + info.size)
+                        buffer.get(pcm, 0, info.size)
+                        pendingSize = info.size
+                        pendingOffset = 0
+                        pendingPtsUs = info.presentationTimeUs
                     }
-                    buffer.position(info.offset)
-                    buffer.limit(info.offset + info.size)
-                    val available = minOf(info.size, pcm.size)
-                    buffer.get(pcm, 0, available)
-                    var offset = 0
-                    while (offset < available) {
-                        val encIn = encoder.dequeueInputBuffer(TIMEOUT_US)
-                        if (encIn < 0) return PumpResult.ENDED
-                        val encBuffer = encoder.getInputBuffer(encIn) ?: return PumpResult.ENDED
-                        encBuffer.clear()
-                        val chunk = minOf(available - offset, encBuffer.remaining())
-                        encBuffer.put(pcm, offset, chunk)
-                        encoder.queueInputBuffer(encIn, 0, chunk, info.presentationTimeUs, 0)
-                        offset += chunk
-                    }
+                    decoderEos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                    decoder.releaseOutputBuffer(outIndex, false)
+                    // A track that decodes to nothing is not convertible, and saying so now beats
+                    // waiting for the deadline.
+                    if (decoderEos && pendingSize == 0 && !encoderStarted) return PumpResult.ENDED
                 }
-                val eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-                decoder.releaseOutputBuffer(outIndex, false)
-                if (eos && encoderStarted) runCatching { encoder.signalEndOfInputStream() }
-                if (eos && !encoderStarted) break
             }
 
+            // ---- 3. PCM becomes encoder input, one buffer per pass ----
+            if (pendingSize > 0) {
+                if (!encoderStarted) {
+                    val channels = decoderOutputFormat?.getIntegerOrNull(MediaFormat.KEY_CHANNEL_COUNT)
+                        ?: sourceFormat.getIntegerOrNull(MediaFormat.KEY_CHANNEL_COUNT)
+                        ?: DEFAULT_CHANNELS
+                    val sampleRate = decoderOutputFormat?.getIntegerOrNull(MediaFormat.KEY_SAMPLE_RATE)
+                        ?: sourceFormat.getIntegerOrNull(MediaFormat.KEY_SAMPLE_RATE)
+                        ?: DEFAULT_SAMPLE_RATE
+                    val format = MediaFormat.createAudioFormat(MIME_AAC, sampleRate, channels).apply {
+                        setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                        setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE)
+                        setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, pcm.size)
+                    }
+                    runCatching { encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE) }
+                        .getOrElse { return PumpResult.ENDED }
+                    runCatching { encoder.start() }.getOrElse { return PumpResult.ENDED }
+                    encoderStarted = true
+                }
+                val encIn = encoder.dequeueInputBuffer(TIMEOUT_US)
+                if (encIn >= 0) {
+                    val encBuffer = encoder.getInputBuffer(encIn) ?: return PumpResult.ENDED
+                    encBuffer.clear()
+                    val chunk = minOf(pendingSize - pendingOffset, encBuffer.remaining())
+                    encBuffer.put(pcm, pendingOffset, chunk)
+                    encoder.queueInputBuffer(encIn, 0, chunk, pendingPtsUs, 0)
+                    pendingOffset += chunk
+                    if (pendingOffset >= pendingSize) {
+                        pendingSize = 0
+                        pendingOffset = 0
+                    }
+                }
+            } else if (decoderEos && encoderStarted && !eosQueued) {
+                runCatching { encoder.signalEndOfInputStream() }
+                eosQueued = true
+            }
+
+            // ---- 4. the encoder's output goes to the muxer ----
             if (!encoderStarted) continue
             while (true) {
                 val encIndex = encoder.dequeueOutputBuffer(info, 0L)
@@ -390,6 +433,7 @@ class VideoTranscoder {
                 }
                 if (encIndex < 0) break
                 val buffer = encoder.getOutputBuffer(encIndex)
+                // The codec-config buffer is metadata for the muxer's track format, not a sample.
                 if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
                 if (info.size > 0 && buffer != null) {
                     buffer.position(info.offset)
@@ -436,6 +480,8 @@ class VideoTranscoder {
         private const val TIMEOUT_US = 10_000L
         private const val BUFFER_SIZE = 256 * 1024
         private const val AUDIO_BITRATE = 128_000
+        private const val DEFAULT_CHANNELS = 2
+        private const val DEFAULT_SAMPLE_RATE = 44_100
         private const val I_FRAME_INTERVAL_SECONDS = 1
         private const val MIN_BITRATE = 400_000
         private const val MAX_BITRATE = 12_000_000

@@ -58,7 +58,7 @@ class VideoTranscoderInstrumentedTest {
         val progress = mutableListOf<Int>()
         val converted = transcoder.transcode(source, output, onProgress = { progress.add(it) })
 
-        assertTrue("conversion failed", converted)
+        assertTrue("conversion failed; source reads as ${describe(source)}", converted)
         assertTrue("output missing", output.exists() && output.length() > 0L)
 
         val tracks = readTracks(output)
@@ -88,7 +88,9 @@ class VideoTranscoderInstrumentedTest {
 
         val converted = VideoTranscoder().transcode(source, output)
 
-        assertTrue("conversion failed", converted)
+        // The message carries what the platform sees in the file: a conversion refuses early when
+        // there is no track it can use, and that is invisible from the JUnit failure alone.
+        assertTrue("conversion failed; source reads as ${describe(source)}", converted)
         val tracks = readTracks(output)
         assertEquals("expected exactly one AAC track, got ${tracks.map { it.mime }}", 1, tracks.size)
         assertEquals(VideoTranscoder.MIME_AAC, tracks.first().mime)
@@ -140,6 +142,31 @@ class VideoTranscoderInstrumentedTest {
             }
         } finally {
             extractor.release()
+        }
+    }
+
+    /**
+     * What `MediaExtractor` makes of a file, as one string.
+     *
+     * The first thing worth knowing when a conversion refuses to run is whether the platform can
+     * read the container at all, and on CI this message is the only way that information reaches a
+     * human: the failure is reported from the JUnit XML.
+     */
+    private fun describe(file: File): String {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            (0 until extractor.trackCount).joinToString(prefix = "[", postfix = "]") { index ->
+                val format = extractor.getTrackFormat(index)
+                val mime = format.getString(MediaFormat.KEY_MIME)
+                val rate = format.getIntegerOrNull(MediaFormat.KEY_SAMPLE_RATE) ?: -1
+                val channels = format.getIntegerOrNull(MediaFormat.KEY_CHANNEL_COUNT) ?: -1
+                "$mime@${rate}Hz/${channels}ch"
+            }
+        } catch (error: Exception) {
+            "unreadable: ${error.javaClass.simpleName}: ${error.message}"
+        } finally {
+            runCatching { extractor.release() }
         }
     }
 
