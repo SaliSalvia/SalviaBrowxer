@@ -71,7 +71,7 @@ jobs:
             # The gradle output goes to a file the failure step reports from - a run that dies before the
             # first test has no JUnit XML to read.
             echo "=== STAGE: connected-tests ==="
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1 || { adb logcat -d -t 1500 | grep -iE "codec|extractor|transcod|salviabrowxer" > logcat-instrumented.log; cat gradle-instrumented.log; exit 1; }
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1 || { adb logcat -d -t 3000 | grep -iE "VideoTranscoder|ACodec|CCodec|MediaCodec|MediaExtractor|MediaMuxer|OMX" > logcat-instrumented.log; cat gradle-instrumented.log; exit 1; }
             echo "=== STAGE: assemble-debug ==="
             ./gradlew :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1 || { cat gradle-instrumented.log; exit 1; }
             echo "=== STAGE: install ==="

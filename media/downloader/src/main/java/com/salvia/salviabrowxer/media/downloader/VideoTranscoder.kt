@@ -5,6 +5,7 @@ import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.util.Log
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -154,7 +155,10 @@ class VideoTranscoder {
             muxerStopped = true
             succeeded = output.exists() && output.length() > 0L
             return succeeded
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            // The caller only sees `false`, and on a device that is a failure with no reason
+            // attached. The device log is where the reason survives.
+            Log.w(TAG, "transcode failed: $input", error)
             return false
         } finally {
             runCatching { videoDecoder?.stop() }
@@ -395,8 +399,11 @@ class VideoTranscoder {
                         setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, pcm.size)
                     }
                     runCatching { encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE) }
+                        .onFailure { Log.w(TAG, "audio encoder refused $format", it) }
                         .getOrElse { return PumpResult.ENDED }
-                    runCatching { encoder.start() }.getOrElse { return PumpResult.ENDED }
+                    runCatching { encoder.start() }
+                        .onFailure { Log.w(TAG, "audio encoder did not start", it) }
+                        .getOrElse { return PumpResult.ENDED }
                     encoderStarted = true
                 }
                 val encIn = encoder.dequeueInputBuffer(TIMEOUT_US)
@@ -413,8 +420,16 @@ class VideoTranscoder {
                     }
                 }
             } else if (decoderEos && encoderStarted && !eosQueued) {
-                runCatching { encoder.signalEndOfInputStream() }
-                eosQueued = true
+                // An encoder fed from byte buffers learns about the end of the stream by being handed
+                // an empty buffer marked end-of-stream. `signalEndOfInputStream()` exists only for a
+                // surface-input encoder (the video path, where the decoder renders onto the encoder's
+                // surface); calling it here throws, and while the throw was swallowed the encoder
+                // never saw an end and the loop ran until the deadline.
+                val encIn = encoder.dequeueInputBuffer(TIMEOUT_US)
+                if (encIn >= 0) {
+                    encoder.queueInputBuffer(encIn, 0, 0, pendingPtsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    eosQueued = true
+                }
             }
 
             // ---- 4. the encoder's output goes to the muxer ----
@@ -423,7 +438,9 @@ class VideoTranscoder {
                 val encIndex = encoder.dequeueOutputBuffer(info, 0L)
                 if (encIndex == MediaCodec.INFO_TRY_AGAIN_LATER) break
                 if (encIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    tracks.audio = runCatching { muxer.addTrack(encoder.outputFormat) }.getOrDefault(-1)
+                    tracks.audio = runCatching { muxer.addTrack(encoder.outputFormat) }
+                        .onFailure { Log.w(TAG, "muxer refused the audio track", it) }
+                        .getOrDefault(-1)
                     if (tracks.audio < 0) return PumpResult.ENDED
                     if (!tracks.started) {
                         runCatching { muxer.start() }.getOrElse { return PumpResult.ENDED }
@@ -473,6 +490,9 @@ class VideoTranscoder {
         runCatching { if (containsKey(key)) getLong(key) else null }.getOrNull()
 
     companion object {
+        /** The log tag a failing conversion is found under on a device. */
+        private const val TAG = "VideoTranscoder"
+
         /** What the output always is: H.264 for video, AAC for audio. */
         const val MIME_AVC = "video/avc"
         const val MIME_AAC = "audio/mp4a-latm"
