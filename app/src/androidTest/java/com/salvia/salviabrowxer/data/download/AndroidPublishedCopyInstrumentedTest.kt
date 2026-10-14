@@ -41,8 +41,9 @@ class AndroidPublishedCopyInstrumentedTest {
         assertNotNull("the publish must return a uri to own", uriString)
         val uri = Uri.parse(uriString!!)
 
-        assertTrue("a row this package inserted must be ours: $uri", published.isOwned(uri))
-        assertTrue("an owned row must be deletable", published.delete(uri))
+        // The ownership API speaks in URI strings, which is what a row stores.
+        assertTrue("a row this package inserted must be ours: $uriString", published.isOwned(uriString))
+        assertTrue("an owned row must be deletable", published.delete(uriString))
 
         // Gone for the gallery as well, which is what the user sees after deleting a download.
         var rows = -1
