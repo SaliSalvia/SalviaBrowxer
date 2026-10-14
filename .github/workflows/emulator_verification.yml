@@ -63,13 +63,30 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon
-            ./gradlew :app:assembleDebug --stacktrace --no-daemon
+            # Every stage is named and every prefix of the output is kept: when a run fails before a
+            # single test starts - a compile error, a missing SDK - there is no JUnit XML to read, and
+            # the raw log export of a run is not always reachable.
+            # The log is written and replayed rather than piped through tee: this script must not
+            # depend on a shell option that `sh` is not required to support, and a gradle failure has
+            # to end the step even when the pipeline's status is the last command's.
+            stage() { echo "=== STAGE: $1 ==="; }
+            stage connected-tests
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1
+            status=$?
+            cat gradle-instrumented.log
+            test $status -eq 0 || exit $status
+            stage assemble-debug
+            ./gradlew :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1
+            status=$?
+            test $status -eq 0 || exit $status
+            stage install
             adb install -r app/build/outputs/apk/debug/app-debug.apk
+            stage launch
             adb shell am start -n com.salvia.salviabrowxer/.MainActivity
             sleep 8
             echo "--- app process ---"
             adb shell pidof com.salvia.salviabrowxer
+            stage done
 
       # The emulator runner keeps the test output in its own log; the JUnit XML that the annotations
       # and the PR comment are built from survives in the workspace, so the failure is readable
@@ -83,6 +100,18 @@ jobs:
           import xml.etree.ElementTree as ET
 
           lines = []
+
+          # First the build itself: an error here means no test ever ran, and the log is the only
+          # place the reason exists.
+          log = Path("gradle-instrumented.log")
+          if log.exists():
+              stage = ""
+              for raw in log.read_text(errors="replace").splitlines():
+                  if raw.startswith("=== STAGE: "):
+                      stage = raw.replace("=== STAGE: ", "").strip()
+                  elif raw.startswith("e: ") or " error: " in raw or raw.startswith("FAILURE:"):
+                      lines.append(f"[{stage}] {raw.strip()[:400]}")
+
           for xml_path in sorted(glob.glob("**/build/outputs/androidTest-results/**/*.xml", recursive=True)):
               try:
                   tree = ET.parse(xml_path)
