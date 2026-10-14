@@ -31,8 +31,12 @@ per the roadmap policy: **no bump until the real-device matrix passes.**
   points the row at the document; an unreachable tree keeps the file private and says so
   (`DestinationPolicy`, `DestinationPolicyTest`). The refusal half runs on a device as well
   (`SafDestinationInstrumentedTest`: a provider that is not installed, a tree this app holds no
-  grant for, an empty file, and the tree name the settings row shows) — the writable half is not,
-  because only the system picker can grant a tree.
+  grant for, an empty file, and the tree name the settings row shows). The writable half runs on a
+  device too, against a documents provider that exists only in debug builds
+  (`SafMoveInstrumentedTest` via `DebugDocumentsProvider`: a name the provider renames on collision
+  and the row follows, a provider that keeps only part of what it accepted and the move is refused
+  with nothing left behind, and a provider that refuses to create at all). What is still not covered
+  is the system picker's own grant — that is the user's hand — and a real card's provider.
 - **Conversion (real encoding, opt-in per file).** `TranscodePlan` decides, `VideoTranscoder`
   re-encodes to H.264/MP4 or AAC/M4A from any container the platform can demux; AVI/WMV/FLV/VOB and
   friends refuse with a reason because Android has no demuxer for them. The original is never
@@ -61,13 +65,15 @@ per the roadmap policy: **no bump until the real-device matrix passes.**
   performed by Android's own JCE, the real MediaStore publish and its ownership rules
   (`AndroidPublishedCopyInstrumentedTest` — a row this package inserted is owned and deletable, while
   another provider's document, a row that is not there and a file in the public download folder are
-  refused), the conversion above, and the destination refusals above. A failure inside a codec or a
+  refused), the conversion above, the destination refusals and the writable half above, and the
+  blocker's ordering inside a real WebView (`WebViewInterceptionInstrumentedTest`). Every run also
+  names what it skipped, so a test that an `assume` bypassed on a device is not counted as evidence. A failure inside a codec or a
   provider writes its reason to the device log, which the job reports alongside the JUnit failures.
 - **Not proven anywhere yet:** the 10-site × 3-run comparison against the competitor on the same
-  network and URLs, the encoder's behaviour on real vendor hardware, the writable half of the chosen
-  folder (a name collision renamed by the provider, a provider that fails mid-write, a process killed
-  between the copy and the delete — none of which a test can create without the system picker's
-  grant), and the download/play/gallery/delete loop as a whole on a phone. Until the owner runs that
+  network and URLs, the encoder's behaviour on real vendor hardware, the system picker's own grant
+  (the writable half of the destination is exercised against a debug-build provider, not against a
+  real card's), a process killed between the copy and the delete, and the download/play/gallery/delete
+  loop as a whole on a phone. Until the owner runs that
   matrix, no parity claim is made in any document. `docs/inshot-parity-fa.md` states this at the top.
 
 ## Boundary removals and additions in this branch

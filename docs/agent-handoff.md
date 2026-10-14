@@ -35,9 +35,12 @@ changing anything. This branch continues the existing Compose app; it does not r
   RTL at 360 dp and font scale 1.3.
 - Encoder behaviour on real hardware. The conversion path is now exercised on an emulator
   (`VideoTranscoderInstrumentedTest`, four cases) - vendor hardware is still open.
-- The writable half of the chosen folder: a name collision renamed by the provider, a provider that
-  fails mid-write, a process killed between the copy and the delete. All three need a tree grant,
-  which only the system picker can give, so they are the owner's to try on a device.
+- The system picker's own grant and a real card's provider: the writable half of the destination is
+  covered against a documents provider that only debug builds contain
+  (`SafMoveInstrumentedTest` / `DebugDocumentsProvider`), which emulates the behaviour of a folder,
+  not the grant that makes one.
+- A process killed between the copy and the delete: the design keeps both copies and leaves the
+  private one whole, but a test needs a real kill in the middle of a copy.
 - Private-mode cookie isolation: the wording is honest today; the isolation is not implemented.
 - Worker visibility assessment: document the WebView gap rather than claiming coverage.
 - Live-stream capture: out of scope until a public source shows the competitor doing it and the
