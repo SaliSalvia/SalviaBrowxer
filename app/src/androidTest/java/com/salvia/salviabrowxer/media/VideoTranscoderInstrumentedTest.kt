@@ -39,11 +39,15 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class VideoTranscoderInstrumentedTest {
 
+    // Test names here are underscores rather than the backticked sentences the JVM unit tests use:
+    // an instrumentation APK is dexed, and DEX below version 040 - what minSdk 24 produces - does not
+    // allow spaces in a method name. D8 says so, but only after a full build.
+
     private val context: Context get() = ApplicationProvider.getApplicationContext()
     private val work: File get() = File(context.cacheDir, "transcode-test").apply { mkdirs() }
 
     @Test
-    fun `a video file comes out as a playable H264 mp4`() {
+    fun a_video_file_comes_out_as_a_playable_h264_mp4() {
         val source = File(work, "source-video.mp4")
         val output = File(work, "converted-video.mp4")
         output.delete()
@@ -68,7 +72,7 @@ class VideoTranscoderInstrumentedTest {
     }
 
     @Test
-    fun `PCM audio is decoded and encoded into AAC in m4a`() {
+    fun pcm_audio_is_decoded_and_encoded_into_aac_in_m4a() {
         val source = File(work, "tone.wav")
         val output = File(work, "converted-tone.m4a")
         output.delete()
@@ -92,7 +96,7 @@ class VideoTranscoderInstrumentedTest {
     }
 
     @Test
-    fun `a file no codec can open fails and leaves nothing behind`() {
+    fun a_file_no_codec_can_open_fails_and_leaves_nothing_behind() {
         val source = File(work, "broken.mp4")
         val output = File(work, "converted-broken.mp4")
         source.writeBytes(ByteArray(4096) { 0x1b })
@@ -105,7 +109,7 @@ class VideoTranscoderInstrumentedTest {
     }
 
     @Test
-    fun `a cancelled conversion leaves nothing behind either`() {
+    fun a_cancelled_conversion_leaves_nothing_behind_either() {
         val source = File(work, "cancel-source.mp4")
         val output = File(work, "cancel-output.mp4")
         output.delete()
