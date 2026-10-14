@@ -63,6 +63,9 @@ class VideoTranscoder {
         var muxerStopped = false
         val tracks = MediaTracks()
         val deadline = System.currentTimeMillis() + MAX_TRANSCODE_MILLIS
+        // What the finally block deletes on: a run that did not finish has no business leaving half
+        // a file where the caller asked for a converted one.
+        var succeeded = false
 
         try {
             extractor.setDataSource(input.absolutePath)
@@ -149,7 +152,8 @@ class VideoTranscoder {
             if (!tracks.started) return false
             muxer.stop()
             muxerStopped = true
-            return output.exists() && output.length() > 0L
+            succeeded = output.exists() && output.length() > 0L
+            return succeeded
         } catch (_: Exception) {
             return false
         } finally {
@@ -166,7 +170,9 @@ class VideoTranscoder {
             if (!muxerStopped) runCatching { muxer?.stop() }
             runCatching { muxer?.release() }
             runCatching { extractor.release() }
-            if (!output.exists() || output.length() == 0L) runCatching { output.delete() }
+            // A failure and a cancellation both land here, and both must leave nothing behind: the
+            // muxer above finalises whatever it was given, which is a playable-looking fragment.
+            if (!succeeded) runCatching { output.delete() }
         }
     }
 
@@ -422,17 +428,19 @@ class VideoTranscoder {
     private fun MediaFormat.getLongOrNull(key: String): Long? =
         runCatching { if (containsKey(key)) getLong(key) else null }.getOrNull()
 
-    private companion object {
+    companion object {
+        /** What the output always is: H.264 for video, AAC for audio. */
         const val MIME_AVC = "video/avc"
         const val MIME_AAC = "audio/mp4a-latm"
-        const val TIMEOUT_US = 10_000L
-        const val BUFFER_SIZE = 256 * 1024
-        const val AUDIO_BITRATE = 128_000
-        const val I_FRAME_INTERVAL_SECONDS = 1
-        const val MIN_BITRATE = 400_000
-        const val MAX_BITRATE = 12_000_000
+
+        private const val TIMEOUT_US = 10_000L
+        private const val BUFFER_SIZE = 256 * 1024
+        private const val AUDIO_BITRATE = 128_000
+        private const val I_FRAME_INTERVAL_SECONDS = 1
+        private const val MIN_BITRATE = 400_000
+        private const val MAX_BITRATE = 12_000_000
 
         /** A conversion that has not finished in this long is not going to; the file is left alone. */
-        const val MAX_TRANSCODE_MILLIS = 20 * 60 * 1000L
+        private const val MAX_TRANSCODE_MILLIS = 20 * 60 * 1000L
     }
 }
