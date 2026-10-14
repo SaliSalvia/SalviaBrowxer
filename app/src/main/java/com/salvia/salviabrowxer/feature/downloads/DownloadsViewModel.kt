@@ -295,7 +295,7 @@ class DownloadsViewModel @Inject constructor(
                 val opened = runCatching {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW)
-                            .setDataAndType(Uri.parse(path), download.mimeType ?: getMimeTypeFromExtension(File(path).extension))
+                            .setDataAndType(Uri.parse(path), download.mimeType ?: getMimeTypeFromExtension(download.filename.substringAfterLast('.', "")))
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 }
