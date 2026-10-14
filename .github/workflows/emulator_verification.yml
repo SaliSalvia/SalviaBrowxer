@@ -113,10 +113,12 @@ jobs:
                   elif (
                       stripped.startswith("FAILURE:")
                       or stripped.startswith("* What went wrong:")
+                      or stripped.startswith("Caused by:")
+                      or "Failed to process:" in stripped
                       or (stripped.startswith("> Task ") and stripped.endswith("FAILED"))
                   ):
                       lines.append(f"[{stage}] {stripped[:400]}")
-                      if stripped.startswith("* What went wrong:"):
+                      if stripped.startswith("* What went wrong:") or "Failed to process:" in stripped:
                           for follow in text[index + 1:index + 8]:
                               if follow.strip():
                                   lines.append(f"[{stage}]   {follow.strip()[:400]}")
