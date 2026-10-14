@@ -247,7 +247,9 @@ fun BrowserScreen(
         if (findState == null) store.clearFind(tabId) else store.findAll(tabId, findState.query)
     }
 
-    val menuItems = listOf(
+    // listOfNotNull, not listOf: the ad-block entry is conditional, and a conditional entry is an
+    // expression - which needs an else branch.
+    val menuItems = listOfNotNull(
         // Two different things share the word "home" and both have to stay reachable: the browsable
         // homepage (below) and the app's own start screen with the paste field (further down).
         BrowserMenuItem(stringResource(R.string.home), Icons.Default.Home, onClick = { viewModel.goHome() }, isEnabled = hasPage),
@@ -276,6 +278,8 @@ fun BrowserScreen(
                 onClick = { viewModel.toggleAdBlockForCurrentSite() },
                 isEnabled = hasPage
             )
+        } else {
+            null
         },
         BrowserMenuItem(stringResource(R.string.downloads), Icons.Default.Download, onClick = onNavigateToDownloads),
         BrowserMenuItem(stringResource(R.string.home_start_screen), Icons.Default.Dashboard, onClick = { onNavigateToHome?.invoke() }, isEnabled = onNavigateToHome != null),

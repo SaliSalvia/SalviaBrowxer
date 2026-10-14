@@ -54,6 +54,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
+import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.media.downloader.TranscodePlan
 import com.salvia.salviabrowxer.ui.components.DownloadItem
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
