@@ -32,6 +32,13 @@ data to the developer, and it collects nothing about you.
   local database on your device. Each download row also remembers the page and user-agent it was
   started with, so a queued transfer can resume with the session it belongs to. Private tabs are not
   written to history.
+- **Private tabs.** A private tab is *not* a separate browsing identity, and this policy says so
+  plainly: the app does not keep a second cookie jar, so private and normal tabs share one WebView
+  profile. Cookies, site storage, cache and any site login therefore carry over between them, and a
+  site you signed into in a normal tab still recognises you in a private tab. What a private tab does
+  is narrower, and it does it exactly: its visits are never written to history, and private tabs are
+  never saved to the session, so closing the app leaves no list of them behind. Files you download
+  from a private tab are saved like any other download and remain on the device.
 - **Settings.** Your preferences are stored on your device only.
 - **Network requests.** The app makes a network request only to load a page you opened, to probe
   media the page already exposed, or to download something you started. There is no background

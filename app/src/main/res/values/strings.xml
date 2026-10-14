@@ -7,6 +7,7 @@
     <string name="new_tab">New Tab</string>
     <string name="close_tab">Close Tab</string>
     <string name="private_browsing">Private Browsing</string>
+    <string name="private_tabs_disclosure">Private tabs keep no history and are never restored. Cookies and site data are shared with your normal tabs, so a site can still recognise you here.</string>
     <string name="desktop_site">Desktop Site</string>
     <string name="reload">Reload</string>
     <string name="stop">Stop</string>

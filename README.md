@@ -28,7 +28,8 @@ versionName `1.0.0`.
   field and the media pill, and reload / stop, downloads, tabs and the overflow menu along the
   bottom. Home moved into the overflow menu when reload / stop took its slot, so nothing became
   unreachable. A tab switcher with close, new tab and new private tab, private tabs that never
-  write history, find in page, share and copy link, five search engines, JavaScript and cookie
+  write history and are never restored (they are **not** a separate cookie jar - the WebView profile
+  is shared, and the app says so in the tab switcher instead of implying isolation), find in page, share and copy link, five search engines, JavaScript and cookie
   toggles, and a desktop user-agent toggle that shows its state.
 - **Library screens** — bookmarks (add from the browser menu, remove in the list) and history open
   in the current tab, with in-list search and per-row delete.
@@ -282,7 +283,9 @@ below the automatic step skips silently and the “Save to gallery” action is 
 
 Pages are loaded by the sites you visit, downloads stay on the device, and the app has no account
 and no analytics. Backups and device transfer exclude the database, preferences, WebView cookies
-and cache. A short privacy policy lives in [`docs/privacy-policy.md`](docs/privacy-policy.md).
+and cache. **Private tabs** keep no history and are not restored, but they are not a separate
+identity: cookies and site data are shared with normal tabs, the app says so in the tab switcher,
+and no privacy claim here goes further than that. A short privacy policy lives in [`docs/privacy-policy.md`](docs/privacy-policy.md).
 
 ## License
 

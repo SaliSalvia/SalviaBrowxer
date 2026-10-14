@@ -8,6 +8,7 @@
     <string name="new_tab">زبانهٔ جدید</string>
     <string name="close_tab">بستن زبانه</string>
     <string name="private_browsing">مرور خصوصی</string>
+    <string name="private_tabs_disclosure">زبانه‌های خصوصی تاریخچه ذخیره نمی‌کنند و پس از بستن برنامه بازنمی‌گردند. کوکی‌ها و داده‌های سایت با زبانه‌های معمولی مشترک‌اند، پس یک سایت می‌تواند شما را اینجا هم بشناسد.</string>
     <string name="desktop_site">نسخهٔ رایانه</string>
     <string name="reload">بازخوانی</string>
     <string name="stop">توقف</string>
