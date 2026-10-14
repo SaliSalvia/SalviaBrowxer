@@ -167,4 +167,51 @@ class DashManifestParserTest {
         assertNull(DashManifestParser.parseIsoDuration(null))
         assertNull(DashManifestParser.parseIsoDuration("not a duration"))
     }
+
+    @Test
+    fun `a single-file SegmentBase carries its index and initialisation ranges`() {
+        val xml = """
+            <MPD type="static" mediaPresentationDuration="PT10S">
+              <Period>
+                <AdaptationSet mimeType="video/mp4">
+                  <Representation id="v1" bandwidth="800000" width="1280" height="720">
+                    <BaseURL>ondemand.mp4</BaseURL>
+                    <SegmentBase indexRange="816-1207"><Initialization range="0-815"/></SegmentBase>
+                  </Representation>
+                </AdaptationSet>
+              </Period>
+            </MPD>
+        """.trimIndent()
+
+        val video = DashManifestParser.parse(manifestUrl, xml)!!.videoRepresentations.single()
+
+        // The file itself is the media; there are no segment URLs to invent.
+        assertEquals("https://cdn.example.org/vod/ondemand.mp4", video.fileUrl)
+        assertTrue(video.isSingleFile)
+        assertTrue(video.segmentUrls.isEmpty())
+        assertEquals(816L..1207L, video.indexRange)
+        assertEquals(0L..815L, video.initRange)
+    }
+
+    @Test
+    fun `a SegmentBase without an index range still parses as a whole file`() {
+        val xml = """
+            <MPD type="static" mediaPresentationDuration="PT10S">
+              <Period>
+                <AdaptationSet mimeType="video/mp4">
+                  <Representation id="v1" bandwidth="800000">
+                    <BaseURL>https://cdn.example.org/vod/plain.mp4</BaseURL>
+                    <SegmentBase/>
+                  </Representation>
+                </AdaptationSet>
+              </Period>
+            </MPD>
+        """.trimIndent()
+
+        val video = DashManifestParser.parse(manifestUrl, xml)!!.videoRepresentations.single()
+
+        assertEquals("https://cdn.example.org/vod/plain.mp4", video.fileUrl)
+        assertNull("no index range means the whole resource is the only honest plan", video.indexRange)
+        assertNull(video.initRange)
+    }
 }

@@ -8,6 +8,7 @@
     <string name="new_tab">زبانهٔ جدید</string>
     <string name="close_tab">بستن زبانه</string>
     <string name="private_browsing">مرور خصوصی</string>
+    <string name="private_tabs_disclosure">زبانه‌های خصوصی تاریخچه ذخیره نمی‌کنند و پس از بستن برنامه بازنمی‌گردند. کوکی‌ها و داده‌های سایت با زبانه‌های معمولی مشترک‌اند، پس یک سایت می‌تواند شما را اینجا هم بشناسد.</string>
     <string name="desktop_site">نسخهٔ رایانه</string>
     <string name="reload">بازخوانی</string>
     <string name="stop">توقف</string>
@@ -49,6 +50,15 @@
     <string name="tab_open">گشودن این زبانه</string>
     <string name="find_query_field">متنی که در صفحه جست‌وجو می‌شود</string>
     <string name="download_enqueued">به صف دانلود افزوده شد</string>
+    <string name="download_convert_needs_local_file">این فایل در پوشه‌ای است که خودتان انتخاب کرده‌اید، پس تبدیل در اینجا ممکن نیست — آن را از همان پوشه باز کنید</string>
+    <string name="download_convert">تبدیل به MP4</string>
+    <string name="download_convert_progress">در حال تبدیل… %1$d%%</string>
+    <string name="download_convert_done">تبدیل شد: %s</string>
+    <string name="download_convert_failed">تبدیل انجام نشد — فایل اصلی دست‌نخورده است</string>
+    <string name="download_convert_no_demuxer">چارچوب رسانهٔ این دستگاه نمی‌تواند این ظرف (AVI/WMV) را باز کند، پس تبدیل روی این دستگاه ممکن نیست. فایل ذخیره شده و تغییری نکرده است.</string>
+    <string name="download_convert_not_applicable">چیزی برای تبدیل این فایل وجود ندارد</string>
+    <string name="download_convert_already">این ردیف همین حالا در حال تبدیل است</string>
+    <string name="download_preparing">در حال بررسی فایل…</string>
     <string name="download_waiting_for_wifi">در انتظار Wi-Fi</string>
     <string name="notifications_denied_downloads_anyway">دانلود ادامه می‌یابد — اعلان‌ها خاموش می‌مانند</string>
 
@@ -139,6 +149,14 @@
     <string name="settings_simultaneous_downloads">دانلودهای هم‌زمان</string>
     <string name="settings_parallel_connections">چند اتصال برای هر دانلود</string>
     <string name="settings_parallel_connections_hint">به‌طور پیش‌فرض روشن. هر فایل مستقیم روی چند اتصال Range هم‌زمان گرفته و در پایان به هم می‌چسبد؛ هر جا سرور هر اتصال را محدود کند این سریع‌تر است. توقف، ادامه و تلاش دوباره همان‌طور سرِ جای خود کار می‌کنند. اگر سرور Range ندهد، خودش تشخیص داده می‌شود و فایل با یک اتصال گرفته می‌شود</string>
+    <string name="settings_ad_block">مسدودکردن تبلیغ و ردیاب</string>
+    <string name="settings_ad_block_hint">پیش‌فرض خاموش است. میزبان‌های شناخته‌شدهٔ تبلیغ و ردیاب با پاسخ خالی جواب می‌گیرند؛ ویدیو، صدا، فهرست پخش و صفحه‌ای که روی آن هستید هرگز مسدود نمی‌شوند.</string>
+    <string name="settings_ad_block_stats">%1$d درخواست مسدود شد · %2$d سایت مستثنا</string>
+    <string name="ad_block_disable_here">برای این سایت خاموش</string>
+    <string name="ad_block_enable_here">برای این سایت روشن</string>
+    <string name="ad_block_off_here">مسدودسازی روی %s خاموش شد</string>
+    <string name="ad_block_on_here">مسدودسازی روی %s دوباره روشن شد</string>
+    <string name="ad_block_no_site">اول یک صفحه باز کنید</string>
     <string name="settings_wifi_only">دانلود فقط با Wi-Fi</string>
     <string name="settings_wifi_only_hint">به‌طور پیش‌فرض خاموش. تا وقتی این را روشن نکنید، دانلودها با هر اتصالی انجام می‌شوند، از جمله دادهٔ همراه</string>
     <string name="settings_export_to_gallery">نمایش دانلودها در گالری</string>
@@ -274,6 +292,12 @@
     <string name="action_unlock_download">بیرون آوردن از پوشهٔ رمزدار</string>
     <string name="download_locked">به پوشهٔ رمزدار منتقل شد و از گالری پاک شد. نسخه‌ای که پیش‌تر در پوشهٔ انتخابی شما ساخته شده، مال خودتان است و همان‌جا می‌ماند</string>
     <string name="download_unlocked">از پوشهٔ رمزدار بیرون آمد</string>
+    <string name="download_folder_unreachable">در فضای برنامه ذخیره شد: پوشه‌ای که انتخاب کرده‌اید همین حالا در دسترس نیست</string>
+    <string name="settings_destination_chosen_folder">ذخیره در پوشهٔ انتخابی</string>
+    <string name="settings_destination_chosen_folder_hint">فایل‌های تمام‌شده به پوشه‌ای که انتخاب کرده‌اید منتقل می‌شوند. تا پیش از آن، در فضای خود برنامه می‌مانند.</string>
+    <string name="settings_destination_needs_folder">اول یک پوشه انتخاب کنید</string>
+    <string name="settings_destination_chosen">دانلودهای تمام‌شده در پوشهٔ شما ذخیره می‌شوند</string>
+    <string name="settings_destination_internal">دانلودهای تمام‌شده در فضای خود برنامه می‌مانند</string>
     <string name="settings_sd_card_folder">نسخهٔ دوم دانلودها در پوشهٔ انتخابی</string>
     <string name="settings_sd_card_none">پوشه‌ای انتخاب نشده</string>
     <string name="action_clear_folder">توقف نسخه‌برداری</string>

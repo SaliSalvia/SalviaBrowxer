@@ -1,24 +1,17 @@
 package com.salvia.salviabrowxer.ui.utils
 
-import java.io.File
 import java.text.DecimalFormat
 
-fun File.safeDelete(): Boolean {
-    return if (exists()) {
-        delete()
-    } else {
-        false
-    }
-}
-
-fun File.ensureParentDirectory(): Boolean {
-    parentFile?.let { parent ->
-        if (!parent.exists()) {
-            return parent.mkdirs()
-        }
-    }
-    return true
-}
+/**
+ * The formatting helpers the UI actually calls.
+ *
+ * Three members used to live here and were removed after checking every caller: `File.safeDelete`
+ * (every deletion path in the app already handles the result of `delete()` itself, and this wrapper
+ * only made the failure silent), `File.ensureParentDirectory` (the downloader creates its
+ * destination directory where it writes, so a second one only hid which component owned that) and
+ * `getFileExtension` (both the downloader and `MediaUrlRules.pathExtension` have a stricter version,
+ * and the copy here accepted query strings as part of the extension).
+ */
 
 fun formatFileSize(bytes: Long): String {
     if (bytes <= 0) return "0 B"
@@ -58,25 +51,45 @@ fun sanitizeFilename(filename: String): String {
         .replace("_+$".toRegex(), "")
 }
 
-fun getFileExtension(url: String): String? {
-    val lastDotIndex = url.lastIndexOf('.')
-    val lastSlashIndex = url.lastIndexOf('/')
-    return if (lastDotIndex > lastSlashIndex && lastDotIndex < url.length - 1) {
-        url.substring(lastDotIndex + 1).lowercase()
-    } else {
-        null
-    }
-}
-
 fun getMimeTypeFromExtension(extension: String?): String {
     return when (extension?.lowercase()) {
         "mp4", "webm", "mov", "avi", "3gp", "m4v" -> "video/*"
+        // The rest of the containers this app recognises (the published format lists include avi,
+        // wmv and mov; the tray knows more). A specific type beats a wildcard: it is what decides
+        // which app the system offers to open a finished download with.
+        "mkv" -> "video/x-matroska"
+        "wmv", "asf" -> "video/x-ms-wmv"
+        "flv" -> "video/x-flv"
+        "mpg", "mpeg" -> "video/mpeg"
+        "ogv" -> "video/ogg"
+        "3g2" -> "video/3gpp2"
+        "ts", "m2ts", "mts" -> "video/mp2t"
+        "vob" -> "video/mpeg"
+        "f4v" -> "video/mp4"
         "mp3", "m4a", "aac", "wav", "flac" -> "audio/*"
+        "m4b" -> "audio/mp4"
+        "ogg", "oga" -> "audio/ogg"
+        "opus" -> "audio/opus"
+        "wma" -> "audio/x-ms-wma"
+        "mka" -> "audio/x-matroska"
+        "amr" -> "audio/amr"
+        "aif", "aiff" -> "audio/aiff"
+        "ac3" -> "audio/ac3"
         "jpg", "jpeg", "png", "gif", "webp", "bmp" -> "image/*"
         "pdf" -> "application/pdf"
         "apk" -> "application/vnd.android.package-archive"
         "zip", "rar", "7z", "tar", "gz" -> "application/zip"
         "txt", "csv", "json", "xml", "html", "htm" -> "text/*"
+        // The document formats a downloader is expected to save. These get their real types rather
+        // than `application/octet-stream`, because the type decides which app offers to open the
+        // file once it is downloaded.
+        "doc", "docx" -> "application/msword"
+        "xls", "xlsx" -> "application/vnd.ms-excel"
+        "ppt", "pptx" -> "application/vnd.ms-powerpoint"
+        "odt" -> "application/vnd.oasis.opendocument.text"
+        "ods" -> "application/vnd.oasis.opendocument.spreadsheet"
+        "odp" -> "application/vnd.oasis.opendocument.presentation"
+        "rtf" -> "application/rtf"
         else -> "application/octet-stream"
     }
 }

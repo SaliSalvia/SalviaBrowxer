@@ -63,13 +63,63 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           script: |
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon
-            ./gradlew :app:assembleDebug --stacktrace --no-daemon
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            # Every stage is named and every prefix of the output is kept: when a run fails before a
+            # single test starts - a compile error, a missing SDK - there is no JUnit XML to read, and
+            # the raw log export of a run is not always reachable.
+            # Each stage is one self-contained line: no shell functions, no state kept between lines,
+            # because how this script is executed belongs to the runner and is not something to depend on.
+            # The gradle output goes to a file the failure step reports from - a run that dies before the
+            # first test has no JUnit XML to read.
+            echo "=== STAGE: connected-tests ==="
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1 || { adb logcat -d -t 3000 | grep -iE "VideoTranscoder|ACodec|CCodec|MediaCodec|MediaExtractor|MediaMuxer|OMX" > logcat-instrumented.log; cat gradle-instrumented.log; exit 1; }
+            echo "=== STAGE: assemble-debug ==="
+            ./gradlew :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1 || { cat gradle-instrumented.log; exit 1; }
+            echo "=== STAGE: install ==="
+            adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
+            echo "=== STAGE: launch ==="
             adb shell am start -n com.salvia.salviabrowxer/.MainActivity
             sleep 8
             echo "--- app process ---"
             adb shell pidof com.salvia.salviabrowxer
+            echo "=== STAGE: done ==="
+
+      # A green run and a test that never ran look the same from the outside. This prints what the
+      # device actually executed - including anything an `assume` skipped, because a skipped test on a
+      # device is not evidence about that device. A notice annotation survives on successful runs, so
+      # the counts are readable without the job log.
+      - name: Summarise instrumented results
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          suites = []
+          for path in sorted(glob.glob("**/build/outputs/androidTest-results/**/*.xml", recursive=True)):
+              try:
+                  tree = ET.parse(path)
+              except (ET.ParseError, OSError):
+                  continue
+              for suite in tree.iter("testsuite"):
+                  name = suite.get("name") or "?"
+                  tests = int(suite.get("tests") or 0)
+                  failures = int(suite.get("failures") or 0)
+                  errors = int(suite.get("errors") or 0)
+                  skipped = int(suite.get("skipped") or 0)
+                  suites.append((name, tests, failures, errors, skipped))
+                  for case in suite.iter("testcase"):
+                      if case.findall("skipped"):
+                          print(f"::notice title=Skipped on this device:: {case.get('classname')}.{case.get('name')}")
+
+          if not suites:
+              print("::warning title=Instrumented results::No result XML was produced, so nothing here is evidence.")
+          total = sum(suite[1] for suite in suites)
+          failed = sum(suite[2] + suite[3] for suite in suites)
+          skipped = sum(suite[4] for suite in suites)
+          for name, tests, failures, errors, skipped_count in suites:
+              print(f"::notice title=Instrumented results::{name}: {tests} tests, {failures} failures, {errors} errors, {skipped_count} skipped")
+          print(f"::notice title=Instrumented totals::{total} tests, {failed} failed, {skipped} skipped")
+          PY
 
       # The emulator runner keeps the test output in its own log; the JUnit XML that the annotations
       # and the PR comment are built from survives in the workspace, so the failure is readable
@@ -83,6 +133,43 @@ jobs:
           import xml.etree.ElementTree as ET
 
           lines = []
+
+          # First the build itself: an error here means no test ever ran, and the log is the only
+          # place the reason exists. Gradle explains itself in a block after 'What went wrong:', so
+          # that block is read as well as any compiler line - and when nothing matched at all, the
+          # tail is reported, because a failure with no explanation is worse than a long one.
+          log = Path("gradle-instrumented.log")
+          if log.exists():
+              stage = ""
+              text = log.read_text(errors="replace").splitlines()
+              for index, raw in enumerate(text):
+                  stripped = raw.strip()
+                  if stripped.startswith("=== STAGE: "):
+                      stage = stripped.replace("=== STAGE: ", "").strip().rstrip("=").strip()
+                  elif stripped.startswith("e: "):
+                      lines.append(f"[{stage}] {stripped[:400]}")
+                  elif (
+                      stripped.startswith("FAILURE:")
+                      or stripped.startswith("* What went wrong:")
+                      or stripped.startswith("Caused by:")
+                      or "Failed to process:" in stripped
+                      or (stripped.startswith("> Task ") and stripped.endswith("FAILED"))
+                  ):
+                      lines.append(f"[{stage}] {stripped[:400]}")
+                      if stripped.startswith("* What went wrong:") or "Failed to process:" in stripped:
+                          for follow in text[index + 1:index + 8]:
+                              if follow.strip():
+                                  lines.append(f"[{stage}]   {follow.strip()[:400]}")
+              if not lines:
+                  tail = [line.strip() for line in text if line.strip()][-25:]
+                  lines.extend(f"[tail] {line[:400]}" for line in tail)
+
+          # A test that fails inside a codec leaves its reason in logcat, not in the build log.
+          device_log = Path("logcat-instrumented.log")
+          if device_log.exists():
+              device_lines = [line.strip() for line in device_log.read_text(errors="replace").splitlines() if line.strip()]
+              lines.extend(f"[device] {line[:400]}" for line in device_lines[-40:])
+
           for xml_path in sorted(glob.glob("**/build/outputs/androidTest-results/**/*.xml", recursive=True)):
               try:
                   tree = ET.parse(xml_path)

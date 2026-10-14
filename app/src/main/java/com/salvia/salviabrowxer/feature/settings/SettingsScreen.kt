@@ -28,6 +28,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
@@ -83,6 +85,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.BuildConfig
 import com.salvia.salviabrowxer.R
+import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.service.ConnectionKind
 import com.salvia.salviabrowxer.service.ConnectivityGate
 import com.salvia.salviabrowxer.ui.utils.Constants
@@ -217,12 +220,29 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 SettingsItem(Icons.Default.Folder, stringResource(R.string.settings_download_directory), state.downloadDirectoryPath.ifBlank { stringResource(R.string.settings_download_directory_hint) })
                 SettingsItem(Icons.Default.Security, stringResource(R.string.settings_locked_folder), stringResource(if (state.isPasswordFolderSet) R.string.settings_locked_folder_hint else R.string.settings_locked_folder_not_set)) { dialog = SettingsDialog.Password }
                 SettingsItem(Icons.Default.Storage, stringResource(R.string.settings_sd_card_folder), state.safDestinationLabel ?: stringResource(R.string.settings_sd_card_none)) { pickFolder.launch(null) }
+                // The switch sits under the picker on purpose: the folder is chosen first, and only
+                // then can it become the destination. Turning it on without a folder says so.
+                SwitchSettingsItem(
+                    Icons.Default.Save,
+                    stringResource(R.string.settings_destination_chosen_folder),
+                    stringResource(R.string.settings_destination_chosen_folder_hint),
+                    state.destinationMode == SettingsDataStore.DESTINATION_TREE
+                ) { viewModel.updateDestinationMode(it) }
                 if (state.safDestinationLabel != null) {
                     SettingsItem(Icons.Default.Clear, stringResource(R.string.action_clear_folder), null) { viewModel.clearSafDestination() }
                 }
                 SettingsItem(Icons.Default.Download, stringResource(R.string.settings_simultaneous_downloads), stringResource(R.string.settings_downloads_at_a_time, state.maxSimultaneousDownloads)) { dialog = SettingsDialog.Downloads }
                 SwitchSettingsItem(Icons.Default.Sync, stringResource(R.string.settings_parallel_connections), stringResource(R.string.settings_parallel_connections_hint), state.parallelConnections > 1) { viewModel.updateParallelDownload(it) }
                 SwitchSettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint), state.isWifiOnly) { viewModel.updateWifiOnly(it) }
+                // The numbers are part of the row on purpose: an ad blocker that cannot say what it
+                // blocked is indistinguishable from one that is doing nothing at all.
+                SwitchSettingsItem(
+                    Icons.Default.Block,
+                    stringResource(R.string.settings_ad_block),
+                    stringResource(R.string.settings_ad_block_hint) + "\n" +
+                        stringResource(R.string.settings_ad_block_stats, state.adBlockBlockedRequests, state.adBlockDisabledSiteCount),
+                    state.isAdBlockEnabled
+                ) { viewModel.updateAdBlock(it) }
                 SwitchSettingsItem(Icons.Default.Folder, stringResource(R.string.settings_export_to_gallery), stringResource(R.string.settings_export_to_gallery_hint), state.isExportToGallery) { viewModel.updateExportToGallery(it) }
                 SettingsItem(Icons.Default.Wifi, stringResource(R.string.settings_connection_label), connectionLabel(connectionKind))
                 Spacer(Modifier.height(16.dp))

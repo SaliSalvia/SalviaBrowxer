@@ -2,6 +2,7 @@ package com.salvia.salviabrowxer.feature.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,8 @@ data class PlayerUiState(
  */
 @HiltViewModel
 class MediaPlayerViewModel @Inject constructor(
-    private val downloadRepository: DownloadRepository
+    private val downloadRepository: DownloadRepository,
+    private val artifactCleaner: DownloadArtifactCleaner
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerUiState())
@@ -67,8 +69,11 @@ class MediaPlayerViewModel @Inject constructor(
                     downloadRepository.getAllDownloads().first()
                         .firstOrNull { it.finalPath == mediaUrl || it.url == mediaUrl }
                 }.getOrNull()
+                // The same deletion path as the downloads list, so a file deleted from the player
+                // also takes its staged parts and its gallery copy with it. It used to delete only
+                // `finalPath`, which is how a published copy outlived its row.
                 match?.let { download ->
-                    download.finalPath?.takeIf { it.isNotBlank() }?.let { path -> runCatching { File(path).delete() } }
+                    runCatching { artifactCleaner.clean(download) }
                     runCatching { downloadRepository.deleteDownload(download.id) }
                 }
             }

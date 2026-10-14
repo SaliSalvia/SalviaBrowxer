@@ -123,13 +123,17 @@ object DashManifestParser {
             )
         }
 
-        // SegmentBase: the representation's BaseURL *is* the media file.
-        val hasSegmentBase = directChild(representation, "SegmentBase") != null || directChild(adaptation, "SegmentBase") != null
-        if (hasSegmentBase && repBase != adaptationBase && looksLikeFile(repBase)) {
+        // SegmentBase: the representation's BaseURL *is* the media file, and the manifest may name
+        // the byte ranges of its initialisation data and its index.
+        val segmentBase = directChild(representation, "SegmentBase") ?: directChild(adaptation, "SegmentBase")
+        if (segmentBase != null && repBase != adaptationBase && looksLikeFile(repBase)) {
             return DashRepresentation(
                 id = id, mimeType = mimeType, codecs = codecs, bandwidth = bandwidth,
                 width = width, height = height, language = language,
-                isVideo = isVideo, isAudio = isAudio, initUrl = null, segmentUrls = listOf(repBase)
+                isVideo = isVideo, isAudio = isAudio, initUrl = null, segmentUrls = emptyList(),
+                fileUrl = repBase,
+                indexRange = parseByteRange(segmentBase.getAttribute("indexRange")),
+                initRange = parseByteRange(directChild(segmentBase, "Initialization")?.getAttribute("range"))
             )
         }
         return null
@@ -249,6 +253,23 @@ object DashManifestParser {
         "video" -> "video/mp4"
         "audio" -> "audio/mp4"
         else -> null
+    }
+
+
+    /**
+     * A DASH byte range (`"0-999"`, optionally open-ended) as a closed [LongRange], or null when the
+     * attribute is absent or not a pair of numbers. Negative offsets have no meaning in a file the
+     * app has not fetched yet, so they are refused rather than clamped.
+     */
+    private fun parseByteRange(attribute: String?): LongRange? {
+        val value = attribute?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val parts = value.split('-')
+        if (parts.size != 2) return null
+        val first = parts[0].trim().toLongOrNull() ?: return null
+        if (first < 0L) return null
+        val last = parts[1].trim().toLongOrNull() ?: return null
+        if (last < first) return null
+        return first..last
     }
 
     private fun looksLikeFile(url: String): Boolean {

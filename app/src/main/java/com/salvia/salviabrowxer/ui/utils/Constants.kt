@@ -21,7 +21,11 @@ object Constants {
     val SUPPORTED_VIDEO_EXTENSIONS = MediaUrlRules.VIDEO_EXTENSIONS.toList()
     val SUPPORTED_AUDIO_EXTENSIONS = MediaUrlRules.AUDIO_EXTENSIONS.toList()
     val SUPPORTED_IMAGE_EXTENSIONS = listOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
-    // MPEG-DASH (.mpd) is not listed: the app cannot segment it yet, so it is never offered.
+    // MPEG-DASH is deliberately absent from this list even though the app downloads it now: a
+    // `.mpd` is not a playlist, it is a manifest that has to be parsed and segmented
+    // (`DashManifestParser` + `DashDownloader`), and a manifest that is not clear, static and
+    // single-period is refused. Listing it beside `.m3u8` would say \"a file with this extension is
+    // a stream we can save\", which is false for exactly the manifests the app must decline.
     val SUPPORTED_PLAYLIST_EXTENSIONS = MediaUrlRules.PLAYLIST_EXTENSIONS.toList()
 
     val SUPPORTED_VIDEO_MIME_TYPES = listOf("video/mp4", "video/webm", "video/quicktime", "video/3gpp", "video/x-matroska", "video/x-flv", "video/mp2t", "video/x-msvideo")
@@ -33,8 +37,13 @@ object Constants {
     const val WRITE_TIMEOUT_SECONDS = 30L
 
     const val DATABASE_NAME = "salviabrowxer_db"
-    /** Must match `AppDatabase.version`; the schema is upgraded by the Room migrations, never by this. */
-    const val DATABASE_VERSION = 5
+    /**
+     * Kept only for the About/diagnostic text. The authority is `AppDatabase.version` — it is 6
+     * today (the locked-folder column, migration 5→6), and this constant lagged behind at 5 for a
+     * while because nothing read it. Do not add a second source of truth here: assert equality in
+     * the migration test instead of trusting this number.
+     */
+    const val DATABASE_VERSION = 6
 
     const val NOTIFICATION_CHANNEL_ID = "download_channel"
     const val NOTIFICATION_CHANNEL_NAME = "Downloads"

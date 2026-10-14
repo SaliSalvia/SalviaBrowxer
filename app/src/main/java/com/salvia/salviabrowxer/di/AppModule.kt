@@ -9,6 +9,8 @@ import com.salvia.salviabrowxer.core.database.AppDatabase
 import com.salvia.salviabrowxer.core.session.WebViewCookies
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SessionDataStore
+import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
+import com.salvia.salviabrowxer.data.download.androidArtifactCleaner
 import com.salvia.salviabrowxer.data.datastore.SessionRestorer
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStoreImpl
@@ -28,6 +30,7 @@ import com.salvia.salviabrowxer.media.downloader.DashDownloader
 import com.salvia.salviabrowxer.media.downloader.DownloadManager
 import com.salvia.salviabrowxer.media.downloader.MediaMetadataReader
 import com.salvia.salviabrowxer.media.downloader.MediaRemuxer
+import com.salvia.salviabrowxer.media.downloader.VideoTranscoder
 import com.salvia.salviabrowxer.media.downloader.SessionCookieJar
 import com.salvia.salviabrowxer.media.downloader.TrackMerger
 import com.salvia.salviabrowxer.media.resolver.DirectMediaResolver
@@ -80,6 +83,14 @@ object AppModule {
     @Singleton
     fun provideMediaRemuxer(): MediaRemuxer = MediaRemuxer()
 
+    /**
+     * The re-encoder behind "Convert to MP4". A singleton because a conversion holds real codecs:
+     * starting a second one while the first is running is how a phone runs out of them.
+     */
+    @Provides
+    @Singleton
+    fun provideVideoTranscoder(): VideoTranscoder = VideoTranscoder()
+
     @Provides
     @Singleton
     fun provideTrackMerger(): TrackMerger = TrackMerger()
@@ -97,6 +108,15 @@ object AppModule {
     @Singleton
     fun provideSafDocumentExporter(@ApplicationContext context: Context): com.salvia.salviabrowxer.core.storage.SafDocumentExporter =
         com.salvia.salviabrowxer.core.storage.SafDocumentExporter(context)
+
+    /**
+     * The one deletion path for a download: its own files, staged parts, thumbnail, and the copy it
+     * published — never another app's media, see [DownloadArtifactCleaner].
+     */
+    @Provides
+    @Singleton
+    fun provideDownloadArtifactCleaner(@ApplicationContext context: Context): DownloadArtifactCleaner =
+        androidArtifactCleaner(context)
 
     @Provides
     @Singleton

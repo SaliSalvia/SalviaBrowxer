@@ -44,6 +44,66 @@ class SafDocumentExporter(private val context: Context) {
         }
     }
 
+    /**
+     * Moves a finished file into the tree, and only deletes the source once the document is whole.
+     *
+     * This is the primary-destination path: the transfer itself runs against private storage (that is
+     * where the resumable parts and the staging live; a provider offers neither `rename` nor a byte
+     * range), and the finished file is copied through the document provider at the end. The order is
+     * what makes it safe:
+     *
+     *  1. create the document — a provider that refuses, a folder that vanished or a revoked grant all
+     *     end here, and the file stays where the app can still use it;
+     *  2. stream the bytes in;
+     *  3. **verify the length**, because a provider that reports success while writing half of it is
+     *     exactly the case that loses a download;
+     *  4. only then delete the private file.
+     *
+     * A process kill between 2 and 4 leaves both copies: the private one is still whole, so nothing is
+     * lost, and the leftover document is under our own grant — the artifact cleaner treats it as ours
+     * and can remove it, so it is not an orphan the user cannot explain.
+     *
+     * @return the created document's URI and the name the provider actually used — a name collision
+     *   makes the provider rename the file (`clip (1).mp4`), and the row must say the real name.
+     */
+    fun moveInto(treeUri: String, file: File, mimeType: String?, displayName: String): SafMove? {
+        if (!file.exists() || file.length() == 0L) return null
+        val parent = treeParentOf(treeUri) ?: return null
+        val resolver = context.contentResolver
+        val mime = mimeType?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
+        val target = runCatching { DocumentsContract.createDocument(resolver, parent, mime, displayName) }.getOrNull() ?: return null
+        val copied = runCatching {
+            val output = resolver.openOutputStream(target) ?: throw IOException("No stream for $target")
+            output.use { sink -> file.inputStream().use { source -> source.copyTo(sink, BUFFER_SIZE) } }
+            val written = querySize(target)
+            // A provider that does not report a size is trusted; one that reports the wrong size is not.
+            written == null || written == file.length()
+        }.getOrDefault(false)
+        if (!copied) {
+            runCatching { DocumentsContract.deleteDocument(resolver, target) }
+            return null
+        }
+        // The source goes only now, and failing to delete it is not a failure of the move: the row
+        // already points at the document, and the cleaner can still take the private file away later.
+        runCatching { file.delete() }
+        return SafMove(uri = target.toString(), displayName = queryDisplayName(target) ?: displayName)
+    }
+
+    /** The created document and the name the provider chose for it. */
+    data class SafMove(val uri: String, val displayName: String)
+
+    private fun querySize(uri: Uri): Long? = runCatching {
+        context.contentResolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_SIZE), null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0)) null else cursor.getLong(0)
+        }
+    }.getOrNull()
+
+    private fun queryDisplayName(uri: Uri): String? = runCatching {
+        context.contentResolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) null else cursor.getString(0)
+        }
+    }.getOrNull()
+
     /** Whether the rememberered tree still resolves — an SD card can be removed, a grant revoked. */
     fun isReachable(treeUri: String): Boolean {
         val parent = treeParentOf(treeUri) ?: return false

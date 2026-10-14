@@ -54,6 +54,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
+import com.salvia.salviabrowxer.core.model.DownloadState
+import com.salvia.salviabrowxer.media.downloader.TranscodePlan
 import com.salvia.salviabrowxer.ui.components.DownloadItem
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
@@ -143,7 +145,12 @@ fun DownloadsScreen(
             if (items.isEmpty()) {
                 EmptyDownloadsState(icon = Icons.Default.ClearAll, message = if (state.isLoading) stringResource(R.string.download_queue) else emptyMessage)
             } else {
-                DownloadList(items = items, canLock = lockedFolder.isConfigured, viewModel = viewModel)
+                DownloadList(
+                    items = items,
+                    canLock = lockedFolder.isConfigured,
+                    converting = state.converting,
+                    viewModel = viewModel
+                )
             }
         }
         if (showUnlock) {
@@ -214,7 +221,12 @@ private fun UnlockFolderDialog(isUnlocking: Boolean, onDismiss: () -> Unit, onCo
 }
 
 @Composable
-private fun DownloadList(items: List<DownloadEntity>, canLock: Boolean, viewModel: DownloadsViewModel) {
+private fun DownloadList(
+    items: List<DownloadEntity>,
+    canLock: Boolean,
+    converting: Map<String, Int>,
+    viewModel: DownloadsViewModel
+) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
         items(items, key = { it.id }, contentType = { it.status }) { download ->
             DownloadItem(
@@ -235,7 +247,15 @@ private fun DownloadList(items: List<DownloadEntity>, canLock: Boolean, viewMode
                 onShareClick = { viewModel.shareDownload(download.id) },
                 onExportClick = { viewModel.exportDownload(download.id) },
                 onLockClick = if (canLock) ({ viewModel.setDownloadLocked(download.id, true) }) else null,
-                onUnlockClick = if (canLock) ({ viewModel.setDownloadLocked(download.id, false) }) else null
+                onUnlockClick = if (canLock) ({ viewModel.setDownloadLocked(download.id, false) }) else null,
+                // Only where the app can actually do something with the container: an MP4 row gets no
+                // button at all, because there is nothing to convert.
+                onConvertClick = if (TranscodePlan.isOffered(download.filename) && download.status == DownloadState.COMPLETED) {
+                    ({ viewModel.convertDownload(download.id) })
+                } else {
+                    null
+                },
+                convertProgress = converting[download.id]
             )
         }
     }

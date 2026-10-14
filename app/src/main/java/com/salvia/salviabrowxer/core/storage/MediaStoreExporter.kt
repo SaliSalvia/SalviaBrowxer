@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import com.salvia.salviabrowxer.core.model.MediaUrlRules
 import java.io.File
@@ -58,12 +59,32 @@ class MediaStoreExporter(private val context: Context) {
     fun export(file: File, displayName: String, mimeType: String?, isVideo: Boolean): String? {
         if (!file.exists() || file.length() == 0L) return null
         return runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insertViaMediaStore(file, displayName, mimeType, isVideo)
-            else legacyCopy(file, displayName, isVideo)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insertViaMediaStore({ file.inputStream() }, file.length(), displayName, mimeType, isVideo)
+            else legacyCopy({ file.inputStream() }, displayName, isVideo)
         }.getOrNull()
     }
 
-    private fun insertViaMediaStore(file: File, displayName: String, mimeType: String?, isVideo: Boolean): String? {
+    /**
+     * Publishes a file whose bytes live behind a content provider — a document in the folder the user
+     * chose. The gallery copy is a copy like any other; what changes is only where the bytes come
+     * from, so the source is a stream and nothing else.
+     */
+    fun export(source: Uri, displayName: String, mimeType: String?, isVideo: Boolean): String? {
+        val knownSize = runCatching {
+            context.contentResolver.query(source, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst() || cursor.isNull(0)) null else cursor.getLong(0)
+            }
+        }.getOrNull()
+        if (knownSize == 0L) return null
+        val open = { runCatching { context.contentResolver.openInputStream(source) }.getOrNull() }
+        if (open() == null) return null
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insertViaMediaStore(open, knownSize, displayName, mimeType, isVideo)
+            else legacyCopy(open, displayName, isVideo)
+        }.getOrNull()
+    }
+
+    private fun insertViaMediaStore(open: () -> java.io.InputStream?, sourceSize: Long?, displayName: String, mimeType: String?, isVideo: Boolean): String? {
         val collection = if (isVideo) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
@@ -81,9 +102,11 @@ class MediaStoreExporter(private val context: Context) {
         // `use { ... }`, whose value is Unit, so every modern export was treated as a failure and
         // its freshly inserted row was deleted. This is what the Robolectric test caught.
         val copied = runCatching {
+            val source = open() ?: return@runCatching false
             val output = context.contentResolver.openOutputStream(uri) ?: return@runCatching false
-            output.use { sink -> file.inputStream().use { source -> source.copyTo(sink) } }
-            true
+            val written = source.use { input -> output.use { sink -> input.copyTo(sink) } }
+            // A source that reports its size must arrive in full; anything short is a failed publish.
+            sourceSize == null || written == sourceSize
         }.getOrDefault(false)
         if (!copied) {
             context.contentResolver.delete(uri, null, null)
@@ -94,7 +117,7 @@ class MediaStoreExporter(private val context: Context) {
         return uri.toString()
     }
 
-    private fun legacyCopy(file: File, displayName: String, isVideo: Boolean): String? {
+    private fun legacyCopy(open: () -> java.io.InputStream?, displayName: String, isVideo: Boolean): String? {
         if (!hasLegacyWritePermission()) return null
         val directory = File(
             Environment.getExternalStoragePublicDirectory(if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_MUSIC),
@@ -102,7 +125,8 @@ class MediaStoreExporter(private val context: Context) {
         )
         if (!directory.exists() && !directory.mkdirs()) return null
         val target = nonConflicting(File(directory, displayName))
-        file.copyTo(target, overwrite = false)
+        val source = open() ?: return null
+        source.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
         MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), null, null)
         return Uri.fromFile(target).toString()
     }

@@ -50,6 +50,10 @@ data class SettingsUiState(
     /** Finished downloads are published to the shared media store so galleries can see them. */
     val isExportToGallery: Boolean = true,
     val isCleartextAllowed: Boolean = false,
+    /** Opt-in ad blocking, plus what it has done: blocked requests and sites the user exempted. */
+    val isAdBlockEnabled: Boolean = false,
+    val adBlockBlockedRequests: Int = 0,
+    val adBlockDisabledSiteCount: Int = 0,
     /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
     val isFloatingButtonAlwaysVisible: Boolean = false,
     val floatingButtonSize: Int = 56,
@@ -57,7 +61,12 @@ data class SettingsUiState(
     val isPasswordFolderSet: Boolean = false,
     val isPasswordFolderSecured: Boolean = true,
     /** The folder the user chose for a second copy of every download, or null for none. */
-    val safDestinationLabel: String? = null
+    val safDestinationLabel: String? = null,
+    /**
+     * Where finished downloads are kept: `internal` (the app's own directory) or `tree` (the chosen
+     * folder, which the file is moved into once it is complete).
+     */
+    val destinationMode: String = "internal"
 ) {
     val searchEngineOptions: List<String> get() = Constants.SEARCH_ENGINES.keys.toList()
 }
@@ -177,6 +186,14 @@ class SettingsViewModel @Inject constructor(
             launch { settingsDataStore.isWifiOnly.collectLatest { value -> mutate { copy(isWifiOnly = value) } } }
             launch { settingsDataStore.isExportToGallery.collectLatest { value -> mutate { copy(isExportToGallery = value) } } }
             launch { settingsDataStore.isCleartextAllowed.collectLatest { value -> mutate { copy(isCleartextAllowed = value) } } }
+            launch { settingsDataStore.isAdBlockEnabled.collectLatest { value -> mutate { copy(isAdBlockEnabled = value) } } }
+            launch { settingsDataStore.destinationMode.collectLatest { value -> mutate { copy(destinationMode = value) } } }
+            launch { settingsDataStore.adBlockBlockedRequests.collectLatest { value -> mutate { copy(adBlockBlockedRequests = value) } } }
+            launch {
+                settingsDataStore.adBlockDisabledSites.collectLatest { value ->
+                    mutate { copy(adBlockDisabledSiteCount = value.size) }
+                }
+            }
             launch {
                 settingsDataStore.isFloatingButtonAlwaysVisible.collectLatest { value ->
                     mutate { copy(isFloatingButtonAlwaysVisible = value) }
@@ -243,6 +260,36 @@ class SettingsViewModel @Inject constructor(
         mutate { copy(parallelConnections = connections) }
         viewModelScope.launch {
             runCatching { settingsDataStore.setParallelConnections(connections) }
+        }
+    }
+
+    /**
+     * Switches the destination between the app's own storage and the chosen folder.
+     *
+     * Turning it on without a folder chosen does nothing but say so: the mode is a promise about where
+     * files go, and there is nowhere to put them yet.
+     */
+    fun updateDestinationMode(useChosenFolder: Boolean) {
+        if (useChosenFolder && _uiState.value.safDestinationLabel == null) {
+            _messages.trySend(context.getString(R.string.settings_destination_needs_folder))
+            return
+        }
+        val mode = if (useChosenFolder) SettingsDataStore.DESTINATION_TREE else SettingsDataStore.DESTINATION_INTERNAL
+        mutate { copy(destinationMode = mode) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setDestinationMode(mode) }
+            _messages.trySend(
+                context.getString(
+                    if (useChosenFolder) R.string.settings_destination_chosen else R.string.settings_destination_internal
+                )
+            )
+        }
+    }
+
+    fun updateAdBlock(enabled: Boolean) {
+        mutate { copy(isAdBlockEnabled = enabled) }
+        viewModelScope.launch {
+            runCatching { settingsDataStore.setAdBlockEnabled(enabled) }
         }
     }
 

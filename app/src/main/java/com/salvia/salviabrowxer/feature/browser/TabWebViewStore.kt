@@ -24,6 +24,7 @@ import com.salvia.salviabrowxer.ui.utils.MediaSniffer
 import com.salvia.salviabrowxer.ui.utils.MseRecordingSupport
 import com.salvia.salviabrowxer.ui.utils.frameClaimAccepted
 import com.salvia.salviabrowxer.ui.utils.PageErrorKind
+import com.salvia.salviabrowxer.ui.utils.RequestInterception
 import com.salvia.salviabrowxer.ui.utils.WebViewClientWrapper
 import com.salvia.salviabrowxer.ui.utils.WebViewSetup
 import java.io.File
@@ -126,11 +127,23 @@ class TabWebViewStore(
      */
     private val verifiedFrames = ConcurrentHashMap<String, MutableSet<String>>()
 
+    /**
+     * The same opt-in blocker the document's client uses. One instance, so a request blocked through
+     * a worker and the same request blocked through the document are one decision and one count.
+     */
+    private val adBlocker = com.salvia.salviabrowxer.ui.utils.AdBlocker()
+
     /** Service worker requests, observed with the same rule the document's requests go through. */
     private val serviceWorkerObserver = MediaRequestObserver(
         pageUrlProvider = { lastPageUrl },
         onCandidate = { candidate -> visibleTabId?.let { callbacks.onMediaDetected(it, candidate) } }
     )
+
+    /**
+     * The same sequence the document's requests meet — blocker first, observer second — so a worker's
+     * request and the same request from the document cannot be decided differently.
+     */
+    private val serviceWorkerInterception = RequestInterception(adBlocker, serviceWorkerObserver)
 
     private var serviceWorkerObserverInstalled = false
 
@@ -386,6 +399,7 @@ class TabWebViewStore(
         installServiceWorkerObserver()
         installSniffer(view)
         view.webViewClient = WebViewClientWrapper(
+            adBlocker = adBlocker,
             onPageStartedHook = { _, url, _ ->
                 url?.takeIf { it.isNotBlank() }?.let {
                     if (tabId == visibleTabId) lastPageUrl = it
@@ -530,9 +544,19 @@ class TabWebViewStore(
             ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(
                 object : ServiceWorkerClientCompat() {
                     override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
+                        // A worker's requests meet the same blocker as the document's, for the same
+                        // reason: a blocked request must not be observed as if it had happened.
                         val range = request.requestHeaders?.entries
                             ?.firstOrNull { it.key.equals("Range", true) }?.value
-                        serviceWorkerObserver.onRequest(request.url?.toString(), request.method, range)
+                        val decision = serviceWorkerInterception.decide(
+                            url = request.url?.toString(),
+                            method = request.method,
+                            range = range,
+                            pageUrl = lastPageUrl
+                        )
+                        if (decision == RequestInterception.Decision.BLOCKED) {
+                            return WebViewClientWrapper.blockedResponse()
+                        }
                         return null
                     }
                 }

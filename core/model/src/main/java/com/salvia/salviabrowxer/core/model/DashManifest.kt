@@ -19,8 +19,32 @@ data class DashRepresentation(
     val isAudio: Boolean = false,
     /** The `EXT-X-MAP`-style initialisation segment, when the template lists one. */
     val initUrl: String? = null,
-    val segmentUrls: List<String> = emptyList()
-)
+    val segmentUrls: List<String> = emptyList(),
+    /**
+     * The single resource a `SegmentBase` representation lives in, when the manifest points at one
+     * file instead of listing segment URLs.
+     *
+     * This is the "on-demand" profile: one MP4-shaped file that contains an index, and the media
+     * bytes that index describes. The downloader fetches it over byte ranges rather than guessing
+     * URLs — see [indexRange] and [initRange].
+     */
+    val fileUrl: String? = null,
+    /**
+     * The byte range of the segment index (`SegmentBase@indexRange`), which is what makes fetching
+     * the file over ranges possible: the index lists the size of every segment that follows it.
+     * Null when the representation is not a single-file one.
+     */
+    val indexRange: LongRange? = null,
+    /**
+     * The byte range of the initialisation data (`<Initialization range="…">`), when the manifest
+     * states one. When it is absent the downloader takes everything up to the end of the index,
+     * which is where the initialisation box sits in practice.
+     */
+    val initRange: LongRange? = null
+) {
+    /** True when this representation is one file sliced by byte ranges. */
+    val isSingleFile: Boolean get() = fileUrl != null
+}
 
 /** A parsed, clear, static (finite) DASH presentation. */
 data class DashManifest(

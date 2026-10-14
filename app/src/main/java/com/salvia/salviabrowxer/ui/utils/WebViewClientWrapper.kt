@@ -10,6 +10,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.salvia.salviabrowxer.core.model.MediaCandidate
+import java.io.ByteArrayInputStream
 
 /**
  * Request-only fallback for explicit media URLs. Response MIME belongs to MediaSniffer: Accept
@@ -29,7 +30,13 @@ class WebViewClientWrapper(
      */
     private val onRenderProcessGoneHook: (WebView) -> Unit = {},
     /** A main-frame load failed. Sub-resource failures are deliberately not reported. */
-    private val onPageErrorHook: (kind: PageErrorKind, description: String) -> Unit = { _, _ -> }
+    private val onPageErrorHook: (kind: PageErrorKind, description: String) -> Unit = { _, _ -> },
+    /**
+     * The opt-in ad blocker. Off by default, and the very first thing a request meets: a blocked
+     * request is answered here and never reaches the observer, so a blocked ad can never surface in
+     * the media tray as something to download.
+     */
+    private val adBlocker: AdBlocker = AdBlocker()
 ) : WebViewClient() {
 
     @Volatile private var currentPageUrl = ""
@@ -43,6 +50,9 @@ class WebViewClientWrapper(
         pageUrlProvider = { currentPageUrl },
         onCandidate = { candidate -> safe("onMediaDetected") { onMediaDetectedHook(candidate) } }
     )
+
+    /** The order every request meets: the blocker's veto, then the observer. */
+    private val interception = RequestInterception(adBlocker, requestObserver)
 
     /**
      * Returning `true` says the crash was handled. Returning `false` — the default — makes the
@@ -118,8 +128,32 @@ class WebViewClientWrapper(
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
         val range = request?.requestHeaders?.entries?.firstOrNull { it.key.equals("Range", true) }?.value
-        requestObserver.onRequest(request?.url?.toString(), request?.method, range)
+        // One decision, taken in [RequestInterception]: the blocker first, so a blocked request is
+        // answered here and never observed, never offered in the tray and never sent. [AdBlockRules]
+        // is what keeps media, playlists, segments, loopback addresses and the page's own host out of
+        // the blocker's reach.
+        val decision = interception.decide(
+            url = request?.url?.toString(),
+            method = request?.method,
+            range = range,
+            pageUrl = currentPageUrl
+        )
+        if (decision == RequestInterception.Decision.BLOCKED) return blockedResponse()
         return super.shouldInterceptRequest(view, request)
+    }
+
+    companion object {
+        private const val TAG = "WebViewClientWrapper"
+
+        /**
+         * What a blocked request is answered with: an empty 200.
+         *
+         * The alternative — letting the request fail — makes the page's own error handler run and
+         * some players treat a failed ad request as a failed stream. An empty successful response is
+         * what the page sees from a blocker that already answered it, and it costs nothing.
+         */
+        fun blockedResponse(): WebResourceResponse =
+            WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
     }
 
     private inline fun <T> safe(where: String, block: () -> T): T? {
@@ -132,7 +166,4 @@ class WebViewClientWrapper(
         }
     }
 
-    companion object {
-        private const val TAG = "WebViewClientWrapper"
-    }
 }

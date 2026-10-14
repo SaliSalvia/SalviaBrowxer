@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Accepted lint findings for :app, reviewed one by one.
+
+  This file exists so that a finding which is genuinely acceptable does not have to be silenced with
+  `abortOnError = false` - that switch would hide the real errors the CI gate exists to catch. Every
+  entry added here must carry a comment saying why the finding is accepted; anything that can be
+  fixed is fixed instead of listed.
+
+  There are no accepted findings yet: the gate runs clean.
+-->
+<issues format="6" by="lint 8.9.1"/>

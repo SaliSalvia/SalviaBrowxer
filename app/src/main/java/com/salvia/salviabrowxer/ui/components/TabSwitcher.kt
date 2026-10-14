@@ -149,10 +149,21 @@ fun TabSwitcher(
 
 @Composable
 private fun PrivateSectionHeader() {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
-        Icon(Icons.Default.Nightlight, null, tint = NebulaVioletLight, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(stringResource(R.string.private_browsing), style = MaterialTheme.typography.titleMedium, color = NebulaVioletLight)
+    Column(modifier = Modifier.padding(top = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Nightlight, null, tint = NebulaVioletLight, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.private_browsing), style = MaterialTheme.typography.titleMedium, color = NebulaVioletLight)
+        }
+        // The honest scope of a private tab, said where private tabs live. Isolation here is
+        // history-and-restore only: the WebView's cookie store is a single process-wide jar, so a
+        // private tab is not a separate identity, and the UI must never imply that it is.
+        Text(
+            text = stringResource(R.string.private_tabs_disclosure),
+            style = MaterialTheme.typography.bodySmall,
+            color = SilverMid,
+            modifier = Modifier.padding(top = 2.dp, start = 22.dp)
+        )
     }
 }
 

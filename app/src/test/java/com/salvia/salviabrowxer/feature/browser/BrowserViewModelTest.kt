@@ -6,6 +6,7 @@ import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
 import com.salvia.salviabrowxer.core.model.MediaFormat
+import com.salvia.salviabrowxer.core.model.MediaInfo
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
@@ -14,6 +15,7 @@ import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
 import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -135,7 +137,11 @@ class BrowserViewModelTest {
         assertTrue(state.isCleartextAllowed)
         assertNull(state.blockedCleartextUrl)
         assertEquals("http://example.org/page", state.url)
-        coVerify(exactly = 1) { settingsDataStore.setCleartextAllowed(true) }
+        // The write is dispatched to Dispatchers.IO — a real thread pool even in a unit test — so a
+        // bare verify races it and failed on a loaded runner (this is the flake that reddened the
+        // first run of this branch). Waiting is the honest fix: the assertion is "it is persisted",
+        // not "it is persisted before the next line runs".
+        coVerify(timeout = 5_000, exactly = 1) { settingsDataStore.setCleartextAllowed(true) }
     }
 
     @Test
@@ -337,7 +343,7 @@ class BrowserViewModelTest {
     }
 
     @Test
-    fun `a pasted media file opens its sheet even while the browser is on another page`() = runTest {
+    fun `a pasted media file is not swallowed by the tray hint`() = runTest {
         viewModel.navigate("https://example.com/article")
 
         viewModel.openPastedLink("https://cdn.example.com/clip.mp4")
@@ -345,11 +351,64 @@ class BrowserViewModelTest {
         // A pasted file is a deliberate link, not something a page exposed, so the "open the media
         // tray above the page" hint must not swallow it: the browser is the app's first screen, so
         // the user pastes a direct media link while sitting on some other page almost every time.
-        val sheet = viewModel.uiState.value.qualitySheet
-        assertNotNull("a pasted direct media link must still open its sheet", sheet)
-        assertNull(sheet?.unsupported)
+        // The probe reported one option, so the file is queued straight away and no chooser appears.
+        assertNull("a single-option file must not need a second tap", viewModel.uiState.value.qualitySheet)
         // The session goes with the probe: the pasted link is resolved as the page the browser is on.
         coVerify(exactly = 1) { mediaResolver.resolve("https://cdn.example.com/clip.mp4", any(), any()) }
+        coVerify(timeout = 5_000, exactly = 1) { downloadRepository.addDownload(any()) }
+    }
+
+    @Test
+    fun `a single-option row is queued without a quality sheet`() = runTest {
+        viewModel.navigate("https://example.com/feed")
+        val candidate = MediaCandidate(
+            pageUrl = "https://example.com/feed",
+            mediaUrl = "https://cdn.example.com/clip.mp4",
+            title = "Clip",
+            mimeType = "video/mp4",
+            extension = "mp4",
+            source = MediaSource.DOM
+        )
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, candidate)
+        viewModel.openMediaTray()
+
+        viewModel.downloadOrOffer(viewModel.uiState.value.detectedMedia.first())
+
+        assertNull("one option is one tap: no chooser", viewModel.uiState.value.qualitySheet)
+        assertFalse("the tray hands over to the download, not to a sheet", viewModel.uiState.value.isMediaTrayVisible)
+        coVerify(timeout = 5_000, exactly = 1) { downloadRepository.addDownload(any()) }
+    }
+
+    @Test
+    fun `several renditions open the sheet and queue nothing`() = runTest {
+        val high = MediaFormat(id = "720p", format = "720p", url = "https://cdn.example.com/720.m3u8",
+            mimeType = "application/vnd.apple.mpegurl", extension = "m3u8", height = 720, isVideo = true, isHls = true)
+        val low = MediaFormat(id = "480p", format = "480p", url = "https://cdn.example.com/480.m3u8",
+            mimeType = "application/vnd.apple.mpegurl", extension = "m3u8", height = 480, isVideo = true, isHls = true)
+        coEvery { mediaResolver.resolve(any(), any(), any()) } returns MediaInfo(
+            title = "Clip", thumbnail = null, duration = null,
+            formats = listOf(high, low), audioFormats = emptyList(),
+            videoFormats = listOf(high, low), combinedFormats = listOf(high, low),
+            source = "https://cdn.example.com/master.m3u8", extractor = "direct-hls",
+            webpageUrl = "https://example.com/watch"
+        )
+        viewModel.navigate("https://example.com/watch")
+        val candidate = MediaCandidate(
+            pageUrl = "https://example.com/watch",
+            mediaUrl = "https://cdn.example.com/master.m3u8",
+            mimeType = "application/vnd.apple.mpegurl",
+            extension = "m3u8",
+            source = MediaSource.DOM
+        )
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, candidate)
+
+        viewModel.downloadOrOffer(candidate)
+
+        val sheet = viewModel.uiState.value.qualitySheet
+        assertNotNull("a real choice is worth a sheet", sheet)
+        assertEquals(2, sheet?.mediaInfo?.formats?.size)
+        assertFalse(sheet?.isResolving == true)
+        coVerify(exactly = 0) { downloadRepository.addDownload(any()) }
     }
 
     @Test

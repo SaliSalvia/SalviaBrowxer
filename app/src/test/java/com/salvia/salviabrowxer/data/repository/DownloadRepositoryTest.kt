@@ -150,15 +150,6 @@ class DownloadRepositoryTest {
     }
 
     @Test
-    fun `clearAllDownloads calls DAO`() = runTest {
-        coEvery { mockDownloadDao.deleteAll() } returns Unit
-
-        repository.clearAllDownloads()
-
-        coVerify { mockDownloadDao.deleteAll() }
-    }
-
-    @Test
     fun `getDefaultDownloadDestination returns from StorageManager`() = runTest {
         val directory = "/storage/emulated/0/Downloads"
         coEvery { mockStorageManager.getDefaultDownloadDirectory() } returns directory

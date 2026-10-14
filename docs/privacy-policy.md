@@ -19,6 +19,8 @@ data to the developer, and it collects nothing about you.
   would. The site can see your IP address, your user-agent and the cookies it sets, under that
   site's own privacy policy. The developer of SalviaBrowxer never sees this traffic.
 - **Downloads.** Files you download are written to the app's private storage on your device
+  (or, if you switch on *Save into the chosen folder*, moved into the folder you picked with the
+  system file picker — a folder you chose, using a permission Android gave the app for that folder)
   (`Android/data/com.salvia.salviabrowxer/files/Downloads`) and stay there until you delete or share
   them. Finished files are handed to Android's media scanner so they also appear in the system
   downloads view.
@@ -32,9 +34,22 @@ data to the developer, and it collects nothing about you.
   local database on your device. Each download row also remembers the page and user-agent it was
   started with, so a queued transfer can resume with the session it belongs to. Private tabs are not
   written to history.
+- **Private tabs.** A private tab is *not* a separate browsing identity, and this policy says so
+  plainly: the app does not keep a second cookie jar, so private and normal tabs share one WebView
+  profile. Cookies, site storage, cache and any site login therefore carry over between them, and a
+  site you signed into in a normal tab still recognises you in a private tab. What a private tab does
+  is narrower, and it does it exactly: its visits are never written to history, and private tabs are
+  never saved to the session, so closing the app leaves no list of them behind. Files you download
+  from a private tab are saved like any other download and remain on the device.
 - **Settings.** Your preferences are stored on your device only.
+- **Ad and tracker blocking (optional, off by default).** When you turn it on, the app answers
+  requests to a short list of known advertising and tracking hosts with an empty response instead of
+  contacting them. That list is bundled with the app — nothing is downloaded to update it, no URL
+  you visit is sent anywhere for a decision, and the counters (requests blocked, sites you exempted)
+  are stored in your own settings on the device. The feature is off until you enable it.
 - **Network requests.** The app makes a network request only to load a page you opened, to probe
-  media the page already exposed, or to download something you started. There is no background
+  media the page already exposed, or to download something you started. A request blocked by the
+  optional ad blocker is not sent at all. There is no background
   telemetry, no crash-reporting service, and no third-party SDK that phones home.
 
 ## What the app does not do

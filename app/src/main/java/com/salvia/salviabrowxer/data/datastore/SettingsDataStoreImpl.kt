@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -58,6 +59,20 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
 
     override val floatingButtonY: Flow<Float> = dataStore.data
         .map { preferences -> preferences[FLOATING_BUTTON_Y] ?: 0f }
+
+    // Off by default, on purpose: an ad blocker that ships on is a browser that silently changes
+    // what the web looks like, and this app's promise is precision rather than enthusiasm.
+    override val isAdBlockEnabled: Flow<Boolean> = dataStore.data
+        .map { preferences -> preferences[AD_BLOCK_ENABLED] ?: false }
+
+    override val destinationMode: Flow<String> = dataStore.data
+        .map { preferences -> preferences[DESTINATION_MODE] ?: SettingsDataStore.DESTINATION_INTERNAL }
+
+    override val adBlockDisabledSites: Flow<Set<String>> = dataStore.data
+        .map { preferences -> preferences[AD_BLOCK_DISABLED_SITES] ?: emptySet() }
+
+    override val adBlockBlockedRequests: Flow<Int> = dataStore.data
+        .map { preferences -> preferences[AD_BLOCK_BLOCKED_REQUESTS] ?: 0 }
 
     override suspend fun setSearchEngine(engine: String) {
         dataStore.edit { preferences -> preferences[SEARCH_ENGINE] = engine }
@@ -118,6 +133,30 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         dataStore.edit { preferences -> preferences[FLOATING_BUTTON_SIZE] = size }
     }
 
+    override suspend fun setDestinationMode(mode: String) {
+        dataStore.edit { preferences -> preferences[DESTINATION_MODE] = mode }
+    }
+
+    override suspend fun setAdBlockEnabled(enabled: Boolean) {
+        dataStore.edit { preferences -> preferences[AD_BLOCK_ENABLED] = enabled }
+    }
+
+    override suspend fun setAdBlockDisabledForSite(site: String, disabled: Boolean) {
+        val host = site.trim().lowercase().trimEnd('.')
+        if (host.isEmpty()) return
+        dataStore.edit { preferences ->
+            val current = preferences[AD_BLOCK_DISABLED_SITES] ?: emptySet()
+            preferences[AD_BLOCK_DISABLED_SITES] = if (disabled) current + host else current - host
+        }
+    }
+
+    override suspend fun addAdBlockBlockedRequests(count: Int) {
+        if (count <= 0) return
+        dataStore.edit { preferences ->
+            preferences[AD_BLOCK_BLOCKED_REQUESTS] = (preferences[AD_BLOCK_BLOCKED_REQUESTS] ?: 0) + count
+        }
+    }
+
     override suspend fun setFloatingButtonPosition(x: Float, y: Float) {
         dataStore.edit { preferences ->
             preferences[FLOATING_BUTTON_X] = x
@@ -141,5 +180,10 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         private val FLOATING_BUTTON_SIZE = intPreferencesKey("floating_button_size")
         private val FLOATING_BUTTON_X = floatPreferencesKey("floating_button_x")
         private val FLOATING_BUTTON_Y = floatPreferencesKey("floating_button_y")
+
+        private val DESTINATION_MODE = stringPreferencesKey("destination_mode")
+        private val AD_BLOCK_ENABLED = booleanPreferencesKey("ad_block_enabled")
+        private val AD_BLOCK_DISABLED_SITES = stringSetPreferencesKey("ad_block_disabled_sites")
+        private val AD_BLOCK_BLOCKED_REQUESTS = intPreferencesKey("ad_block_blocked_requests")
     }
 }

@@ -140,6 +140,4 @@ interface DownloadDao {
     @Query("DELETE FROM downloads WHERE status = :status")
     suspend fun deleteByStatus(status: DownloadState)
 
-    @Query("DELETE FROM downloads")
-    suspend fun deleteAll()
 }
