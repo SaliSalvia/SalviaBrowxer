@@ -300,7 +300,9 @@ class VideoTranscoder {
         deadline: Long,
         shouldStop: () -> Boolean
     ): PumpResult {
-        val decoderOutputFormat = MediaFormat()
+        // Filled in when the decoder reports the format it actually produces; until then the
+        // defaults below are used, which is what a decoder that omits the change expects.
+        var decoderOutputFormat: MediaFormat? = null
         var encoderStarted = false
         val info = MediaCodec.BufferInfo()
         val pcm = ByteArray(BUFFER_SIZE)
@@ -328,13 +330,13 @@ class VideoTranscoder {
 
             val outIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US)
             if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                decoderOutputFormat.set(decoder.outputFormat)
+                decoderOutputFormat = decoder.outputFormat
             } else if (outIndex >= 0) {
                 val buffer = decoder.getOutputBuffer(outIndex)
                 if (buffer != null && info.size > 0) {
                     if (!encoderStarted) {
-                        val channels = decoderOutputFormat.getIntegerOrNull(MediaFormat.KEY_CHANNEL_COUNT) ?: 2
-                        val sampleRate = decoderOutputFormat.getIntegerOrNull(MediaFormat.KEY_SAMPLE_RATE) ?: 44_100
+                        val channels = decoderOutputFormat?.getIntegerOrNull(MediaFormat.KEY_CHANNEL_COUNT) ?: 2
+                        val sampleRate = decoderOutputFormat?.getIntegerOrNull(MediaFormat.KEY_SAMPLE_RATE) ?: 44_100
                         val format = MediaFormat.createAudioFormat(MIME_AAC, sampleRate, channels).apply {
                             setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
                             setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE)
