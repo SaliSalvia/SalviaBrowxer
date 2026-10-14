@@ -1,9 +1,9 @@
 name: Release
 
 # Publishes a signed APK as a GitHub Release.
-# Triggers: a push of a v* tag, or a push that touches the RELEASE file
-# (which lets a repository-connected agent publish without local git access).
-# The tag is derived from versionName in app/build.gradle.kts.
+# Triggers: a push of a v* tag, or a push that touches the RELEASE file.
+# The tag is derived from versionName in app/build.gradle.kts; the release
+# action creates the tag itself when it does not exist yet.
 
 on:
   push:
@@ -21,8 +21,6 @@ jobs:
   release:
     name: Build signed APK and create Release
     runs-on: ubuntu-latest
-    env:
-      HAS_SIGNING: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
 
     steps:
       - name: Checkout repository
@@ -79,14 +77,6 @@ jobs:
       - name: Verify APK signature
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK_PATH"
-
-      - name: Create tag (when triggered via RELEASE file)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        run: |
-          git config user.name "release-bot"
-          git config user.email "release-bot@users.noreply.github.com"
-          git tag "${{ env.TAG }}"
-          git push origin "${{ env.TAG }}"
 
       - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
