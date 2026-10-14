@@ -56,13 +56,26 @@ class DebugDocumentsProvider : DocumentsProvider() {
                     DocumentsContract.Root.COLUMN_ROOT_ID -> ROOT_ID
                     DocumentsContract.Root.COLUMN_DOCUMENT_ID -> ROOT_ID
                     DocumentsContract.Root.COLUMN_TITLE -> TITLE
-                    DocumentsContract.Root.COLUMN_FLAGS -> DocumentsContract.Root.FLAG_LOCAL_ONLY
+                    DocumentsContract.Root.COLUMN_FLAGS ->
+                        DocumentsContract.Root.FLAG_LOCAL_ONLY or DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD
                     else -> null
                 }
             )
         }
         return cursor
     }
+
+    /**
+     * Every document of this provider is a direct child of the single root.
+     *
+     * This is not decoration: the framework validates a tree document URI by asking
+     * `isChildDocument(treeId, documentId)`, and the base implementation answers `false`. Without this
+     * override every `content://…/tree/root/document/<name>` URI - which is the shape a move
+     * produces, and the shape the app stores in its rows - would be refused with a SecurityException
+     * before the provider was ever reached.
+     */
+    override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean =
+        parentDocumentId == ROOT_ID && documentId != ROOT_ID
 
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor {
         if (documentId != ROOT_ID && !fileOf(documentId).exists()) {

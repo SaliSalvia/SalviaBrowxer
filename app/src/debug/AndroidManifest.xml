@@ -10,13 +10,22 @@
         be tested: the name a provider assigns on a collision, a provider that accepts a stream and
         keeps only part of it, and a provider that refuses to create the document at all.
 
-        It is not exported, so only this app can reach it, and the release manifest never sees it.
+        The three attributes below are not choices: android.provider.DocumentsProvider refuses to
+        even attach unless it is exported, grants uri permissions, and is protected by
+        MANAGE_DOCUMENTS (a signature-level permission no app can hold). Without one of them the
+        provider throws SecurityException during startup. The exposure that "exported" implies is
+        therefore bounded by the platform: only a MANAGE_DOCUMENTS holder - the system itself - or
+        this app can reach it, it is registered in no roots list (no DOCUMENTS_PROVIDER intent
+        filter), so no picker will ever show it or grant a uri into it, and the release manifest never
+        contains any of this.
     -->
     <application>
         <provider
             android:name="com.salvia.salviabrowxer.debug.DebugDocumentsProvider"
             android:authorities="${applicationId}.debugdocuments"
-            android:exported="false" />
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS" />
     </application>
 
 </manifest>
