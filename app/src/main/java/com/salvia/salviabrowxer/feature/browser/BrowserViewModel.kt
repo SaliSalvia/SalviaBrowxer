@@ -93,7 +93,7 @@ data class BrowserUiState(
     val isJavaScriptEnabled: Boolean = true,
     val areCookiesEnabled: Boolean = true,
     val isDesktopSite: Boolean = false,
-    val isCleartextAllowed: Boolean = false
+    val isCleartextAllowed: Boolean = false,
     /** Opt-in ad blocking, and the sites the user has exempted from it. */
     val isAdBlockEnabled: Boolean = false,
     val adBlockDisabledSites: Set<String> = emptySet(),

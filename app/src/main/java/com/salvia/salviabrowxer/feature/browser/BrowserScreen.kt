@@ -276,7 +276,7 @@ fun BrowserScreen(
                 onClick = { viewModel.toggleAdBlockForCurrentSite() },
                 isEnabled = hasPage
             )
-        }
+        },
         BrowserMenuItem(stringResource(R.string.downloads), Icons.Default.Download, onClick = onNavigateToDownloads),
         BrowserMenuItem(stringResource(R.string.home_start_screen), Icons.Default.Dashboard, onClick = { onNavigateToHome?.invoke() }, isEnabled = onNavigateToHome != null),
         BrowserMenuItem(stringResource(R.string.settings), Icons.Default.Settings, onClick = onNavigateToSettings)
