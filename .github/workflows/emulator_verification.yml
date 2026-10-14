@@ -83,6 +83,44 @@ jobs:
             adb shell pidof com.salvia.salviabrowxer
             echo "=== STAGE: done ==="
 
+      # A green run and a test that never ran look the same from the outside. This prints what the
+      # device actually executed - including anything an `assume` skipped, because a skipped test on a
+      # device is not evidence about that device. A notice annotation survives on successful runs, so
+      # the counts are readable without the job log.
+      - name: Summarise instrumented results
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          suites = []
+          for path in sorted(glob.glob("**/build/outputs/androidTest-results/**/*.xml", recursive=True)):
+              try:
+                  tree = ET.parse(path)
+              except (ET.ParseError, OSError):
+                  continue
+              for suite in tree.iter("testsuite"):
+                  name = suite.get("name") or "?"
+                  tests = int(suite.get("tests") or 0)
+                  failures = int(suite.get("failures") or 0)
+                  errors = int(suite.get("errors") or 0)
+                  skipped = int(suite.get("skipped") or 0)
+                  suites.append((name, tests, failures, errors, skipped))
+                  for case in suite.iter("testcase"):
+                      if case.findall("skipped"):
+                          print(f"::notice title=Skipped on this device:: {case.get('classname')}.{case.get('name')}")
+
+          if not suites:
+              print("::warning title=Instrumented results::No result XML was produced, so nothing here is evidence.")
+          total = sum(suite[1] for suite in suites)
+          failed = sum(suite[2] + suite[3] for suite in suites)
+          skipped = sum(suite[4] for suite in suites)
+          for name, tests, failures, errors, skipped_count in suites:
+              print(f"::notice title=Instrumented results::{name}: {tests} tests, {failures} failures, {errors} errors, {skipped_count} skipped")
+          print(f"::notice title=Instrumented totals::{total} tests, {failed} failed, {skipped} skipped")
+          PY
+
       # The emulator runner keeps the test output in its own log; the JUnit XML that the annotations
       # and the PR comment are built from survives in the workspace, so the failure is readable
       # without the log export.
