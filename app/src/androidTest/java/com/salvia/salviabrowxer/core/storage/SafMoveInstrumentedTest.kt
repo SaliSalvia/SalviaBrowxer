@@ -8,7 +8,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -60,10 +59,12 @@ class SafMoveInstrumentedTest {
         val exporter = SafDocumentExporter(context)
         assertTrue("the folder of an installed provider must be reachable", exporter.isReachable(treeUri))
 
+        // A missing document is the failure, and the thrown assertion says so without leaving a
+        // nullable value to dereference on every line below.
         val moved = exporter.moveInto(treeUri, source, "video/mp4", source.name)
+            ?: throw AssertionError("the move must produce a document")
 
-        assertNotNull("the move must produce a document", moved)
-        assertTrue("expected a document uri, was ${moved!!.uri}", moved.uri.startsWith("content://"))
+        assertTrue("expected a document uri, was ${moved.uri}", moved.uri.startsWith("content://"))
         assertEquals("the folder had no collision, so the name must be the file's", "clip.mp4", moved.displayName)
         assertFalse("the private copy must not survive the move", source.exists())
 
@@ -77,12 +78,12 @@ class SafMoveInstrumentedTest {
         val source = source("dup-clip.mp4")
         val exporter = SafDocumentExporter(context)
 
-        val moved = exporter.moveInto(treeUri, source, "video/mp4", source.name)
-
-        assertNotNull("the move must produce a document", moved)
         // The provider renamed it, and the row must say the name that is really on the card - a row
         // that says `dup-clip.mp4` while the file is `dup-clip (1).mp4` is a user who cannot find it.
-        assertEquals("dup-clip (1).mp4", moved!!.displayName)
+        val moved = exporter.moveInto(treeUri, source, "video/mp4", source.name)
+            ?: throw AssertionError("the move must produce a document")
+
+        assertEquals("dup-clip (1).mp4", moved.displayName)
         assertEquals("the folder must hold the renamed document", listOf("dup-clip (1).mp4"), childrenOf(treeUri))
         assertFalse("the private copy must not survive the move", source.exists())
     }
