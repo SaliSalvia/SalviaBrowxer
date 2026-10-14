@@ -293,7 +293,7 @@ class DownloadsViewModelTest {
         )
         every { mockMediaStoreExporter.requiredPermission() } returns null
         every { mockMediaStoreExporter.isVideoFile(any(), any()) } returns true
-        every { mockMediaStoreExporter.export(any(), any(), any(), any()) } returns "content://media/external/video/media/42"
+        every { mockMediaStoreExporter.export(any<java.io.File>(), any(), any(), any()) } returns "content://media/external/video/media/42"
 
         viewModel.exportDownload(downloadId)
 
@@ -323,9 +323,9 @@ class DownloadsViewModelTest {
         }
         assertEquals(android.Manifest.permission.WRITE_EXTERNAL_STORAGE, requestedPermission)
         // Nothing may be published before the grant exists.
-        verify(exactly = 0) { mockMediaStoreExporter.export(any(), any(), any(), any()) }
+        verify(exactly = 0) { mockMediaStoreExporter.export(any<java.io.File>(), any(), any(), any()) }
 
-        every { mockMediaStoreExporter.export(any(), any(), any(), any()) } returns "content://media/external/video/media/7"
+        every { mockMediaStoreExporter.export(any<java.io.File>(), any(), any(), any()) } returns "content://media/external/video/media/7"
         viewModel.onExportPermissionResult(granted = true)
         verify(timeout = 5_000) { mockMediaStoreExporter.export(file, file.name, any(), any()) }
     }
@@ -337,7 +337,7 @@ class DownloadsViewModelTest {
         viewModel.onExportPermissionResult(granted = false)
 
         // No file is published when the user declines the grant.
-        verify(exactly = 0) { mockMediaStoreExporter.export(any(), any(), any(), any()) }
+        verify(exactly = 0) { mockMediaStoreExporter.export(any<java.io.File>(), any(), any(), any()) }
     }
 
     private fun download(id: String, status: DownloadState) = DownloadEntity(
