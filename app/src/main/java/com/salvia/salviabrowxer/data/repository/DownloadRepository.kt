@@ -57,7 +57,6 @@ interface DownloadRepository {
 
     suspend fun deleteDownload(id: String)
     suspend fun deleteDownloadsByState(state: DownloadState)
-    suspend fun clearAllDownloads()
     suspend fun getDefaultDownloadDestination(): String
     suspend fun createDownloadEntity(
         url: String,

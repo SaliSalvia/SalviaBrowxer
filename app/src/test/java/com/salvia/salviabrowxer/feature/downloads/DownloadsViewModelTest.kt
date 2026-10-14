@@ -232,12 +232,23 @@ class DownloadsViewModelTest {
     }
 
     @Test
-    fun `clearAllDownloads calls repository`() = runTest {
-        coEvery { mockDownloadRepository.clearAllDownloads() } returns Unit
+    fun `clearing the whole list goes through the per-row delete, not a bulk wipe`() = runTest {
+        val file = java.io.File(ownedRoot, "finished.mp4").apply { writeBytes(ByteArray(8)) }
+        coEvery { mockDownloadRepository.getAllDownloads() } returns flowOf(
+            listOf(
+                DownloadEntity(
+                    id = "finished", url = "https://example.com/finished.mp4", filename = "finished.mp4",
+                    destination = ownedRoot.absolutePath, finalPath = file.absolutePath,
+                    status = DownloadState.COMPLETED
+                )
+            )
+        )
+        coEvery { mockDownloadRepository.deleteDownload("finished") } returns Unit
 
         viewModel.clearAllDownloads()
 
-        coVerify(timeout = 5_000) { mockDownloadRepository.clearAllDownloads() }
+        coVerify(timeout = 5_000) { mockDownloadRepository.deleteDownload("finished") }
+        assertFalse("a cleared row must take its file with it", file.exists())
     }
 
     @Test
