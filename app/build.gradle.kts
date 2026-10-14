@@ -108,6 +108,10 @@ android {
         // Full release lint runs in CI only if explicitly requested; keeping it off
         // here keeps assembleRelease lean (R8 + dexing are already the heavy steps).
         checkReleaseBuilds = false
+        // Findings that were reviewed and accepted live in this baseline, each with a comment
+        // explaining why - never a blanket `abortOnError = false`, which would also silence the real
+        // errors the CI gate exists to catch. The file ships empty; see .github/workflows/android_ci.yml.
+        baseline = file("lint-baseline.xml")
     }
 
     testOptions {

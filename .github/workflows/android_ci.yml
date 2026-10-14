@@ -66,6 +66,63 @@ jobs:
           # early module hides every later one and each push reveals a single error at a time.
           ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --continue --stacktrace --no-daemon 2>&1 | tee gradle-test.log
 
+      - name: Lint the app (fails the job on a real lint error)
+        run: |
+          set -o pipefail
+          # --continue is deliberately NOT used here: lint is a gate, and a gate that continues past
+          # its failure is not a gate. Existing warnings are handled with the baseline file next to
+          # app/build.gradle.kts (with a comment explaining each), never with a global
+          # abortOnError=false - which would also hide the errors this step exists to catch.
+          ./gradlew :app:lintDebug --stacktrace --no-daemon 2>&1 | tee gradle-lint.log
+
+      - name: Summarise lint findings
+        # Runs even when the gate failed: the annotations and the uploaded report are how the
+        # failure is read without exporting a runner log.
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          report = Path("app/build/reports/lint-results-debug.xml")
+          lines, errors, warnings = [], 0, 0
+          if report.exists():
+              tree = ET.parse(report)
+              for issue in tree.iter("issue"):
+                  severity = (issue.get("severity") or "Warning").lower()
+                  location = issue.find("location")
+                  where = location.get("file") if location is not None else "?"
+                  line = location.get("line") if location is not None else "?"
+                  message = " ".join((issue.get("message") or "").split())
+                  entry = f"{where}:{line}: [{issue.get('id')}] {message}"
+                  lines.append(f"[{severity}] {entry}")
+                  if severity == "error":
+                      errors += 1
+                  elif severity == "warning":
+                      warnings += 1
+          summary = "\n".join(sorted(set(lines))) or "no lint issues reported"
+          Path("lint-issues.txt").write_text(summary + "\n")
+          print(f"lint issues: {errors} error(s), {warnings} warning(s)")
+          print(summary[:20000])
+          for entry in sorted(set(lines))[:200]:
+              # Errors become ::error so the PR check turns red even when log export is unavailable;
+              # warnings stay warnings and are the input for the baseline.
+              level = "error" if entry.startswith("[error]") else "warning"
+              safe = entry.replace("%", "%25").replace("\r", "").replace("\n", " ")
+              print(f"::{level} title=Lint::{safe}")
+          PY
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: |
+            app/build/reports/lint-results-debug.*
+            lint-issues.txt
+          if-no-files-found: ignore
+
       - name: Upload unit test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -154,7 +211,7 @@ jobs:
           # Every Gradle invocation on this job tees its output, and whichever one failed is the one
           # that has something to say. Previously only the build logs were read, so a failure in the
           # test task produced an empty comment — which is worse than no comment.
-          logs = [Path(name) for name in ("gradle-test.log", "gradle-build.log", "gradle-release.log", "gradle-bundle.log")]
+          logs = [Path(name) for name in ("gradle-test.log", "gradle-lint.log", "gradle-build.log", "gradle-release.log", "gradle-bundle.log")]
           lines = []
           for log in logs:
               if not log.exists():
@@ -185,6 +242,15 @@ jobs:
               if line not in seen:
                   seen.add(line)
                   unique.append(line)
+          # A lint error never reaches the "e: " filter above: AGP prints it as
+          # "path:line: Error: message [IssueId]", and the summary step wrote the parsed list of
+          # issues to lint-issues.txt.
+          lint_issues = Path("lint-issues.txt")
+          if lint_issues.exists():
+              for raw in lint_issues.read_text(errors="replace").splitlines():
+                  if raw.startswith("[error]"):
+                      lines.append(f"[lint] {raw}")
+
           # A compile failure can list a hundred errors; the cap is the comment limit, not taste.
           chunk = "\n".join(unique[-400:])[:40000] or "No Gradle log and no JUnit failure was found on the runner."
           Path("gradle-failure.txt").write_text(chunk)
