@@ -54,7 +54,7 @@
     <string name="download_convert_progress">Converting… %1$d%%</string>
     <string name="download_convert_done">Converted: %s</string>
     <string name="download_convert_failed">Conversion failed — the original file is untouched</string>
-    <string name="download_convert_no_demuxer">This device's media framework cannot open this container (AVI/WMV), so it cannot be converted here. The file is saved and unchanged.</string>
+    <string name="download_convert_no_demuxer">The media framework on this device cannot open this container (AVI/WMV), so it cannot be converted here. The file is saved and unchanged.</string>
     <string name="download_convert_not_applicable">Nothing to convert for this file</string>
     <string name="download_convert_already">This row is already being converted</string>
     <string name="download_preparing">Checking the file…</string>
