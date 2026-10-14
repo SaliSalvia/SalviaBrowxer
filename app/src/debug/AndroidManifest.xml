@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        A documents provider that exists only in debug builds.
+
+        The chosen-folder destination writes through `DocumentsContract`, and the tree it writes into
+        is granted by the user's hand in the system picker - which is exactly what an instrumentation
+        test cannot do. This provider stands in for that folder so the *writable* half of the path can
+        be tested: the name a provider assigns on a collision, a provider that accepts a stream and
+        keeps only part of it, and a provider that refuses to create the document at all.
+
+        It is not exported, so only this app can reach it, and the release manifest never sees it.
+    -->
+    <application>
+        <provider
+            android:name="com.salvia.salviabrowxer.debug.DebugDocumentsProvider"
+            android:authorities="${applicationId}.debugdocuments"
+            android:exported="false" />
+    </application>
+
+</manifest>
