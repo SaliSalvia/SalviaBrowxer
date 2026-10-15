@@ -58,6 +58,26 @@ jobs:
             exit 1
           fi
 
+      - name: Probe 4 - can the token upload a release-sized asset (40 MB)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dd if=/dev/urandom of=probe-asset.bin bs=1M count=40 status=none
+          ls -l probe-asset.bin
+          if out=$(gh release create "v-probe4-$GITHUB_RUN_ID" probe-asset.bin --repo "$GITHUB_REPOSITORY" --title "probe 4" --notes "asset upload probe, deleted by cleanup" 2>&1); then
+            echo "::notice::probe4 release create with 40MB asset upload OK: $out"
+          else
+            echo "::error::probe4 release create with asset upload FAILED: $out"
+            # Second look: does a plain upload to an existing release work?
+            gh release create "v-probe4b-$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --title "probe 4b" --notes "deleted by cleanup" >/dev/null 2>&1 || true
+            if out2=$(gh release upload "v-probe4b-$GITHUB_RUN_ID" probe-asset.bin --clobber --repo "$GITHUB_REPOSITORY" 2>&1); then
+              echo "::notice::probe4b upload to existing release OK (create-with-asset is the broken half): $out2"
+            else
+              echo "::error::probe4b upload to existing release FAILED too: $out2"
+            fi
+            exit 1
+          fi
+
       - name: Cleanup
         if: always()
         env:
@@ -65,5 +85,9 @@ jobs:
         run: |
           gh release delete "v-probe1-$GITHUB_RUN_ID" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>&1 || true
           gh release delete "v-probe3-$GITHUB_RUN_ID" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>&1 || true
+          gh release delete "v-probe4-$GITHUB_RUN_ID" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>&1 || true
+          gh release delete "v-probe4b-$GITHUB_RUN_ID" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>&1 || true
           git push origin ":refs/tags/v-probe1-$GITHUB_RUN_ID" 2>&1 || true
           git push origin ":refs/tags/v-probe3-$GITHUB_RUN_ID" 2>&1 || true
+          git push origin ":refs/tags/v-probe4-$GITHUB_RUN_ID" 2>&1 || true
+          git push origin ":refs/tags/v-probe4b-$GITHUB_RUN_ID" 2>&1 || true
