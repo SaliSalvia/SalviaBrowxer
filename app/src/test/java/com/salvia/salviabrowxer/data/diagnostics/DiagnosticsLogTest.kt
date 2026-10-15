@@ -90,7 +90,9 @@ class DiagnosticsLogTest {
     fun `writeReport produces a shareable file`() {
         val (diagnostics, _) = newLog()
         diagnostics.event("transfer-completed", mapOf("bytes" to "42"))
-        val target = File(folder.newFolder(), "share", "diagnostics.txt")
+        // Two File(parent, child) hops: java.io.File has no three-argument constructor, and a
+        // not-yet-existing parent doubles as the check that writeReport mkdirs before writing.
+        val target = File(File(folder.newFolder(), "share"), "diagnostics.txt")
         assertEquals(target, diagnostics.writeReport(target, "1.0.0"))
         assertTrue(target.readText().contains("transfer-completed"))
     }

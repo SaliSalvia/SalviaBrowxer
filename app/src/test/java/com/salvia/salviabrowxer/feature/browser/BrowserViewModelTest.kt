@@ -616,7 +616,7 @@ class BrowserViewModelTest {
     fun `the floating button's file is the page's main video, not its ad`() {
         val page = "https://example.com/watch"
         viewModel.onPageStarted(page)
-        val tabId = viewModel.uiState.value.currentTabId
+        val tabId = viewModel.uiState.value.currentTabId!!
         val main = MediaCandidate(
             pageUrl = page, mediaUrl = "https://cdn.example.com/feature.mp4",
             mimeType = "video/mp4", extension = "mp4", duration = 300_000, confidence = 0.9f
