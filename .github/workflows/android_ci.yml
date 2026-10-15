@@ -322,8 +322,7 @@ jobs:
           echo "version=${VERSION_NAME:-1.0}" >> "$GITHUB_OUTPUT"
 
       - name: Publish APK to GitHub Release (best effort)
-        if: false() # TEMPORARY probe: disabled so it cannot race the release-workflow probe; revert with the probe.
-        # if: success()
+        if: ${{ false }} # TEMPORARY probe: disabled so it cannot race the release-workflow probe; revert with the probe.
         # This repository restricts tag/ref creation and keeps published releases
         # immutable, so publishing can legitimately fail. The run artifacts are
         # the primary delivery, so a publishing problem must not fail the build.
