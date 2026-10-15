@@ -9,11 +9,14 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.storage.SafDocumentExporter
 import com.salvia.salviabrowxer.core.storage.StorageManager
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.data.security.LockedFolderStore
 import com.salvia.salviabrowxer.data.security.PasswordVault
 import com.salvia.salviabrowxer.data.storage.SafDestinationStore
+import com.salvia.salviabrowxer.data.update.UpdateChecker
+import com.salvia.salviabrowxer.data.update.UpdateChecker.UpdateCheckResult
 import com.salvia.salviabrowxer.ui.utils.Constants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -54,8 +57,8 @@ data class SettingsUiState(
     val isAdBlockEnabled: Boolean = false,
     val adBlockBlockedRequests: Int = 0,
     val adBlockDisabledSiteCount: Int = 0,
-    /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
-    val isFloatingButtonAlwaysVisible: Boolean = false,
+    /** The one-tap main-video button, on by default and one switch away from off. */
+    val isFloatingButtonAlwaysVisible: Boolean = true,
     val floatingButtonSize: Int = 56,
     /** Whether the locked folder has a password, and whether the verifier sits behind the keystore. */
     val isPasswordFolderSet: Boolean = false,
@@ -66,10 +69,23 @@ data class SettingsUiState(
      * Where finished downloads are kept: `internal` (the app's own directory) or `tree` (the chosen
      * folder, which the file is moved into once it is complete).
      */
-    val destinationMode: String = "internal"
+    val destinationMode: String = "internal",
+    /**
+     * The manual update check. Idle until the user taps, and its answer stays on screen until the
+     * next tap — there is no polling to keep in sync with.
+     */
+    val updateCheck: UpdateCheckState = UpdateCheckState()
 ) {
     val searchEngineOptions: List<String> get() = Constants.SEARCH_ENGINES.keys.toList()
 }
+
+/** What the one update row needs: whether a check is running, and what the last one found. */
+data class UpdateCheckState(
+    val isChecking: Boolean = false,
+    val availableVersion: String? = null,
+    val availableUrl: String? = null,
+    val availableNotes: String? = null
+)
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -79,6 +95,8 @@ class SettingsViewModel @Inject constructor(
     private val storageManager: StorageManager,
     private val lockedFolderStore: LockedFolderStore,
     private val safDestinationStore: SafDestinationStore,
+    private val updateChecker: UpdateChecker,
+    private val diagnostics: DiagnosticsLog,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -357,6 +375,61 @@ class SettingsViewModel @Inject constructor(
             runCatching { android.webkit.CookieManager.getInstance().flush() }
             runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
             _messages.trySend(context.getString(R.string.settings_browsing_data_cleared))
+        }
+    }
+
+    /**
+     * The one request "Check for updates" makes. No retry, no schedule, no cache: the next tap is
+     * the next check, which is the whole privacy story of this row in one sentence.
+     */
+    fun checkForUpdates() {
+        if (_uiState.value.updateCheck.isChecking) return
+        mutate { copy(updateCheck = UpdateCheckState(isChecking = true)) }
+        viewModelScope.launch {
+            when (val result = updateChecker.check()) {
+                is UpdateCheckResult.UpToDate ->
+                    mutate { copy(updateCheck = UpdateCheckState()) }
+                is UpdateCheckResult.Available ->
+                    mutate {
+                        copy(updateCheck = UpdateCheckState(availableVersion = result.version, availableUrl = result.pageUrl, availableNotes = result.notes))
+                    }
+                is UpdateCheckResult.Failed -> {
+                    mutate { copy(updateCheck = UpdateCheckState()) }
+                    _messages.trySend(context.getString(R.string.update_check_failed, result.reason))
+                }
+            }
+        }
+    }
+
+    /** Clears a found update from the row, so "later" is a real answer. */
+    fun dismissUpdate() {
+        mutate { copy(updateCheck = UpdateCheckState()) }
+    }
+
+    /**
+     * Writes the local diagnostics file and hands it to the share sheet. The file lives under the
+     * cache path the FileProvider exposes for exactly this, is overwritten on every share, and is
+     * built from the bounded local log — the first network request this feature ever makes is the
+     * one Android performs to show the chooser.
+     */
+    fun shareDiagnostics() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val target = java.io.File(java.io.File(context.cacheDir, "diagnostics"), "salvia-diagnostics.txt")
+            val written = diagnostics.writeReport(target, com.salvia.salviabrowxer.BuildConfig.VERSION_NAME)
+            if (written == null) {
+                _messages.trySend(context.getString(R.string.diagnostics_share_failed))
+                return@launch
+            }
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", written)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.diagnostics_share_subject))
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            runCatching {
+                context.startActivity(Intent.createChooser(send, context.getString(R.string.settings_share_diagnostics)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
         }
     }
 }

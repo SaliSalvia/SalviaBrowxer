@@ -122,3 +122,37 @@ finding. `docs/inshot-parity-fa.md` is the register of those claims. Measure: fe
 post attribution, false ad selection rate, download completion, gallery visibility, playability,
 and failure explanations. Record negative results. Do not bump the version or advertise a capability
 until it has shipped and passed the matrix.
+
+## 2026-10 — deep-review follow-up (applied, pending the device matrix)
+
+The findings of `docs/analysis-v2-fa.md` that are now in the code, each without removing a
+capability or a watt of detection power:
+
+- **Android 15+ data-sync cap.** `DownloadService.onTimeout` pauses its transfers with a stable
+  marker (`DATA_SYNC_TIMEOUT_MARKER`, the Wi-Fi hold's pattern), posts an honest notification and
+  stops itself before the system stops it with a failure; opening the app releases exactly those
+  rows. Still open: an emulator pass with `device_config` shortening the cap, which is what
+  `emulator_verification.yml` exists for.
+- **Local diagnostics instead of a crash SDK.** `DiagnosticsLog`: bounded event log (one rotation),
+  newest-few crash files, hosts only — never URLs or tokens. A crash handler in `SalviaBrowxerApp`
+  writes crashes; Settings → "Share diagnostics" is the only way out. Transfer failures,
+  renderer deaths and the data-sync timeout are recorded.
+- **Manual update check.** One tap, one request to this repository's public releases endpoint, no
+  schedule and no identifier beyond the required user agent (`UpdateChecker`).
+- **Locked folder hardening.** `LockoutPolicy` (three free attempts, then a doubling delay, capped)
+  and a six-character minimum for *new* passwords; existing verifiers are never re-judged.
+- **Iframe external schemes.** A subframe navigation nobody tapped no longer reaches the system's
+  app chooser (`shouldOverrideUrlLoading` checks `isForMainFrame`/`hasGesture`).
+- **CI and community.** The emulator suite now runs on pushes to `main` too; the two build
+  workflows cancel their own superseded runs; `SECURITY.md`, `CONTRIBUTING.md` and issue templates
+  exist.
+- **Main-video selection + the floating button.** `MainContentSelector` ranks already-admitted
+  candidates (visible player ≫ kind > document sightings > duration/size > resolution; ad-shaped
+  paths demoted; known ad hosts categorically excluded from the one-tap slot). The floating
+  download button is on by default: one tap saves the main file through the tray's own
+  `downloadOrOffer` door, long-press opens the tray, drag repositions, one switch turns it off.
+
+Deliberately *not* done in this pass, because this environment cannot build and a red build would
+cost more than the change is worth: kapt→KSP, the version catalog, dependency upgrades,
+BiometricPrompt (needs a `FragmentActivity` migration) and the `BrowserViewModel` decomposition.
+They stay on this list for the first pass after a green build.

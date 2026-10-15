@@ -16,6 +16,17 @@ on:
       - 'core/**'
       - 'gradle/**'
       - '.github/workflows/emulator_verification.yml'
+  # A merged PR is the one commit that actually reaches users; the device-verified path has to
+  # hold for it too, not only for the PR that preceded it.
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/src/**'
+      - 'media/**'
+      - 'core/**'
+      - 'gradle/**'
+      - '.github/workflows/emulator_verification.yml'
 
 permissions:
   contents: read

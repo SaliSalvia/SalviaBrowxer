@@ -96,8 +96,17 @@ versionName `1.0.0`.
   reach the tray as candidates that would fail at download time.
 - **Media tray** — candidates surface as a quiet pill in the top bar showing only the count; the
   pill opens a tray that lists every candidate with its kind (video, audio, playlist) and container.
-  The draggable floating button still exists as an advanced setting, off by default, because a
-  button that covers the page should be something the user asked for.
+- **Main-video selection and the floating button** — `MainContentSelector` ranks the candidates a
+  page already admitted to pick the one file the user most plausibly came for: the URL the visible
+  player loaded carries by far the most weight, then kind (video over audio), the page's own
+  sightings over a frame's, duration and size, and a demotion for ad-shaped delivery paths —
+  with known ad/tracker hosts categorically excluded from the one-tap slot while remaining in the
+  tray. It is a *ranking over evidence*, never new evidence: no request is added and nothing the
+  tray would refuse can become "main". The draggable floating download button is **on by default**
+  now: one tap saves that main file (through the exact same door a tray tap uses — a single
+  rendition enqueues immediately, a real choice opens the quality sheet, an unsavable stream gets
+  its honest refusal), long-press opens the whole tray, and dragging moves it anywhere. One switch
+  in Settings turns it off for good.
 - **Quality sheet** — resolver runs HEAD, falls back to a ranged GET when HEAD is refused, and
   fetches the playlist *in parallel with that probe* whenever the URL path already names a manifest,
   so the rows appear sooner instead of after two serial round trips. It expands an HLS master
@@ -122,7 +131,11 @@ versionName `1.0.0`.
   resumes from the parts it already staged. A segmented transfer that fails on a transient network
   error is **retried a bounded number of times with backoff**, and the retry resumes too: the staged
   segments are kept, and a DASH rendition that already finished is not fetched again, so only the
-  missing segments are requested. A segmented
+  missing segments are requested. On **Android 15+**, where the system caps a `dataSync`
+  foreground service at six cumulative hours per 24-hour window, the service implements
+  `Service.onTimeout`: it pauses its running transfers with a stable marker, tells the user in a
+  plain notification that opening the app resumes them, and stops itself cleanly — the cap is the
+  system's to give back, and the app would rather stop honestly than be killed as a failure. A segmented
   transfer is then **remuxed into a plain MP4 with `MediaMuxer`** (no re-encode), and a DASH
   video+audio pair is **muxed into one file** — so the saved file plays in any gallery or player,
   not only in this app. The finished file's duration and a frame are read locally for the library
@@ -305,7 +318,19 @@ and no analytics. The optional ad blocker decides locally, against a list that s
 it fetches no list, reports nothing, and its counters stay in your settings. Backups and device transfer exclude the database, preferences, WebView cookies
 and cache. **Private tabs** keep no history and are not restored, but they are not a separate
 identity: cookies and site data are shared with normal tabs, the app says so in the tab switcher,
-and no privacy claim here goes further than that. A short privacy policy lives in [`docs/privacy-policy.md`](docs/privacy-policy.md).
+and no privacy claim here goes further than that.
+
+Two newer features keep the same posture:
+
+- **Diagnostics** are a bounded, local-only log (transfer outcomes, renderer deaths, the data-sync
+  timeout — hosts and events, never full URLs or tokens) plus the newest few crash files. Nothing
+  is sent anywhere, ever; Settings → "Share diagnostics" is the only way it leaves the device, and
+  it leaves as a file you see before sharing.
+- **Update check** is a row in Settings you tap. It asks this repository's public GitHub releases
+  endpoint once, with no identifier beyond the user agent the API requires. There is no schedule,
+  no polling and no silent check.
+
+A short privacy policy lives in [`docs/privacy-policy.md`](docs/privacy-policy.md).
 
 ## License
 

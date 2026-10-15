@@ -110,3 +110,18 @@ Two things the download settings may store, both on the device and neither sent 
 
 Removing the password deletes the verifier, unlocks every file it was hiding, and takes no copy of
 anything.
+
+## Diagnostics and update check (added 2026-10)
+
+Both features exist because the app has no crash reporting and no analytics, and both keep it that
+way:
+
+- **Diagnostics** are a small local log of events (a transfer failing, a page renderer dying, the
+  system's background-download cap being reached) recorded with *hostnames only* — never full URLs,
+  query strings or tokens — plus the newest few crash stack traces. The log is size-bounded and
+  lives in the app's private storage. Nothing in it is sent anywhere by the app; the Settings row
+  "Share diagnostics" writes a file you can inspect and hands it to Android's share sheet, and only
+  you choose where it goes.
+- **The update check** is a row in Settings you tap. It makes one request to this app's public
+  GitHub releases page when you tap it, sends no identifier beyond the user agent the GitHub API
+  requires, and runs on no schedule. It never checks silently.

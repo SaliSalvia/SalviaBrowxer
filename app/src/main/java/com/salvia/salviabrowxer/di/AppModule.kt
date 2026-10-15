@@ -16,6 +16,8 @@ import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStoreImpl
 import com.salvia.salviabrowxer.data.datastore.dataStore
 import com.salvia.salviabrowxer.data.datastore.sessionDataStore
+import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
+import com.salvia.salviabrowxer.data.update.UpdateChecker
 import com.salvia.salviabrowxer.data.security.LockedFolderStore
 import com.salvia.salviabrowxer.data.storage.SafDestinationStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
@@ -117,6 +119,21 @@ object AppModule {
     @Singleton
     fun provideDownloadArtifactCleaner(@ApplicationContext context: Context): DownloadArtifactCleaner =
         androidArtifactCleaner(context)
+
+    /**
+     * The local-only diagnostics the app offers instead of a crash-reporting SDK: a bounded file in
+     * private storage, read only when the user chooses to share it.
+     */
+    @Provides
+    @Singleton
+    fun provideDiagnosticsLog(@ApplicationContext context: Context): DiagnosticsLog =
+        DiagnosticsLog(java.io.File(context.filesDir, "diagnostics"))
+
+    /** The manual update check; its one request happens only when the user taps the row. */
+    @Provides
+    @Singleton
+    fun provideUpdateChecker(okHttpClient: OkHttpClient): UpdateChecker =
+        UpdateChecker(okHttpClient, com.salvia.salviabrowxer.BuildConfig.VERSION_NAME)
 
     @Provides
     @Singleton

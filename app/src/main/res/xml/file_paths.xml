@@ -16,4 +16,6 @@
     <files-path name="internal_downloads" path="Downloads/" />
     <!-- blob staging: context.cacheDir/blob -->
     <cache-path name="blob_staging" path="blob/" />
+    <!-- the shareable diagnostics report, written only when the user shares it -->
+    <cache-path name="diagnostics" path="diagnostics/" />
 </paths>

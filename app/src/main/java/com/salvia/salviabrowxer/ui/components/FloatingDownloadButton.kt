@@ -7,8 +7,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,6 +53,8 @@ fun FloatingDownloadButton(
     isMediaDetected: Boolean,
     mediaCount: Int,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+    isMainReady: Boolean = false,
     modifier: Modifier = Modifier,
     buttonSize: Dp = 56.dp,
     containerSize: IntSize = IntSize.Zero,
@@ -98,7 +101,14 @@ fun FloatingDownloadButton(
                     offsetX = next.x; offsetY = next.y
                 }
             }
-            .clickable(onClick = onClick),
+            // Tap and long-press are one gesture detector so they cannot both fire; the drag above
+            // consumes movement, and a press that turns into movement cancels the tap cleanly.
+            .pointerInput(onClick, onLongClick) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { onLongClick() }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -116,7 +126,9 @@ fun FloatingDownloadButton(
 
         Icon(
             imageVector = Icons.Default.Download,
-            contentDescription = if (isMediaDetected && mediaCount > 0) {
+            contentDescription = if (isMainReady) {
+                stringResource(R.string.fab_main_video_description)
+            } else if (isMediaDetected && mediaCount > 0) {
                 stringResource(R.string.media_button_description, mediaCount)
             } else {
                 stringResource(R.string.media_button_description_empty)
@@ -124,6 +136,24 @@ fun FloatingDownloadButton(
             tint = if (isMediaDetected) Color.White else PearlWhite.copy(alpha = 0.88f),
             modifier = Modifier.size(25.dp)
         )
+
+        // The main-video mark: a quiet play glyph at the opposite corner from the count, present
+        // only when the one-tap promise is actually backed by a selected candidate.
+        if (isMainReady) {
+            Box(
+                modifier = Modifier.align(Alignment.BottomStart).offset(x = (-3).dp, y = 3.dp).size(14.dp).clip(CircleShape)
+                    .background(Brush.radialGradient(colors = listOf(NebulaVioletLight, NebulaViolet)))
+                    .shadow(3.dp, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(10.dp)
+                )
+            }
+        }
 
         if (isMediaDetected && mediaCount > 0) {
             Box(

@@ -23,8 +23,15 @@ import android.util.Base64
  */
 object PasswordVault {
 
-    /** Shorter than this and the "lock" is a formality; the UI refuses rather than warns. */
-    const val MIN_PASSWORD_CHARS: Int = 4
+    /**
+     * Shorter than this and the "lock" is a formality; the UI refuses rather than warns.
+     *
+     * Six, not four: a four-character password is a gesture, not a secret, and the verifier's
+     * slowness is the only other brake (see [LockoutPolicy]). Existing verifiers are never
+     * re-judged — `verify` does not ask how long the password was, so an upgrade never locks
+     * anybody out of a folder they could already open.
+     */
+    const val MIN_PASSWORD_CHARS: Int = 6
 
     /**
      * A middle ground: a few hundred milliseconds on the slowest phone the app supports, and enough

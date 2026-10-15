@@ -1,5 +1,11 @@
 name: Android CI
 
+# A new push to the same branch supersedes its own in-flight build; cancelling it keeps
+# the queue of ~10-minute jobs moving without ever cancelling a different branch's run.
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
   pull_request:

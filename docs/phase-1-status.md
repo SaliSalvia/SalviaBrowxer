@@ -88,3 +88,25 @@ per the roadmap policy: **no bump until the real-device matrix passes.**
   downloads or where it puts it.
 
 Do not bump to 1.1.0 / versionCode 3 until the acceptance matrix passes.
+
+## 2026-10 additions (same rule: implemented, with tests that run)
+
+- **Main-video selection.** `MainContentSelector` (pure JVM, `MainContentSelectorTest`) picks the
+  one-tap file from already-admitted candidates; ad hosts are categorically excluded, ad-shaped
+  paths demoted, live/unproven-blob/unclassified URLs never selected. `BrowserViewModel` keeps
+  `mainMediaUrl` in step with every path that changes the tray (merge, visible player, expiry,
+  navigation, tab switch/close, SPA transitions) — asserted in `BrowserViewModelTest`.
+- **Floating button.** On by default now: one tap saves the main video via `downloadOrOffer`
+  (single rendition → direct enqueue; choice → quality sheet; unsavable → honest refusal),
+  long-press opens the tray, drag repositions. The settings switch still turns it off.
+- **dataSync timeout (Android 15+).** `DownloadService.onTimeout` + `TimeoutHold`
+  (`TimeoutHoldTest`): stable marker, honest notification, release on the app's next start.
+- **Diagnostics.** `DiagnosticsLog` (`DiagnosticsLogTest`): bounded local event log, newest-few
+  crash files, hosts only; crash capture in the `Application`; "Share diagnostics" in Settings
+  through the FileProvider's narrow `diagnostics/` path.
+- **Update check.** `UpdateChecker` (`UpdateCheckerTest`): manual-only, GitHub releases endpoint,
+  numeric version comparison, drafts/prereleases ignored.
+- **Locked folder.** `LockoutPolicy` (`LockoutPolicyTest`) with exponential backoff; six-character
+  minimum for new passwords; legacy verifiers unaffected (asserted).
+- **Iframe external schemes.** Subframe `intent://` without a gesture is refused in
+  `WebViewClientWrapper.shouldOverrideUrlLoading`.

@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nightlight
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -272,6 +274,16 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp)
                 )
                 SettingsItem(Icons.Default.Info, stringResource(R.string.about_title), stringResource(R.string.about_version, BuildConfig.VERSION_NAME))
+                SettingsItem(
+                    Icons.Default.SystemUpdate,
+                    stringResource(R.string.settings_check_updates),
+                    when {
+                        state.updateCheck.isChecking -> stringResource(R.string.update_checking)
+                        state.updateCheck.availableVersion != null -> stringResource(R.string.update_available_title, state.updateCheck.availableVersion)
+                        else -> stringResource(R.string.settings_check_updates_hint)
+                    }
+                ) { viewModel.checkForUpdates() }
+                SettingsItem(Icons.Default.BugReport, stringResource(R.string.settings_share_diagnostics), stringResource(R.string.settings_share_diagnostics_hint)) { viewModel.shareDiagnostics() }
                 SettingsItem(Icons.Default.Info, stringResource(R.string.about_license), "GPL-3.0") { openUrl(Constants.LICENSE_URL) }
                 SettingsItem(Icons.Default.Security, stringResource(R.string.about_privacy_policy)) { openUrl(Constants.PRIVACY_POLICY_URL) }
                 SettingsItem(Icons.Default.Search, stringResource(R.string.about_source_code)) { openUrl(Constants.SOURCE_CODE_URL) }
@@ -327,6 +339,26 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             confirmLabel = stringResource(R.string.action_clear),
             onDismiss = { dialog = SettingsDialog.None },
             onConfirm = { viewModel.clearBrowsingData(); dialog = SettingsDialog.None }
+        )
+    }
+
+    // A found update stays until dismissed: "later" must be as real an answer as "open the page".
+    state.updateCheck.availableVersion?.let { version ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissUpdate() },
+            title = { Text(stringResource(R.string.update_available_title, version)) },
+            text = {
+                Text(state.updateCheck.availableNotes ?: stringResource(R.string.settings_check_updates_hint))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.updateCheck.availableUrl?.let(openUrl)
+                    viewModel.dismissUpdate()
+                }) { Text(stringResource(R.string.update_open_page)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissUpdate() }) { Text(stringResource(R.string.action_dismiss)) }
+            }
         )
     }
 }

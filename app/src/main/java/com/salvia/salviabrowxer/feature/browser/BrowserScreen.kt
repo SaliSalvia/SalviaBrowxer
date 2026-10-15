@@ -183,17 +183,21 @@ fun BrowserScreen(
     val onReloadStopClick = remember(viewModel, state.isLoading) {
         { if (state.isLoading) viewModel.stopLoading() else viewModel.reload() }
     }
-    // Both the pill and the optional draggable button lead to the tray, which lists every
-    // candidate; the quality sheet is one step further in, per item.
-    val onFabClick = remember(viewModel, isMediaDetected) {
+    // The floating button is the one-tap promise: with a main video on the page it saves *that*,
+    // and everything else it can be is the tray — one tap when nothing qualifies as main, a
+    // long-press always. The pill in the top bar remains the always-honest list of everything.
+    val onFabClick = remember(viewModel, isMediaDetected, state.mainMediaUrl) {
         {
-            if (isMediaDetected) {
-                viewModel.openMediaTray()
-            } else {
-                scope.launch { snackbarHostState.showSnackbar(noMediaMessage) }
+            when {
+                state.mainMediaUrl != null -> viewModel.downloadMainMedia()
+                isMediaDetected -> viewModel.openMediaTray()
+                else -> scope.launch { snackbarHostState.showSnackbar(noMediaMessage) }
             }
             Unit
         }
+    }
+    val onFabLongClick = remember(viewModel) {
+        { viewModel.openMediaTray(); Unit }
     }
     val onMediaClick = remember(viewModel) { { viewModel.openMediaTray() } }
 
@@ -382,12 +386,15 @@ fun BrowserScreen(
                     )
                 }
 
-                // Off by default: the media pill in the top bar is the normal affordance.
+                // On by default (the InShot-grade affordance this browser promised): one tap saves
+                // the main video, long-press opens everything, drag moves it out of the way.
                 if (state.isFabAlwaysVisible) {
                     FloatingDownloadButton(
                         isMediaDetected = isMediaDetected,
+                        isMainReady = state.mainMediaUrl != null,
                         mediaCount = mediaCount,
                         onClick = onFabClick,
+                        onLongClick = onFabLongClick,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(16.dp),

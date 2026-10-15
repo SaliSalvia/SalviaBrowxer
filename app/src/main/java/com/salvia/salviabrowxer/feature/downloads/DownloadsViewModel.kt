@@ -14,6 +14,7 @@ import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.security.LockedFolderStore
+import com.salvia.salviabrowxer.data.security.LockoutPolicy
 import com.salvia.salviabrowxer.media.downloader.TranscodePlan
 import com.salvia.salviabrowxer.media.downloader.VideoTranscoder
 import com.salvia.salviabrowxer.service.DownloadService
@@ -86,6 +87,12 @@ class DownloadsViewModel @Inject constructor(
     )
     val uiState: StateFlow<DownloadsUiState> = _uiState.asStateFlow()
     private val _messages = Channel<String>(Channel.BUFFERED)
+
+    /**
+     * The locked folder's brake on guessing: three free attempts, then a delay that doubles.
+     * Not injected — it holds no Android type and no test wants to share one across screens.
+     */
+    private val lockoutPolicy = LockoutPolicy()
     val messages: Flow<String> = _messages.receiveAsFlow()
 
     private val _playRequest = Channel<Pair<String, String>>(Channel.BUFFERED)
@@ -124,10 +131,19 @@ class DownloadsViewModel @Inject constructor(
      * that checking it is slow, and slow on the UI thread is a frozen list.
      */
     fun unlockFolder(password: String) {
+        // The progressive delay runs before the verifier: a locked-out attempt must not pay the
+        // PBKDF2 cost too, and must not even be checked — waiting is the whole point.
+        val now = System.currentTimeMillis()
+        if (lockoutPolicy.isLockedOut(now)) {
+            val seconds = (lockoutPolicy.remainingMillis(now) + 999) / 1000
+            _messages.trySend(context.getString(R.string.locked_folder_try_later, seconds))
+            return
+        }
         if (_uiState.value.lockedFolder.isUnlocking) return
         _uiState.update { it.copy(lockedFolder = it.lockedFolder.copy(isUnlocking = true)) }
         viewModelScope.launch(Dispatchers.Default) {
             val unlocked = lockedFolderStore.verify(password)
+            if (unlocked) lockoutPolicy.onSuccess() else lockoutPolicy.onFailure(now)
             _uiState.update { it.copy(lockedFolder = it.lockedFolder.copy(isUnlocking = false, isUnlocked = unlocked)) }
             if (!unlocked) _messages.trySend(context.getString(R.string.locked_folder_wrong_password))
         }
