@@ -1,9 +1,14 @@
 name: Release
 
 # Publishes a signed APK as a GitHub Release.
-# Triggers: a push of a v* tag, or a push that touches the RELEASE file.
-# The tag is derived from versionName in app/build.gradle.kts; the release
-# action creates the tag itself when it does not exist yet.
+# Triggers: a push of a v* tag, or a push to main that touches the RELEASE file.
+# The tag is derived from versionName in app/build.gradle.kts.
+#
+# The release step itself uses the `gh` CLI rather than a release action: the action-based step
+# failed twice on 2026-10-15 with no readable error from inside the action, while `gh` prints the
+# API's own message into the step log where it can actually be read. The tag is also created
+# explicitly, at the exact commit that was built, before the release exists — so the APK in a
+# release always matches the source of the release, and tag creation can never race the upload.
 
 on:
   push:
@@ -16,6 +21,11 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  # One release pipeline per ref; a superseded push cancels its own in-flight run.
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -34,21 +44,28 @@ jobs:
 
       - name: Skip if this tag is already released
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const tag = process.env.TAG;
-            try {
-              await github.rest.repos.getReleaseByTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag
-              });
-              core.setFailed('Release ' + tag + ' already exists; bump versionName to publish a new one.');
-            } catch (e) {
-              if (e.status === 404) core.info('No existing release for ' + tag + ', proceeding.');
-              else throw e;
-            }
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; bump versionName to publish a new one."
+            exit 1
+          fi
+          echo "No existing release for $TAG, proceeding."
+
+      - name: Refuse to move an existing tag
+        # A tag-triggered run exists precisely because the tag does; only branch runs must check.
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A published version is a promise about which source built it: the tag is never
+          # force-moved onto a newer commit. If it exists at all, publishing needs a new
+          # versionName — the same rule the release-exists check applies one level up.
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Bump versionName (and versionCode) to publish a new version."
+            exit 1
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -78,10 +95,23 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK_PATH"
 
+      - name: Tag the exact commit that was built
+        # On a tag-triggered run the tag already exists — this step is for branch-triggered runs,
+        # where creating it here means the release's APK always matches the release's source.
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git tag -a "${TAG}" -m "SalviaBrowxer ${TAG}"
+          git push origin "${TAG}"
+
       - name: Create GitHub Release with APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG }}
-          name: SalviaBrowxer ${{ env.TAG }}
-          generate_release_notes: true
-          files: ${{ env.APK_PATH }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${TAG}" "${APK_PATH}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "SalviaBrowxer ${TAG}" \
+            --generate-notes \
+            --latest
+          echo "Published ${TAG} with $(basename "$APK_PATH")"
