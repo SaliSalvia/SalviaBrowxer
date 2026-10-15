@@ -274,12 +274,13 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp)
                 )
                 SettingsItem(Icons.Default.Info, stringResource(R.string.about_title), stringResource(R.string.about_version, BuildConfig.VERSION_NAME))
+                val availableVersion = state.updateCheck.availableVersion
                 SettingsItem(
                     Icons.Default.SystemUpdate,
                     stringResource(R.string.settings_check_updates),
                     when {
                         state.updateCheck.isChecking -> stringResource(R.string.update_checking)
-                        state.updateCheck.availableVersion != null -> stringResource(R.string.update_available_title, state.updateCheck.availableVersion)
+                        availableVersion != null -> stringResource(R.string.update_available_title, availableVersion)
                         else -> stringResource(R.string.settings_check_updates_hint)
                     }
                 ) { viewModel.checkForUpdates() }
