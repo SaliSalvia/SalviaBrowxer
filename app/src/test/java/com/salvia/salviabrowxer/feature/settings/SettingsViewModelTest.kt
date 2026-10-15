@@ -7,6 +7,8 @@ import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.data.security.LockedFolderStore
 import com.salvia.salviabrowxer.data.storage.SafDestinationStore
+import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
+import com.salvia.salviabrowxer.data.update.UpdateChecker
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -39,6 +41,10 @@ class SettingsViewModelTest {
     private val lockedFolderStore: LockedFolderStore = mockk(relaxed = true)
     private val safDestinationStore: SafDestinationStore = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
+    private val updateChecker: UpdateChecker = mockk(relaxed = true)
+    private val diagnostics: DiagnosticsLog = DiagnosticsLog(
+        java.io.File(System.getProperty("java.io.tmpdir"), "salvia-settings-test-diagnostics").apply { mkdirs() }
+    )
 
     @Before
     fun setup() {
@@ -60,7 +66,7 @@ class SettingsViewModelTest {
         every { lockedFolderStore.isConfigured() } returns false
         every { lockedFolderStore.isSecured } returns true
 
-        viewModel = SettingsViewModel(settingsDataStore, historyRepository, downloadRepository, storageManager, lockedFolderStore, safDestinationStore, context)
+        viewModel = SettingsViewModel(settingsDataStore, historyRepository, downloadRepository, storageManager, lockedFolderStore, safDestinationStore, updateChecker, diagnostics, context)
     }
 
     @Test
@@ -137,6 +143,8 @@ class SettingsViewModelTest {
             storageManager = storageManager,
             lockedFolderStore = lockedFolderStore,
             safDestinationStore = safDestinationStore,
+            updateChecker = updateChecker,
+            diagnostics = diagnostics,
             context = context
         )
 

@@ -21,6 +21,8 @@ import com.salvia.salviabrowxer.data.datastore.SessionCodec
 import com.salvia.salviabrowxer.data.datastore.SessionRestorer
 import com.salvia.salviabrowxer.data.datastore.SessionTab
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
+import com.salvia.salviabrowxer.data.diagnostics.hostOf
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
@@ -36,6 +38,7 @@ import com.salvia.salviabrowxer.ui.utils.AddressBarResolver
 import com.salvia.salviabrowxer.ui.utils.CleartextPolicy
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.MediaOfferability
+import com.salvia.salviabrowxer.ui.utils.MainContentSelector
 import com.salvia.salviabrowxer.ui.utils.MseRecordingUiState
 import com.salvia.salviabrowxer.ui.utils.PageErrorKind
 import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
@@ -103,10 +106,17 @@ data class BrowserUiState(
     val detectedMedia: List<MediaCandidate> = emptyList(),
     /** An admitted URL currently associated with the visible player, not proof of main content. */
     val visibleMediaUrl: String? = null,
+    /**
+     * The page's best candidate for "the video the user came here for", chosen by
+     * [MainContentSelector] from evidence already admitted — never a new request, never a guess
+     * about a site. `null` means nothing on the page deserves the floating button's one tap, and
+     * the tray stays the honest way in.
+     */
+    val mainMediaUrl: String? = null,
     val fabPosition: FabPosition = FabPosition(),
     val floatingButtonSize: Int = 56,
-    /** The draggable button is an advanced opt-in; the media pill in the top bar is the default. */
-    val isFabAlwaysVisible: Boolean = false,
+    /** The one-tap main-video button, on by default and one switch away from off. */
+    val isFabAlwaysVisible: Boolean = true,
     val qualitySheet: QualitySheetState? = null,
     /** The tray lists every candidate on the page; the pill in the top bar opens it. */
     val isMediaTrayVisible: Boolean = false,
@@ -163,6 +173,7 @@ class BrowserViewModel @Inject constructor(
     private val mediaDetector: MediaDetector,
     private val mediaResolver: MediaResolver,
     private val sessionRestorer: SessionRestorer,
+    private val diagnostics: DiagnosticsLog,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -207,7 +218,7 @@ class BrowserViewModel @Inject constructor(
             val fabX = runCatching { settingsDataStore.floatingButtonX.first() }.getOrNull() ?: 0f
             val fabY = runCatching { settingsDataStore.floatingButtonY.first() }.getOrNull() ?: 0f
             val fabSize = runCatching { settingsDataStore.floatingButtonSize.first() }.getOrNull() ?: 56
-            val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: false
+            val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: true
             val cleartextAllowed = runCatching { settingsDataStore.isCleartextAllowed.first() }.getOrNull() ?: false
             _uiState.update { state ->
                 state.copy(
@@ -363,7 +374,7 @@ class BrowserViewModel @Inject constructor(
 
     private fun openTab(url: String, isPrivate: Boolean, navigate: Boolean) {
         val tab = Tab(title = if (url.isEmpty()) "New Tab" else url, url = url, isPrivate = isPrivate || _uiState.value.isPrivateMode)
-        _uiState.update { state -> state.copy(tabs = state.tabs + tab.copy(position = state.tabs.size), currentTabId = tab.id, url = url.ifEmpty { state.url }, addressBarInput = url.ifEmpty { state.addressBarInput }, detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null) }
+        _uiState.update { state -> state.copy(tabs = state.tabs + tab.copy(position = state.tabs.size), currentTabId = tab.id, url = url.ifEmpty { state.url }, addressBarInput = url.ifEmpty { state.addressBarInput }, detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null) }
         if (navigate && url.isNotEmpty()) _commands.trySend(BrowserCommand.Load(url))
     }
 
@@ -372,7 +383,7 @@ class BrowserViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 currentTabId = tab.id, url = tab.url, addressBarInput = tab.url, title = tab.title,
-                isPrivateMode = tab.isPrivate, detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null,
+                isPrivateMode = tab.isPrivate, detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null,
                 isTabSwitcherVisible = false,
                 // A hibernated tab restores the last committed URL; the store reloads it.
                 canGoBack = false, canGoForward = false
@@ -395,6 +406,7 @@ class BrowserViewModel @Inject constructor(
                 isPrivateMode = currentTab?.isPrivate == true,
                 detectedMedia = if (state.currentTabId == current) state.detectedMedia else emptyList(),
                 visibleMediaUrl = if (state.currentTabId == current) state.visibleMediaUrl else null,
+                mainMediaUrl = if (state.currentTabId == current) state.mainMediaUrl else null,
                 qualitySheet = if (state.currentTabId == current) state.qualitySheet else null,
                 hibernatedTabIds = state.hibernatedTabIds - tabId
             )
@@ -445,7 +457,7 @@ class BrowserViewModel @Inject constructor(
             _messages.trySend(context.getString(R.string.error_cleartext_blocked))
             return
         }
-        _uiState.update { state -> state.copy(url = target, addressBarInput = target, isLoading = true, progress = 0, isSecure = target.startsWith("https://"), detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = target, lastVisited = System.currentTimeMillis()) else tab }) }
+        _uiState.update { state -> state.copy(url = target, addressBarInput = target, isLoading = true, progress = 0, isSecure = target.startsWith("https://"), detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = target, lastVisited = System.currentTimeMillis()) else tab }) }
         _commands.trySend(BrowserCommand.Load(target))
     }
 
@@ -490,6 +502,7 @@ class BrowserViewModel @Inject constructor(
                 isSecure = if (isCurrent) safeUrl.startsWith("https://") else state.isSecure,
                 detectedMedia = if (isCurrent) emptyList() else state.detectedMedia,
                 visibleMediaUrl = if (isCurrent) null else state.visibleMediaUrl,
+                mainMediaUrl = if (isCurrent) null else state.mainMediaUrl,
                 qualitySheet = if (isCurrent) null else state.qualitySheet,
                 tabs = state.tabs.map { tab -> if (tab.id == target) tab.copy(url = safeUrl) else tab }
             )
@@ -501,7 +514,7 @@ class BrowserViewModel @Inject constructor(
         _uiState.update { state ->
             if (tabId != state.currentTabId || url == state.url) return@update state
             state.copy(url = url, addressBarInput = url, detectedMedia = emptyList(),
-                visibleMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab ->
+                visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab ->
                     if (tab.id == tabId) tab.copy(url = url) else tab
                 })
         }
@@ -606,22 +619,22 @@ class BrowserViewModel @Inject constructor(
             if (tabId != state.currentTabId || !isOnCurrentDocument(tabId, pageUrl)) return@update state
             // Only a previously admitted candidate may become the selected on-screen item.
             val selected = mediaUrl.takeIf { url -> state.detectedMedia.any { it.mediaUrl == url } }
-            if (selected == state.visibleMediaUrl) state else state.copy(
+            if (selected == state.visibleMediaUrl) state else recomputeMainMedia(state.copy(
                 visibleMediaUrl = selected,
                 detectedMedia = state.detectedMedia.sortedWith(
                     compareByDescending<MediaCandidate> { it.mediaUrl == selected }
                         .thenByDescending { it.confidence }
                 )
-            )
+            ))
         }
     }
 
     fun onMediaExpired(tabId: String, pageUrl: String, mediaUrl: String) {
         _uiState.update { state ->
             if (tabId != state.currentTabId || !isOnCurrentDocument(tabId, pageUrl)) return@update state
-            state.copy(detectedMedia = state.detectedMedia.filterNot { it.mediaUrl == mediaUrl },
+            recomputeMainMedia(state.copy(detectedMedia = state.detectedMedia.filterNot { it.mediaUrl == mediaUrl },
                 visibleMediaUrl = state.visibleMediaUrl.takeUnless { it == mediaUrl },
-                qualitySheet = state.qualitySheet.takeUnless { it?.candidate?.mediaUrl == mediaUrl })
+                qualitySheet = state.qualitySheet.takeUnless { it?.candidate?.mediaUrl == mediaUrl }))
         }
     }
 
@@ -644,8 +657,18 @@ class BrowserViewModel @Inject constructor(
         _uiState.update { state ->
             if (tabId != state.currentTabId || !isOnCurrentDocument(tabId, pageUrl)) return@update state
             val merged = MediaCandidateIndex.merge(state.detectedMedia, candidates, state.visibleMediaUrl)
-            if (merged == state.detectedMedia) state else state.copy(detectedMedia = merged)
+            if (merged == state.detectedMedia) state else recomputeMainMedia(state.copy(detectedMedia = merged))
         }
+    }
+
+    /**
+     * The one place [BrowserUiState.mainMediaUrl] is decided. Called on every change to the tray or
+     * the visible player so the floating button's promise stays true between recompositions — the
+     * main file of *this* page, not of the page the user was on three taps ago.
+     */
+    private fun recomputeMainMedia(state: BrowserUiState): BrowserUiState {
+        val main = MainContentSelector.select(state.detectedMedia, state.visibleMediaUrl, state.url)
+        return if (state.mainMediaUrl == main?.mediaUrl) state else state.copy(mainMediaUrl = main?.mediaUrl)
     }
 
     fun openMediaTray() {
@@ -660,6 +683,20 @@ class BrowserViewModel @Inject constructor(
 
     /** The result of one probe: the rows to show, and the honest reason when there are none. */
     private data class ProbedMedia(val info: MediaInfo, val failure: UnsupportedMedia?, val hasOptions: Boolean)
+
+    /**
+     * The floating button's one tap: save the page's main video.
+     *
+     * It goes through the exact same door a tray tap does — [downloadOrOffer] — so a single
+     * rendition is queued straight away, a real choice opens the quality sheet, and a stream the
+     * app cannot save is refused with its honest reason. The selection above this door is the only
+     * new thing; the saving itself gains nothing the tray did not already have.
+     */
+    fun downloadMainMedia() {
+        val url = _uiState.value.mainMediaUrl ?: return openMediaTray()
+        val candidate = _uiState.value.detectedMedia.firstOrNull { it.mediaUrl == url } ?: return openMediaTray()
+        downloadOrOffer(candidate)
+    }
 
     /**
      * Opens the quality sheet for one tray row. The sheet is filled immediately from what the
@@ -1135,6 +1172,10 @@ class BrowserViewModel @Inject constructor(
      */
     fun onRendererGone(tabId: String) {
         _uiState.update { it.copy(rendererEpoch = it.rendererEpoch + 1, isLoading = false) }
+        // A renderer death is exactly the event a local-only diagnostic exists for: it happens on
+        // real pages, on real WebView versions, and its host is the one fact that makes the report
+        // actionable — the host, never the URL with its query string.
+        diagnostics.event("renderer-gone", mapOf("host" to hostOf(_uiState.value.url)))
         if (tabId == _uiState.value.currentTabId) _messages.trySend(context.getString(R.string.renderer_gone_reloading))
     }
 
@@ -1271,7 +1312,7 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun clearDetectedMedia() { _uiState.update { it.copy(detectedMedia = emptyList(), visibleMediaUrl = null, qualitySheet = null) } }
+    fun clearDetectedMedia() { _uiState.update { it.copy(detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null) } }
     // endregion
 
     // region browser settings & data

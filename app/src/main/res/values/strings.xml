@@ -94,6 +94,7 @@
     <string name="media_pill_description">%1$d media items on this page</string>
     <string name="media_button_description">%1$d media on this page. Opens the media tray.</string>
     <string name="media_button_description_empty">Media on this page. Opens the media tray.</string>
+    <string name="fab_main_video_description">Download the main video of this page</string>
     <string name="media_tray_title">Media on this page</string>
     <string name="media_tray_count">%1$d found</string>
     <string name="media_tray_empty">No media detected on this page.</string>
@@ -171,7 +172,7 @@
     <string name="settings_downloads_at_a_time">%1$d at a time</string>
     <string name="settings_dp_value">%1$d dp</string>
     <string name="settings_floating_button_position_hint">Drag the button anywhere on the page</string>
-    <string name="settings_floating_button_always_hint">Advanced, off by default. The media pill in the address bar is the normal way to the tray</string>
+    <string name="settings_floating_button_always_hint">On by default. One tap saves the page\'s main video; long-press lists everything the page offers</string>
     <string name="settings_clear_browsing_data_hint">History, cookies and cached session data will be removed.</string>
     <string name="settings_homepage_updated">Homepage updated</string>
     <string name="settings_history_cleared">History cleared</string>
@@ -282,6 +283,7 @@
     <string name="locked_folder_save_failed">The password could not be saved on this device</string>
     <string name="locked_folder_removed">Password removed; the files it hid are visible again</string>
     <string name="locked_folder_wrong_password">Wrong password</string>
+    <string name="locked_folder_try_later">Too many attempts. Try again in %1$d seconds</string>
     <string name="locked_folder_not_configured">Set a password in Settings first</string>
     <string name="downloads_locked_folder">Locked</string>
     <string name="downloads_locked_count">%1$d hidden until the password is entered</string>
@@ -304,4 +306,23 @@
     <string name="sd_card_folder_cleared">The app no longer copies downloads anywhere else</string>
     <string name="sd_card_grant_failed">That folder cannot be kept for later use, so nothing was saved</string>
     <string name="session_restored">%1$d tab restored</string>
+
+    <!-- Data-sync timeout (Android 15+ caps background downloading) -->
+    <string name="download_timeout_title">Downloads paused by Android</string>
+    <string name="download_timeout_text">Android allows six hours of background downloading per day. Opening the app resumes where it stopped.</string>
+
+    <!-- Manual update check (never automatic) -->
+    <string name="settings_check_updates">Check for updates</string>
+    <string name="settings_check_updates_hint">Asks this app\'s GitHub releases page when you tap; nothing is checked or sent automatically</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_up_to_date">This is the latest version</string>
+    <string name="update_available_title">Version %1$s is available</string>
+    <string name="update_open_page">Open the release page</string>
+    <string name="update_check_failed">Could not check for updates (%1$s)</string>
+
+    <!-- Local diagnostics -->
+    <string name="settings_share_diagnostics">Share diagnostics</string>
+    <string name="settings_share_diagnostics_hint">A local log of events and hosts. Nothing is sent anywhere unless you share it yourself</string>
+    <string name="diagnostics_share_subject">SalviaBrowxer diagnostics</string>
+    <string name="diagnostics_share_failed">The diagnostics file could not be prepared</string>
 </resources>

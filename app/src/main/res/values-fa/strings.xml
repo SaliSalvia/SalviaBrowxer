@@ -95,6 +95,7 @@
     <string name="media_pill_description">%1$d رسانه در این صفحه</string>
     <string name="media_button_description">%1$d رسانه در این صفحه. سینی رسانه را می‌گشاید.</string>
     <string name="media_button_description_empty">رسانهٔ این صفحه. سینی رسانه را می‌گشاید.</string>
+    <string name="fab_main_video_description">دانلود ویدیوی اصلی این صفحه</string>
     <string name="media_tray_title">رسانه‌های این صفحه</string>
     <string name="media_tray_count">%1$d یافت شد</string>
     <string name="media_tray_empty">رسانه‌ای در این صفحه یافت نشد.</string>
@@ -172,7 +173,7 @@
     <string name="settings_downloads_at_a_time">%1$d هم‌زمان</string>
     <string name="settings_dp_value">%1$d dp</string>
     <string name="settings_floating_button_position_hint">دکمه را هر جای صفحه بکشید</string>
-    <string name="settings_floating_button_always_hint">پیشرفته، به‌طور پیش‌فرض خاموش. قرص رسانه در نوار نشانی راه معمول رسیدن به سینی است</string>
+    <string name="settings_floating_button_always_hint">به‌طور پیش‌فرض روشن. یک ضربه ویدیوی اصلی صفحه را ذخیره می‌کند؛ نگه‌داشتن، همهٔ رسانه‌های صفحه را فهرست می‌کند</string>
     <string name="settings_clear_browsing_data_hint">تاریخچه، کوکی‌ها و داده‌های نشست پاک می‌شوند.</string>
     <string name="settings_homepage_updated">صفحهٔ خانه به‌روز شد</string>
     <string name="settings_history_cleared">تاریخچه پاک شد</string>
@@ -283,6 +284,7 @@
     <string name="locked_folder_save_failed">ذخیرهٔ رمز روی این دستگاه ممکن نشد</string>
     <string name="locked_folder_removed">رمز حذف شد؛ فایل‌هایی که پنهان بودند دوباره دیده می‌شوند</string>
     <string name="locked_folder_wrong_password">رمز نادرست است</string>
+    <string name="locked_folder_try_later">تلاش‌های ناموفق زیاد بود. %1$d ثانیه دیگر دوباره امتحان کنید</string>
     <string name="locked_folder_not_configured">اول از تنظیمات یک رمز تعیین کنید</string>
     <string name="downloads_locked_folder">قفل‌دار</string>
     <string name="downloads_locked_count">%1$d فایل تا وارد کردن رمز پنهان است</string>
@@ -305,4 +307,23 @@
     <string name="sd_card_folder_cleared">برنامه دیگر جایی نسخهٔ دوم نمی‌سازد</string>
     <string name="sd_card_grant_failed">این پوشه برای استفادهٔ بعدی قابل نگه‌داشتن نیست، پس چیزی ذخیره نشد</string>
     <string name="session_restored">%1$d زبانه بازیابی شد</string>
+
+    <!-- Data-sync timeout (Android 15+ caps background downloading) -->
+    <string name="download_timeout_title">دانلودها توسط اندروید متوقف شد</string>
+    <string name="download_timeout_text">اندروید روزی شش ساعت دانلود پس‌زمینه اجازه می‌دهد. با باز کردن برنامه، دانلود از همان‌جا ادامه می‌یابد.</string>
+
+    <!-- Manual update check (never automatic) -->
+    <string name="settings_check_updates">بررسی به‌روزرسانی</string>
+    <string name="settings_check_updates_hint">فقط وقتی خودتان بزنید از صفحهٔ ریلیزهای گیت‌هاب همین برنامه می‌پرسد؛ هیچ چیز خودکار بررسی یا ارسال نمی‌شود</string>
+    <string name="update_checking">در حال بررسی…</string>
+    <string name="update_up_to_date">شما آخرین نسخه را دارید</string>
+    <string name="update_available_title">نسخهٔ %1$s منتشر شده است</string>
+    <string name="update_open_page">بازکردن صفحهٔ انتشار</string>
+    <string name="update_check_failed">بررسی به‌روزرسانی ممکن نشد (%1$s)</string>
+
+    <!-- Local diagnostics -->
+    <string name="settings_share_diagnostics">اشتراک گزارش سلامت</string>
+    <string name="settings_share_diagnostics_hint">گزارشی محلی از رویدادها و میزبان‌ها. هیچ چیزی جایی ارسال نمی‌شود مگر خودتان آن را به اشتراک بگذارید</string>
+    <string name="diagnostics_share_subject">گزارش سلامت SalviaBrowxer</string>
+    <string name="diagnostics_share_failed">آماده‌سازی فایل گزارش ممکن نشد</string>
 </resources>

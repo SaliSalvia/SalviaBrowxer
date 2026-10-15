@@ -11,6 +11,7 @@ import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.repository.BookmarkRepository
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.datastore.SessionRestorer
+import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
 import com.salvia.salviabrowxer.data.repository.HistoryRepository
 import com.salvia.salviabrowxer.media.detector.MediaDetector
 import com.salvia.salviabrowxer.media.resolver.MediaResolver
@@ -56,6 +57,9 @@ class BrowserViewModelTest {
     private val mediaResolver: MediaResolver = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
     private val sessionRestorer: SessionRestorer = mockk(relaxed = true)
+    private val diagnostics: DiagnosticsLog = DiagnosticsLog(
+        File(System.getProperty("java.io.tmpdir"), "salvia-browser-test-diagnostics").apply { mkdirs() }
+    )
 
     /**
      * A real directory, because the view model builds its recording controller from `cacheDir` and a
@@ -88,6 +92,7 @@ class BrowserViewModelTest {
             mediaDetector = mediaDetector,
             mediaResolver = mediaResolver,
             sessionRestorer = sessionRestorer,
+            diagnostics = diagnostics,
             context = context
         )
     }
@@ -601,8 +606,43 @@ class BrowserViewModelTest {
     }
 
     @Test
-    fun `the draggable download button is off until the user turns it on`() {
-        assertFalse(viewModel.uiState.value.isFabAlwaysVisible)
+    fun `the draggable download button is on until the user turns it off`() {
+        // The one-tap main-video button ships on: it is the headline affordance, not an advanced
+        // opt-in, and the settings switch is the honest way to make it disappear.
+        assertTrue(viewModel.uiState.value.isFabAlwaysVisible)
+    }
+
+    @Test
+    fun `the floating button's file is the page's main video, not its ad`() {
+        val page = "https://example.com/watch"
+        viewModel.onPageStarted(page)
+        val tabId = viewModel.uiState.value.currentTabId!!
+        val main = MediaCandidate(
+            pageUrl = page, mediaUrl = "https://cdn.example.com/feature.mp4",
+            mimeType = "video/mp4", extension = "mp4", duration = 300_000, confidence = 0.9f
+        )
+        val ad = MediaCandidate(
+            pageUrl = page, mediaUrl = "https://static.doubleclick.net/creative.mp4",
+            mimeType = "video/mp4", extension = "mp4", duration = 300_000, confidence = 0.9f
+        )
+        viewModel.onMediaIntercepted(tabId, ad)
+        viewModel.onMediaIntercepted(tabId, main)
+        assertEquals(main.mediaUrl, viewModel.uiState.value.mainMediaUrl)
+
+        // Expiry is the floating button's honesty mechanism: a URL that left the page cannot stay
+        // the one-tap promise of this one.
+        viewModel.onMediaExpired(tabId, page, main.mediaUrl)
+        assertNull(viewModel.uiState.value.mainMediaUrl)
+    }
+
+    @Test
+    fun `a page with nothing offerable has no main video for the floating button`() {
+        val page = "https://example.com/watch"
+        viewModel.onPageStarted(page)
+        val tabId = viewModel.uiState.value.currentTabId
+        viewModel.onMediaIntercepted(tabId, MediaCandidate(pageUrl = page, mediaUrl = "https://cdn.example.com/file.bin", mimeType = "application/octet-stream", extension = "bin"))
+        viewModel.onMediaIntercepted(tabId, MediaCandidate(pageUrl = page, mediaUrl = "https://cdn.example.com/live.m3u8", mimeType = "application/vnd.apple.mpegurl", extension = "m3u8", isLive = true))
+        assertNull(viewModel.uiState.value.mainMediaUrl)
     }
 
     @Test

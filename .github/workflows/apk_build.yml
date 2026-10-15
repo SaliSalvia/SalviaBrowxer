@@ -4,6 +4,12 @@ name: APK Build
 # as a downloadable workflow artifact on every push to main (and on demand).
 # The Android CI workflow stays as-is; this one focuses purely on APK output.
 
+# A new push to the same branch supersedes its own in-flight build; cancelling it keeps
+# the queue of ~10-minute jobs moving without ever cancelling a different branch's run.
+concurrency:
+  group: apk-build-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

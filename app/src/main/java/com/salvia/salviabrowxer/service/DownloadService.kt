@@ -29,12 +29,16 @@ import com.salvia.salviabrowxer.core.model.SessionReferer
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
 import com.salvia.salviabrowxer.core.storage.SafDocumentExporter
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
+import com.salvia.salviabrowxer.data.diagnostics.hostOf
 import com.salvia.salviabrowxer.data.download.DownloadArtifactCleaner
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.data.storage.DestinationPolicy
 import com.salvia.salviabrowxer.data.storage.SafDestinationStore
+import com.salvia.salviabrowxer.service.queue.DATA_SYNC_TIMEOUT_MARKER
 import com.salvia.salviabrowxer.service.queue.DownloadWorkQueue
 import com.salvia.salviabrowxer.service.queue.SegmentedRetryPolicy
+import com.salvia.salviabrowxer.service.queue.TimeoutHold
 import com.salvia.salviabrowxer.service.queue.TransferKind
 import com.salvia.salviabrowxer.service.queue.TransferPlan
 import com.salvia.salviabrowxer.service.queue.WifiHold
@@ -78,6 +82,7 @@ class DownloadService : Service() {
     @Inject lateinit var safDestinationStore: SafDestinationStore
     @Inject lateinit var safDocumentExporter: SafDocumentExporter
     @Inject lateinit var artifactCleaner: DownloadArtifactCleaner
+    @Inject lateinit var diagnostics: DiagnosticsLog
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val notificationId = 1
@@ -212,10 +217,82 @@ class DownloadService : Service() {
         scope.launch {
             // DOWNLOADING is included so a process death mid-transfer resumes from the .part file
             // over a Range request. PAUSED is *not* requeued: only the user resumes it.
+            releaseTimeoutHolds()
             val pending = runCatching { downloadRepository.getDownloadsByStates(WifiHold.RESUMABLE_STATES).first() }.getOrNull().orEmpty()
             if (pending.isEmpty()) { if (workQueue.isIdle) stopWhenIdle(); return@launch }
             pending.forEach { download -> workQueue.enqueue(download.id) }
         }
+    }
+
+    /**
+     * Android 15+ caps a `dataSync` foreground service at six cumulative hours per 24-hour window.
+     * When the cap is reached the system calls this, and the service has a few seconds to stop
+     * itself before it is stopped *with a failure* — which for a downloader is the difference
+     * between "paused, will resume" and a crash the user sees.
+     *
+     * The stop is honest on every axis: running transfers are paused with the stable
+     * [DATA_SYNC_TIMEOUT_MARKER] (so a later release can tell them from a user's pause), a normal
+     * notification explains what happened and what resumes it, and the service stops. The quota
+     * is the system's to give back; resuming is the app's next real interaction — opening the app
+     * runs `processQueue`, whose `recoverQueue` releases exactly these rows.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Log.w(TAG, "dataSync foreground service timed out (Android 15+ daily cap)")
+        diagnostics.event(
+            "data-sync-timeout",
+            mapOf("startId" to startId.toString(), "fgsType" to fgsType.toString(), "sdkInt" to Build.VERSION.SDK_INT.toString())
+        )
+        // The Room writes are fast, but they must finish before stopSelf() tears the scope down, so
+        // the stop waits on the same dispatcher the writes run on rather than racing them.
+        scope.launch {
+            runCatching { holdEverythingForTimeout() }
+            runCatching { notifyTimeoutPaused() }
+            ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
+    /** The timeout's half of the Wi-Fi hold's pattern: pause what runs, marker first, ask nothing. */
+    private suspend fun holdEverythingForTimeout() {
+        val active = runCatching { downloadRepository.getDownloadsByStates(WifiHold.HOLDABLE_STATES).first() }
+            .getOrNull().orEmpty()
+        if (active.isEmpty()) return
+        active.forEach { download ->
+            downloadManager.cancel(download.id)
+            downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.PAUSED, error = DATA_SYNC_TIMEOUT_MARKER)
+        }
+        refreshSummaryThrottled(force = true)
+    }
+
+    /**
+     * Requeues what the timeout paused. Called from [recoverQueue] — the app's own next start —
+     * never from a timer, because a timer would try to spend the very quota the system removed.
+     */
+    private suspend fun releaseTimeoutHolds() {
+        val held = TimeoutHold.heldRows(
+            runCatching { downloadRepository.getDownloadsByStates(listOf(DownloadState.PAUSED)).first() }
+                .getOrNull().orEmpty()
+        )
+        if (held.isEmpty()) return
+        held.forEach { download ->
+            downloadRepository.updateDownloadResult(id = download.id, status = DownloadState.QUEUED, error = null)
+            workQueue.enqueue(download.id)
+        }
+        workQueue.start(scope)
+    }
+
+    /** A plain notification, not a foreground one: the service is on its way out when this fires. */
+    private fun notifyTimeoutPaused() {
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle(getString(R.string.download_timeout_title))
+            .setContentText(getString(R.string.download_timeout_text))
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentIntent(openDownloadsPendingIntent(NOTIFICATION_TIMEOUT_ID))
+            .setAutoCancel(true)
+            .setOngoing(false)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        notificationManager.notify(NOTIFICATION_TIMEOUT_ID, notification)
     }
 
     private suspend fun processDownload(downloadId: String) {
@@ -271,6 +348,16 @@ class DownloadService : Service() {
             else downloadRepository.updateDownloadState(downloadId, DownloadState.PAUSED)
         } catch (network: IOException) {
             downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.FAILED, error = network.localizedMessage ?: getString(R.string.error_connection_unavailable))
+            // The diagnostic carries the host, the kind and the reason — never the URL, whose query
+            // string is where sites put the tokens a shareable file must not contain.
+            diagnostics.event(
+                "transfer-failed",
+                mapOf(
+                    "host" to hostOf(stored.finalUrl ?: stored.url),
+                    "kind" to TransferPlan.of(stored.renditionId, stored.finalUrl ?: stored.url, stored.mimeType, parallelConnections).kind.name,
+                    "reason" to (network.localizedMessage ?: network.javaClass.simpleName)
+                )
+            )
         } catch (cancellation: CancellationException) { throw cancellation }
         finally { refreshSummaryThrottled(force = true) }
     }
@@ -736,6 +823,7 @@ class DownloadService : Service() {
         private const val TAG = "DownloadService"
         private const val RETRY_POLL_MILLIS = 200L
         private const val NOTIFICATION_COMPLETED_BASE_ID = 2000
+        private const val NOTIFICATION_TIMEOUT_ID = 3000
         private val ACTIVE_STATES = listOf(DownloadState.QUEUED, DownloadState.RESOLVING, DownloadState.PREPARING, DownloadState.DOWNLOADING, DownloadState.RETRYING, DownloadState.PROCESSING, DownloadState.PAUSED)
         fun enqueueDownload(context: Context, downloadId: String) { start(context, ACTION_ENQUEUE, downloadId) }
         fun pauseDownload(context: Context, downloadId: String) { start(context, ACTION_PAUSE, downloadId) }

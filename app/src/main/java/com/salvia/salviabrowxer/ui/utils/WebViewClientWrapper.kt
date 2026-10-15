@@ -93,6 +93,10 @@ class WebViewClientWrapper(
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
         val url = request?.url?.toString() ?: return false
         if (isWebUrl(url)) return false
+        // A subframe nobody tapped has no business leaving the app: an ad iframe that navigates
+        // itself to `intent://` or `market://` used to reach the system's app chooser from a
+        // gesture the user never made. The main frame and a real tap both keep their old behaviour.
+        if (request.isForMainFrame != true && !request.hasGesture()) return true
         return safe("onExternalScheme") { onExternalSchemeHook(url) } ?: false
     }
 

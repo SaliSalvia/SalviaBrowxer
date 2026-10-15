@@ -69,9 +69,26 @@ class PasswordVaultTest {
 
     @Test
     fun `a password that is too short is refused before it is stored`() {
-        assertFalse(PasswordVault.isAcceptable("abc"))
-        assertNull(PasswordVault.create("abc"))
-        assertTrue(PasswordVault.isAcceptable("abcd"))
+        assertFalse(PasswordVault.isAcceptable("abcde"))
+        assertNull(PasswordVault.create("abcde"))
+        assertTrue(PasswordVault.isAcceptable("abcdef"))
+    }
+
+    @Test
+    fun `a verifier made when the minimum was four still verifies a four-character password`() {
+        // Built by hand in the stored format, exactly as a build whose minimum was four would have
+        // written it: raising the bar for *new* passwords must never re-judge an existing folder.
+        val salt = ByteArray(16) { (it * 7).toByte() }
+        val spec = javax.crypto.spec.PBEKeySpec("abcd".toCharArray(), salt, 1_000, 256)
+        val key = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded
+        val legacy = listOf(
+            "pbkdf2-sha1", "1000",
+            android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP),
+            android.util.Base64.encodeToString(key, android.util.Base64.NO_WRAP)
+        ).joinToString(":")
+        assertTrue(PasswordVault.isVerifier(legacy))
+        assertTrue(PasswordVault.verify("abcd", legacy))
+        assertFalse(PasswordVault.verify("abce", legacy))
     }
 
     @Test

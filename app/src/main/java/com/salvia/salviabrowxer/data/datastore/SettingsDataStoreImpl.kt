@@ -46,10 +46,11 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
     override val isCleartextAllowed: Flow<Boolean> = dataStore.data
         .map { preferences -> preferences[ALLOW_CLEARTEXT] ?: false }
 
-    // Off by default: the media pill in the top bar is the default affordance, and a button that
-    // covers page content must be something the user asked for.
+    // On by default: the one-tap main-video button is this browser's headline affordance. It never
+    // covers more than its own circle, it is draggable anywhere, and turning it off is one switch —
+    // so the default serves the user who never opens settings, not the one who does.
     override val isFloatingButtonAlwaysVisible: Flow<Boolean> = dataStore.data
-        .map { preferences -> preferences[FLOATING_BUTTON_ALWAYS_VISIBLE] ?: false }
+        .map { preferences -> preferences[FLOATING_BUTTON_ALWAYS_VISIBLE] ?: true }
 
     override val floatingButtonSize: Flow<Int> = dataStore.data
         .map { preferences -> preferences[FLOATING_BUTTON_SIZE] ?: 56 }

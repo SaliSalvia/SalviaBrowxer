@@ -5,7 +5,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.kapt")
+    id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
 }
 
@@ -121,10 +121,6 @@ android {
     }
 }
 
-kapt {
-    correctErrorTypes = true
-}
-
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:database"))
@@ -150,7 +146,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.10.0")
 
     implementation("androidx.room:room-runtime:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
@@ -163,7 +159,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.5.0")
 
     implementation("com.google.dagger:hilt-android:2.52")
-    kapt("com.google.dagger:hilt-compiler:2.52")
+    ksp("com.google.dagger:hilt-compiler:2.52")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     implementation("org.jsoup:jsoup:1.17.2")

@@ -7,6 +7,7 @@ import coil.Coil
 import com.salvia.salviabrowxer.core.session.WebViewCookies
 import coil.ImageLoader
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
+import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
 import com.salvia.salviabrowxer.ui.utils.AdBlockState
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -23,6 +24,7 @@ class SalviaBrowxerApp : Application() {
 
     @Inject lateinit var imageLoader: ImageLoader
     @Inject lateinit var settingsDataStore: SettingsDataStore
+    @Inject lateinit var diagnostics: DiagnosticsLog
 
     /**
      * Outlives every screen: the ad blocker's state has to be correct the moment a WebView asks, and
@@ -33,6 +35,7 @@ class SalviaBrowxerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Coil.setImageLoader(imageLoader)
+        installCrashCapture()
         // Must run before the first WebView exists and only once, so it stays on the main thread.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching { WebView.setDataDirectorySuffix("main") }
@@ -42,6 +45,23 @@ class SalviaBrowxerApp : Application() {
         // thread, before anything can race it. It reads nothing.
         WebViewCookies.warmUp()
         startAdBlockWiring()
+    }
+
+    /**
+     * Writes a crash to the local diagnostics file, then hands over to the previous handler (the
+     * framework's, which shows the dialog and kills the process).
+     *
+     * This is the privacy-preserving stand-in for a crash-reporting SDK: the stack trace stays on
+     * the device, bounded to the newest few by [DiagnosticsLog], and leaves it only when the user
+     * presses "Share diagnostics". The write is best-effort by design — a crash handler that can
+     * itself crash would be worse than no handler.
+     */
+    private fun installCrashCapture() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching { diagnostics.crash(thread, throwable) }
+            previous?.uncaughtException(thread, throwable)
+        }
     }
 
     /**
