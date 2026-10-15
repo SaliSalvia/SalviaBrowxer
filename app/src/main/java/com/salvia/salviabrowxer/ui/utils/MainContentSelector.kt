@@ -46,7 +46,9 @@ object MainContentSelector {
             .map { it to score(it, visibleUrl, pageUrl) }
             .filter { (_, score) -> score >= MINIMUM_SCORE }
             .maxWithOrNull(
-                compareByDescending<Pair<MediaCandidate, Int>> { it.second }
+                // Ascending by score on purpose: maxWithOrNull returns the element the comparator
+                // ranks greatest, so a descending first key would crown the *lowest* score.
+                compareBy<Pair<MediaCandidate, Int>> { it.second }
                     .thenByDescending { it.first.confidence }
                     .thenBy { it.first.duration ?: 0L }
             )
