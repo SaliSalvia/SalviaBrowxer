@@ -291,6 +291,11 @@ committed. Without them the release build is unsigned, which is what CI uploads.
 uploads all three. `.github/workflows/apk_build.yml` produces the downloadable APK set. CI installs
 Android SDK 36 itself.
 
+`.github/workflows/release.yml` is the publishing path: pushing a `v*` tag, or pushing to `main` a
+change that touches the `RELEASE` file, builds and signs the APK, verifies the signature, tags the
+exact commit that was built and creates the GitHub Release with `gh`. One version is one immutable
+release — publishing again needs a `versionName` bump, and a published tag is never moved.
+
 ## Permissions
 
 - `INTERNET` — load pages and downloads
