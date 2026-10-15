@@ -109,9 +109,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${TAG}" "${APK_PATH}" \
+          if out=$(gh release create "${TAG}" "${APK_PATH}" \
             --repo "$GITHUB_REPOSITORY" \
             --title "SalviaBrowxer ${TAG}" \
             --generate-notes \
-            --latest
-          echo "Published ${TAG} with $(basename "$APK_PATH")"
+            --latest 2>&1); then
+            echo "Published ${TAG} with $(basename "$APK_PATH")"
+            echo "$out"
+          else
+            # The full gh message as an annotation: the run's own log host is not always
+            # reachable for reading later, but annotations always are.
+            echo "::error::gh release create failed: $out"
+            exit 1
+          fi
