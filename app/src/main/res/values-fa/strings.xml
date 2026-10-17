@@ -224,7 +224,10 @@
     <string name="download_eta_left">%1$s باقی‌مانده</string>
 
     <!-- Home / paste link -->
+    <string name="home_hero_title">وب‌گردی، ساده و در اختیار شما.</string>
+    <string name="home_hero_subtitle">صفحه‌ای را باز کنید یا لینک مستقیم رسانه را بچسبانید؛ مرور و دانلودها را یک‌جا مدیریت کنید.</string>
     <string name="home_paste_title">چسباندن لینک</string>
+    <string name="home_paste_support">لینک صفحه یا لینک مستقیم ویدئو، صدا و فهرست پخش</string>
     <string name="home_paste_hint">https://…</string>
     <string name="home_paste_from_clipboard">چسباندن از کلیپ‌بورد</string>
     <string name="home_clear_input">پاک کردن</string>

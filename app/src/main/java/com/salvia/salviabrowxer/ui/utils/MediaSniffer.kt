@@ -15,8 +15,9 @@ import com.salvia.salviabrowxer.core.model.MediaUrlRules
  * Two things make this version work:
  *
  *  - It reads the **response** `Content-Type` (`getResponseHeader` for XHR, `headers.get` for
- *    fetch, `addSourceBuffer` for MSE) instead of guessing from the URL. That is the server stating
- *    what the bytes are, it needs no extra request, and it exists for extension-less URLs.
+ *    fetch, `addSourceBuffer` for MSE) and, when a server uses a generic binary MIME, its
+ *    `Content-Disposition` filename if the browser exposes it to the page. These response headers
+ *    identify extension-less URLs without guessing or making an extra request.
  *  - It reports over [BRIDGE_NAME] so a sighting becomes a candidate immediately, instead of
  *    travelling through serialised HTML on the off-chance a regex likes it.
  *
@@ -48,6 +49,8 @@ object MediaSniffer {
 
     val script: String = SNIFFER_TEMPLATE
         .replace("__MSE_PORT__", MSE_PORT_NAME)
+        .replace("__PLAYLIST_MIME_ARRAY__", MediaUrlRules.PLAYLIST_MIME_JS_ARRAY)
+        .replace("__DASH_EXTENSION__", MediaUrlRules.DASH_EXTENSION)
         .replace("__MEDIA_EXT__", MediaUrlRules.EXTENSION_ALTERNATION)
         .replace("__NON_MEDIA_EXT__", MediaUrlRules.NON_MEDIA_ALTERNATION)
         .replace("__SEGMENT_EXT__", MediaUrlRules.SEGMENT_ALTERNATION)
@@ -61,6 +64,8 @@ object MediaSniffer {
     var NON_MEDIA_EXT = /\.(__NON_MEDIA_EXT__)(\?|#|$)/i;
     var SEGMENT_EXT = /\.(__SEGMENT_EXT__)(\?|#|$)/i;
     var SEGMENT_MIME = /^video\/mp2t/i;
+    var PLAYLIST_MIME = __PLAYLIST_MIME_ARRAY__;
+    var DASH_FILENAME_EXT = /\.(__DASH_EXTENSION__)(?=$|[?#";\s])/i;
     var LIMIT = 60;
 
     // A response can arrive before the element is visible. Let stronger player evidence upgrade
@@ -94,14 +99,34 @@ object MediaSniffer {
     function isMediaMime(m) {
         if (!m || SEGMENT_MIME.test(m)) return false;
         return m.indexOf('video/') === 0 || m.indexOf('audio/') === 0 ||
-               m === 'application/vnd.apple.mpegurl' || m === 'application/x-mpegurl' ||
-               m === 'application/dash+xml';
+               PLAYLIST_MIME.indexOf(m) !== -1 || m === 'application/dash+xml';
     }
 
-    function tell(u, mime, origin, kind) {
+    // A response filename is a second server-provided type hint for extension-less binary URLs.
+    // It is only a prefilter; Kotlin validates the MIME, filename and fragment exclusions again.
+    function responseFilenameExtension(header) {
+        if (!header || typeof header !== 'string' || header.length > 2048) return '';
+        var match = /(?:^|;)\s*filename\*\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]*))/i.exec(header);
+        if (!match) match = /(?:^|;)\s*filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]*))/i.exec(header);
+        if (!match) return '';
+        var name = (match[1] || match[2] || match[3] || '').trim();
+        if (!name) return '';
+        var firstQuote = name.indexOf("'");
+        var secondQuote = firstQuote >= 0 ? name.indexOf("'", firstQuote + 1) : -1;
+        if (secondQuote >= 0) name = name.substring(secondQuote + 1);
+        try { name = decodeURIComponent(name.replace(/\+/g, '%2B')); } catch (e) {}
+        name = name.replace(/\\/g, '/');
+        name = name.substring(name.lastIndexOf('/') + 1);
+        var extension = MEDIA_EXT.exec(name);
+        if (extension && !SEGMENT_EXT.test(name)) return extension[1].toLowerCase();
+        var dash = DASH_FILENAME_EXT.exec(name);
+        return dash ? dash[1].toLowerCase() : '';
+    }
+
+    function tell(u, mime, origin, kind, contentDisposition) {
         var b = window.SalviaMedia;
         if (!b || !b.onMediaUrlFound) return;
-        try { b.onMediaUrlFound(location.href, u, mime, origin, kind || ''); } catch (e) {}
+        try { b.onMediaUrlFound(location.href, u, mime, origin, kind || '', contentDisposition || ''); } catch (e) {}
     }
 
     // A range that starts at zero and has no end asks for the whole file. Anything else is a piece
@@ -116,9 +141,13 @@ object MediaSniffer {
 
     // Prefilter only: the Kotlin side decides. Called for anything the page fetched, including
     // HLS fragments, so the checks that keep fragments out of the tray live here too.
-    function report(rawUrl, rawMime, origin, ranged, kind) {
+    function report(rawUrl, rawMime, origin, ranged, kind, rawContentDisposition) {
         try {
             resetForPage();
+            var contentDisposition = typeof rawContentDisposition === 'string' && rawContentDisposition.length <= 2048
+                ? rawContentDisposition : '';
+            var dispositionExtension = (origin === 'xhr' || origin === 'fetch')
+                ? responseFilenameExtension(contentDisposition) : '';
             var u = absolute(rawUrl);
             if (u.length < 12 || u.length > 8192 || location.href.length > 4096) return;
             var blob = u.indexOf('blob:') === 0;
@@ -136,7 +165,7 @@ object MediaSniffer {
                 if (NON_MEDIA_EXT.test(u)) return;
                 if (SEGMENT_EXT.test(u)) return;
                 if (ranged || /[?&](bytestart|byteend)=/i.test(u)) return;
-                if (!strong && !meta && !MEDIA_EXT.test(u)) return;
+                if (!strong && !meta && !MEDIA_EXT.test(u) && !dispositionExtension) return;
             }
 
             if (blob && mediaObjects[u]) {
@@ -153,8 +182,11 @@ object MediaSniffer {
                 order.push(u);
                 if (order.length > LIMIT) { delete reported[order.shift()]; }
             }
-            reported[u] = {strength: strength, mime: mime, origin: origin, kind: kind};
-            tell(u, mime, origin, kind);
+            reported[u] = {
+                strength: strength, mime: mime, origin: origin, kind: kind,
+                contentDisposition: contentDisposition
+            };
+            tell(u, mime, origin, kind, contentDisposition);
         } catch (e) {}
     }
 
@@ -177,10 +209,11 @@ object MediaSniffer {
                 var self = this;
                 self.addEventListener('loadend', function () {
                     if (self.__salviaPage !== location.href) return;
-                    var mime = '';
+                    var mime = '', contentDisposition = '';
                     try { mime = self.getResponseHeader('Content-Type') || ''; } catch (e) {}
+                    try { contentDisposition = self.getResponseHeader('Content-Disposition') || ''; } catch (e) {}
                     if (!mime) { try { if (self.response && self.response.type) mime = self.response.type; } catch (e) {} }
-                    report(self.responseURL || self.__salviaUrl, mime, 'xhr', self.status === 206 || isPartialRange(self.__salviaRange), '');
+                    report(self.responseURL || self.__salviaUrl, mime, 'xhr', self.status === 206 || isPartialRange(self.__salviaRange), '', contentDisposition);
                 });
             } catch (e) {}
             return xhrSend.apply(this, arguments);
@@ -206,9 +239,12 @@ object MediaSniffer {
                     p.then(function (res) {
                         try {
                             if (requestPage !== location.href) return;
-                            var mime = '';
-                            if (res && res.headers && res.headers.get) mime = res.headers.get('content-type') || '';
-                            report((res && res.url) || url, mime, 'fetch', (res && res.status === 206) || isPartialRange(rangeValue), '');
+                            var mime = '', contentDisposition = '';
+                            if (res && res.headers && res.headers.get) {
+                                mime = res.headers.get('content-type') || '';
+                                contentDisposition = res.headers.get('content-disposition') || '';
+                            }
+                            report((res && res.url) || url, mime, 'fetch', (res && res.status === 206) || isPartialRange(rangeValue), '', contentDisposition);
                         } catch (e) {}
                     }).catch(function () {});
                 } catch (e) {}
@@ -362,7 +398,7 @@ object MediaSniffer {
                 if (objectInfo && b && b.onMediaObjectUrl) {
                     b.onMediaObjectUrl(location.href, best, objectInfo.mime, objectInfo.kind);
                 }
-                tell(best, evidence.mime, evidence.origin, evidence.kind);
+                tell(best, evidence.mime, evidence.origin, evidence.kind, evidence.contentDisposition);
                 if (b && b.onVisibleMedia) b.onVisibleMedia(location.href, best);
             } else if (!best && focused) {
                 focused = '';

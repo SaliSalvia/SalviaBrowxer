@@ -66,6 +66,90 @@ class MediaSniffAdmissionTest {
     }
 
     @Test
+    fun `server response filenames extend detection to extensionless binary media URLs`() {
+        val candidate = MediaSniffAdmission.admit(
+            pageUrl = page,
+            url = "https://cdn.example.com/download/opaque-id",
+            mimeType = "application/octet-stream",
+            origin = SniffOrigin.FETCH_RESPONSE,
+            contentDisposition = "attachment; filename=\"clip.mp4\""
+        )
+        assertNotNull(candidate)
+        assertEquals("mp4", candidate!!.extension)
+        assertEquals("video/mp4", candidate.mimeType)
+
+        val missingMime = MediaSniffAdmission.admit(
+            pageUrl = page,
+            url = "https://cdn.example.com/download/opaque-webm",
+            mimeType = null,
+            origin = SniffOrigin.XHR_RESPONSE,
+            contentDisposition = "attachment; filename=clip.webm"
+        )
+        assertNotNull(missingMime)
+        assertEquals("webm", missingMime!!.extension)
+
+        val encoded = MediaSniffAdmission.admit(
+            pageUrl = page,
+            url = "https://cdn.example.com/download/audio-id",
+            mimeType = "application/x-download",
+            origin = SniffOrigin.XHR_RESPONSE,
+            contentDisposition = "attachment; filename*=UTF-8''mix%2Emp3"
+        )
+        assertNotNull(encoded)
+        assertEquals("mp3", encoded!!.extension)
+
+        val dash = MediaSniffAdmission.admit(
+            pageUrl = page,
+            url = "https://cdn.example.com/download/manifest-token",
+            mimeType = "application/octet-stream",
+            origin = SniffOrigin.FETCH_RESPONSE,
+            contentDisposition = "attachment; filename=manifest.mpd"
+        )
+        assertNotNull(dash)
+        assertEquals("mpd", dash!!.extension)
+    }
+
+    @Test
+    fun `response filename cannot overrule nonmedia types or admit markup and fragments`() {
+        val opaqueUrl = "https://cdn.example.com/download/opaque-id"
+        assertNull(MediaSniffAdmission.admit(
+            page, opaqueUrl, "text/html", SniffOrigin.FETCH_RESPONSE,
+            contentDisposition = "attachment; filename=clip.mp4"
+        ))
+        assertNull(MediaSniffAdmission.admit(
+            page, opaqueUrl, "text/html", SniffOrigin.FETCH_RESPONSE,
+            contentDisposition = "attachment; filename=manifest.mpd"
+        ))
+        assertNull(MediaSniffAdmission.admit(
+            page, opaqueUrl, "text/html", SniffOrigin.FETCH_RESPONSE,
+            contentDisposition = "attachment; filename=master.m3u8"
+        ))
+        assertNull(MediaSniffAdmission.admit(
+            page, opaqueUrl, "application/octet-stream", SniffOrigin.FETCH_RESPONSE,
+            contentDisposition = "attachment; filename=report.pdf"
+        ))
+        assertNull(MediaSniffAdmission.admit(
+            page, opaqueUrl, "application/octet-stream", SniffOrigin.FETCH_RESPONSE,
+            contentDisposition = "attachment; filename=segment.ts"
+        ))
+        assertNull(MediaSniffAdmission.admit(
+            page, opaqueUrl, null, SniffOrigin.ELEMENT_SOURCE,
+            contentDisposition = "attachment; filename=clip.mp4"
+        ))
+    }
+
+    @Test
+    fun `extensionless HLS is admitted through common playlist MIME aliases`() {
+        for (mime in listOf("application/mpegurl", "audio/mpegurl", "audio/x-mpegurl")) {
+            val candidate = MediaSniffAdmission.admit(
+                page, "https://cdn.example.com/hls/master-token", mime, SniffOrigin.FETCH_RESPONSE
+            )
+            assertNotNull(mime, candidate)
+            assertEquals(mime, "m3u8", candidate!!.extension)
+        }
+    }
+
+    @Test
     fun `HLS fragments are never candidates`() {
         // An MPEG-TS segment: a video mime that must still not count as media.
         assertNull(MediaSniffAdmission.admit(page, "https://cdn.example.com/hls/seg-1.ts", "video/mp2t", SniffOrigin.XHR_RESPONSE))

@@ -5,6 +5,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaSnifferBridgeTest {
+    @Test fun `response filename reaches admission without becoming a URL guess`() {
+        val results = mutableListOf<MediaCandidate>()
+        val bridge = MediaSnifferBridge(onAdmitted = { results.add(it) })
+        bridge.onMediaUrlFound(
+            "https://example.org/post",
+            "https://cdn.example.org/download/opaque-id",
+            "application/octet-stream",
+            "fetch",
+            "",
+            "attachment; filename=\"clip.mp4\""
+        )
+        assertEquals("mp4", results.single().extension)
+
+        results.clear()
+        bridge.onMediaUrlFound(
+            "https://example.org/post",
+            "https://cdn.example.org/download/opaque-id",
+            "text/html",
+            "fetch",
+            "",
+            "attachment; filename=\"clip.mp4\""
+        )
+        assertTrue(results.isEmpty())
+    }
+
     @Test fun `object provenance needs a blob URL known kind and media MIME`() {
         val results = mutableListOf<MediaCandidate>()
         val bridge = MediaSnifferBridge(onAdmitted = { results.add(it) })

@@ -3,70 +3,69 @@ package com.salvia.salviabrowxer.ui.theme
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
-// ── Core Neutrals ──
-val MatteCharcoal = Color(0xFF0B0B0F)       // مشکی زغالی عمیق
-val DeepCharcoal = Color(0xFF15151A)       // ذغال نیمه‌روشن
-val CharcoalSurface = Color(0xFF1D1D22)    // سطح کارت
-val CharcoalElevated = Color(0xFF232329)   // سطح برجسته
-val CharcoalBorder = Color(0xFF2D2D34)     // مرزبندی
+/**
+ * Salvia's dark canvas: cool graphite instead of pure black, with enough separation between
+ * page, chrome and controls to make the interface feel calm without losing contrast.
+ */
+val MatteCharcoal = Color(0xFF0B1015)
+val DeepCharcoal = Color(0xFF121920)
+val CharcoalSurface = Color(0xFF19222C)
+val CharcoalElevated = Color(0xFF202B36)
+val CharcoalBorder = Color(0xFF2B3743)
 
-// ── Pearl White (سفید صدفی ۷ رنگ) ──
-val PearlWhite = Color(0xFFF8F7F4)
-val PearlWarm = Color(0xFFF1EFE9)
-val PearlIridescentPink = Color(0xFFFFE4EC)
-val PearlIridescentTeal = Color(0xFFD6FFF8)
-val PearlIridescentLavender = Color(0xFFEDE9FF)
-val PearlIridescentBlue = Color(0xFFE0F2FF)
+// Warm, neutral foregrounds keep long sessions comfortable; muted text remains legible on graphite.
+val PearlWhite = Color(0xFFF2F5F7)
+val PearlWarm = Color(0xFFE8EDF0)
+val PearlIridescentPink = Color(0xFFF2E4E9)
+val PearlIridescentTeal = Color(0xFFDCEFEA)
+val PearlIridescentLavender = Color(0xFFEAE7F3)
+val PearlIridescentBlue = Color(0xFFE0EAF1)
 val OnPearl = MatteCharcoal
 
-// ── Shiny Silver (نقره‌ای براق) ──
-val SilverLight = Color(0xFFE8EAED)
-val SilverMid = Color(0xFFC0C5CE)
-val SilverDeep = Color(0xFF9AA0AE)
-val SilverShine = Color(0xFFF5F7FA)
-val SilverMetal = Color(0xFFB8BEC9)
+val SilverLight = Color(0xFFD9E1E6)
+val SilverMid = Color(0xFFA8B4BE)
+val SilverDeep = Color(0xFF84919D)
+val SilverShine = Color(0xFFF8FAFB)
+val SilverMetal = Color(0xFFAFBAC4)
 
-// ── Aurora Teal (انتخاب ۱ - فیروزه شفق) ──
-val AuroraTeal = Color(0xFF00DAC6)
-val AuroraTealLight = Color(0xFF5EF0DD)
-val AuroraTealDeep = Color(0xFF009688)
-val AuroraTealContainer = Color(0xFF00332E)
+// Primary: a restrained sage/teal. One clear action color replaces the old multi-neon treatment.
+val AuroraTeal = Color(0xFF5DD7C3)
+val AuroraTealLight = Color(0xFFA2EBDD)
+val AuroraTealDeep = Color(0xFF238A7B)
+val AuroraTealContainer = Color(0xFF193B37)
 val OnAuroraTeal = MatteCharcoal
 
-// ── Nebula Violet (انتخاب ۲ - بنفش سحابی) ──
-val NebulaViolet = Color(0xFF8B5CF6)
-val NebulaVioletLight = Color(0xFFB794FF)
-val NebulaVioletDeep = Color(0xFF5B21B6)
-val NebulaVioletContainer = Color(0xFF1E1042)
+// Violet stays as a secondary cue for private browsing and secondary media actions.
+val NebulaViolet = Color(0xFF9A83E9)
+val NebulaVioletLight = Color(0xFFC3B4F8)
+val NebulaVioletDeep = Color(0xFF6852AF)
+val NebulaVioletContainer = Color(0xFF2B2442)
 val OnNebulaViolet = Color.White
 
-// Legacy aliases for backward compatibility (mapped to new palette)
+// Legacy aliases kept for existing feature code and older resources.
 val Gold = AuroraTeal
 val Violet = NebulaViolet
 val ElectricIndigo = NebulaVioletDeep
 
-// ── Orbital brand mark (gold ring + electric blue energy) ──
-val OrbitGold = Color(0xFFFFB300)
-val OrbitGoldLight = Color(0xFFFFD54F)
-val OrbitBlue = Color(0xFF2196F3)
-val OrbitBlueLight = Color(0xFF4FC3F7)
+// Orbital mark colors: understated blue and warm brass, used only in the brand mark.
+val OrbitGold = Color(0xFFE7B968)
+val OrbitGoldLight = Color(0xFFF4D18D)
+val OrbitBlue = Color(0xFF4F9CD7)
+val OrbitBlueLight = Color(0xFF91C7EF)
 
-// ── Blush Pink (صورتی کم‌رنگ) ──
-val BlushPink = Color(0xFFFFB3D1)
-val BlushPinkLight = Color(0xFFFFD6E8)
-val BlushPinkDeep = Color(0xFFE0679E)
-val BlushPinkContainer = Color(0xFF2B1521)
+val BlushPink = Color(0xFFD28EA7)
+val BlushPinkLight = Color(0xFFE9B8C7)
+val BlushPinkDeep = Color(0xFFAD607D)
+val BlushPinkContainer = Color(0xFF38212A)
 
-// ── Nebula surfaces (سطوح بنفش سحابی روی ذغال) ──
-val NebulaMist = Color(0xFF241A3E)
-val NebulaEdge = Color(0xFF3B2A66)
+val NebulaMist = Color(0xFF201D2A)
+val NebulaEdge = Color(0xFF38314B)
 
-// ── Surface micro-contrast (refinement layer, kept subtle) ──
-val SurfaceField = Color(0xFF26262D)        // inside paste / search fields
-val SurfaceRow = Color(0xFF1A1A20)          // 목록 행 안쪽 면
-val SurfaceInk = SilverMid                  // 보조 텍스트의 실제 조도 기준
+// Surface micro-contrast, for fields and nested rows.
+val SurfaceField = Color(0xFF131B23)
+val SurfaceRow = Color(0xFF161E27)
+val SurfaceInk = SilverMid
 
-// ── Semantic Mappings ──
 val Primary = AuroraTeal
 val PrimaryContainer = AuroraTealContainer
 val OnPrimary = OnAuroraTeal
@@ -84,35 +83,23 @@ val OnSurface = PearlWhite
 val SurfaceVariant = CharcoalSurface
 val OnSurfaceVariant = SilverMid
 
-val Error = Color(0xFFFF5252)
+val Error = Color(0xFFFF7777)
 val OnError = Color.White
 
 val MediaDetectedIndicator = AuroraTeal
 val DownloadButtonActive = AuroraTeal
-val DownloadButtonInactive = Color(0xFF3A3A42)
+val DownloadButtonInactive = Color(0xFF34414C)
 val FloatingButtonBackground = CharcoalElevated
 val FloatingButtonForeground = PearlWhite
 
-// ── Gradients (Pearlescent 7-color effect) ──
+// Brand and surface gradients are deliberately low-contrast: decoration supports hierarchy instead
+// of competing with the page or the action labels.
 val PearlIridescentBrush = Brush.linearGradient(
-    colors = listOf(
-        PearlWhite,
-        PearlIridescentPink,
-        PearlIridescentLavender,
-        PearlIridescentBlue,
-        PearlIridescentTeal,
-        PearlWhite
-    )
+    colors = listOf(PearlWhite, PearlIridescentLavender, PearlIridescentTeal, PearlWhite)
 )
 
 val SilverMetallicBrush = Brush.linearGradient(
-    colors = listOf(
-        SilverShine,
-        SilverLight,
-        SilverMid,
-        SilverLight,
-        SilverShine
-    )
+    colors = listOf(SilverShine, SilverLight, SilverMetal, SilverLight, SilverShine)
 )
 
 val AuroraBrush = Brush.linearGradient(
@@ -132,71 +119,63 @@ val FabActiveBrush = Brush.radialGradient(
 )
 
 val FabInactiveBrush = Brush.radialGradient(
-    colors = listOf(Color(0xFF3A3A42), Color(0xFF2E2E34))
+    colors = listOf(Color(0xFF35424D), Color(0xFF202B36))
 )
 
-// ── Nebula & Blush gradients (سحابی + صورتی روی ذغال) ──
 val NebulaSurfaceBrush = Brush.verticalGradient(
-    colors = listOf(CharcoalSurface, NebulaMist.copy(alpha = 0.55f), MatteCharcoal)
+    colors = listOf(CharcoalSurface, DeepCharcoal, MatteCharcoal)
 )
 
 val TopBarBrush = Brush.verticalGradient(
-    colors = listOf(NebulaMist.copy(alpha = 0.9f), CharcoalSurface)
+    colors = listOf(Color(0xFF151E27), DeepCharcoal)
 )
 
 val BottomBarBrush = Brush.verticalGradient(
-    colors = listOf(CharcoalSurface, MatteCharcoal)
+    colors = listOf(DeepCharcoal, MatteCharcoal)
 )
 
 val AddressBarBrush = Brush.linearGradient(
-    colors = listOf(NebulaMist, DeepCharcoal, NebulaMist.copy(alpha = 0.8f))
+    colors = listOf(CharcoalSurface, DeepCharcoal)
 )
 
-// Pearl iridescence edge — the 7-color reflection the brand is built on
+/** A single quiet brand accent for separators and focus states. */
 val PearlEdgeBrush = Brush.horizontalGradient(
     colors = listOf(
-        BlushPinkLight.copy(alpha = 0.55f),
-        NebulaVioletLight.copy(alpha = 0.55f),
-        PearlIridescentTeal.copy(alpha = 0.55f),
-        NebulaVioletLight.copy(alpha = 0.55f),
-        BlushPinkLight.copy(alpha = 0.55f)
+        AuroraTeal.copy(alpha = 0.16f),
+        NebulaViolet.copy(alpha = 0.24f),
+        AuroraTeal.copy(alpha = 0.16f)
     )
 )
 
-// Accent actions: violet → blush → blue, the nebula signature sweep
 val NebulaBlushBrush = Brush.linearGradient(
     colors = listOf(NebulaViolet, BlushPink, OrbitBlueLight)
 )
 
 val AccentIndicatorBrush = Brush.horizontalGradient(
-    colors = listOf(NebulaViolet, BlushPink, AuroraTeal)
+    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
 )
 
 val DownloadCtaBrush = Brush.linearGradient(
-    colors = listOf(NebulaViolet, NebulaVioletDeep)
+    colors = listOf(AuroraTeal, AuroraTealDeep)
 )
 
 val FabActiveBrushNebula = Brush.radialGradient(
-    colors = listOf(NebulaVioletLight, NebulaViolet, NebulaVioletDeep)
+    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
 )
 
 val FabInactiveBrushNebula = Brush.radialGradient(
-    colors = listOf(NebulaMist, CharcoalElevated, DeepCharcoal)
+    colors = listOf(Color(0xFF35424D), CharcoalElevated, DeepCharcoal)
 )
 
 val SplashNebulaBrush = Brush.radialGradient(
-    colors = listOf(NebulaMist, DeepCharcoal, MatteCharcoal),
+    colors = listOf(Color(0xFF17262C), DeepCharcoal, MatteCharcoal),
     radius = 900f
 )
 
-// ── Micro-animations ──
-// A field border does not jump between neutral and focused; it breathes there, which is what makes
-// focus feel like a surface change instead of a state machine.
-val AuroraTealFieldFocus = AuroraTeal.copy(alpha = 0.85f)
-val AuroraTealFieldRest = AuroraTeal.copy(alpha = 0.18f)
+val AuroraTealFieldFocus = AuroraTeal.copy(alpha = 0.82f)
+val AuroraTealFieldRest = AuroraTeal.copy(alpha = 0.22f)
 val AuroraTealSurface = AuroraTeal.copy(alpha = 0.10f)
 val AuroraTealRing = AuroraTeal.copy(alpha = 0.40f)
 val NebulaVioletSurface = NebulaViolet.copy(alpha = 0.10f)
-val PearlFieldHint = SilverDeep.copy(alpha = 0.85f)
-val EmptySurface = CharcoalSurface.copy(alpha = 0.75f)
-
+val PearlFieldHint = SilverDeep.copy(alpha = 0.95f)
+val EmptySurface = CharcoalSurface.copy(alpha = 0.72f)

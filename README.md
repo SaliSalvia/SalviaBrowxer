@@ -47,9 +47,13 @@ versionName `1.0.0`.
 - **Media detection** — four layers feeding one rule set:
   - a **document-start sniffer** hooks `XMLHttpRequest`, `fetch`, `MediaSource.addSourceBuffer` and
     the media elements themselves, and reads the **response** `Content-Type` rather than guessing
-    from the URL. That is what finds media on an extension-less CDN path, which is the normal shape
-    on social sites. It reports over a `JavascriptInterface` bridge, so a sighting becomes a
-    candidate immediately instead of travelling through serialised HTML. In dynamic feeds the
+    from the URL. When a server uses a generic binary MIME, its `Content-Disposition` filename is
+    a bounded extra signal if the browser exposes that header; it cannot override an explicit
+    non-media type, and common HLS MIME aliases share the same rule set. The sniffer reads only
+    exposed response headers—never response bodies or extra requests—which helps find media on
+    extension-less CDN paths common on social sites. It reports over a `JavascriptInterface` bridge,
+    so a sighting becomes a candidate immediately instead of travelling through serialised HTML.
+    In dynamic feeds the
     sniffer re-checks source changes, including nested video elements inserted after load, and
     associates an *already admitted* URL with the visible player. The media tray puts that URL
     first and labels it “On screen”; this is a relevance hint, not a guarantee of “main content”

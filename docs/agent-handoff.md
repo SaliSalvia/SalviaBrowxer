@@ -7,7 +7,7 @@ changing anything. This branch continues the existing Compose app; it does not r
 
 1. Run `gh pr checks <this PR>` and fix anything red **before** adding features. The Gradle unit
    test step keeps `--continue`; `:app:lintDebug` is a gate and deliberately does not.
-2. `node --test scripts/test-media-sniffer.cjs` must stay green (27/27). It is the only test that
+2. `node --test scripts/test-media-sniffer.cjs` must stay green (30/30). It is the only test that
    runs without a JDK.
 3. Read the failing test report as *evidence*, not as noise. Two commits on this branch exist only
    because a test that had never been executed was wrong: a shadowed counter field and a test URL

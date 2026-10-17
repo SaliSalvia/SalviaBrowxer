@@ -1,9 +1,6 @@
 package com.salvia.salviabrowxer.ui.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -43,8 +40,7 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.FabActiveBrushNebula
 import com.salvia.salviabrowxer.ui.theme.FabInactiveBrushNebula
-import com.salvia.salviabrowxer.ui.theme.NebulaViolet
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import kotlin.math.roundToInt
 
@@ -72,10 +68,10 @@ fun FloatingDownloadButton(
     val activeBrush = remember { FabActiveBrushNebula }
     val inactiveBrush = remember { FabInactiveBrushNebula }
 
-    // Snappier spring: higher stiffness so the badge pop feels instant, not floaty.
+    // A short, subtle scale cue feels immediate and avoids the over-bouncy download-FAB effect.
     val scale by animateFloatAsState(
-        targetValue = if (isMediaDetected) 1.06f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        targetValue = if (isMediaDetected) 1.04f else 1f,
+        animationSpec = tween(durationMillis = 150),
         label = "fabScale"
     )
 
@@ -114,14 +110,12 @@ fun FloatingDownloadButton(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val r = size.minDimension / 2f
             drawCircle(brush = if (isMediaDetected) activeBrush else inactiveBrush, radius = r * scale)
-            // Pearl rim: violet→blush glow when media is detected, subtle otherwise
+            // A solid status rim is easy to read and cheaper than a continuously shaded gloss effect.
             drawCircle(
-                brush = Brush.sweepGradient(colors = listOf(NebulaVioletLight, NebulaViolet, Color.White.copy(alpha = 0.5f), NebulaVioletLight)),
+                color = if (isMediaDetected) AuroraTeal else Color.White.copy(alpha = 0.16f),
                 radius = r,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = (if (isMediaDetected) 2.0f else 1.2f).dp.toPx())
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = (if (isMediaDetected) 2.dp else 1.dp).toPx())
             )
-            // Specular highlight
-            drawCircle(color = Color.White.copy(alpha = if (isMediaDetected) 0.18f else 0.08f), radius = r * 0.45f, center = center.copy(x = center.x - r * 0.18f, y = center.y - r * 0.22f))
         }
 
         Icon(
@@ -142,7 +136,7 @@ fun FloatingDownloadButton(
         if (isMainReady) {
             Box(
                 modifier = Modifier.align(Alignment.BottomStart).offset(x = (-3).dp, y = 3.dp).size(14.dp).clip(CircleShape)
-                    .background(Brush.radialGradient(colors = listOf(NebulaVioletLight, NebulaViolet)))
+                    .background(AuroraTeal)
                     .shadow(3.dp, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
@@ -158,7 +152,7 @@ fun FloatingDownloadButton(
         if (isMediaDetected && mediaCount > 0) {
             Box(
                 modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp).size(19.dp).clip(CircleShape)
-                    .background(Brush.radialGradient(colors = listOf(NebulaVioletLight, NebulaViolet)))
+                    .background(AuroraTeal)
                     .shadow(4.dp, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
