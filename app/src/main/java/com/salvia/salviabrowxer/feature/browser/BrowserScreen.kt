@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,12 +80,10 @@ import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.TabSwitcher
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.SplashNebulaBrush
-import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.PageErrorKind
 import java.io.File
 import kotlinx.coroutines.flow.collectLatest
@@ -290,7 +289,7 @@ fun BrowserScreen(
         BrowserMenuItem(stringResource(R.string.settings), Icons.Default.Settings, onClick = onNavigateToSettings)
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -329,30 +328,6 @@ fun BrowserScreen(
                     .fillMaxWidth()
                     .onSizeChanged { size -> pageAreaSize = size }
             ) {
-                // Brand splash while the first page loads — nebula glow backdrop
-                if (state.url.isBlank() || (state.url == Constants.DEFAULT_HOMEPAGE && state.progress < 25)) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().background(SplashNebulaBrush).padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        OrbitalBrandMark(size = 112.dp)
-                        Spacer(Modifier.height(20.dp))
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = PearlWhite,
-                            letterSpacing = 3.sp
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.brand_tagline),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SilverMid
-                        )
-                    }
-                }
-
                 AndroidView(
                     factory = { ctx -> FrameLayout(ctx) },
                     update = { container ->
@@ -369,6 +344,30 @@ fun BrowserScreen(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
+
+                // Show a quiet native start state over the WebView while the first page is loading.
+                if (state.url.isBlank() || (state.url == state.homepage && state.isLoading && state.progress < 25)) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().background(SplashNebulaBrush).padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        OrbitalBrandMark(size = 88.dp, animate = false)
+                        Spacer(Modifier.height(20.dp))
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = PearlWhite,
+                            letterSpacing = 3.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.brand_tagline),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SilverMid
+                        )
+                    }
+                }
 
                 if (isMediaDetected) {
                     Text(
@@ -419,7 +418,7 @@ fun BrowserScreen(
                         modifier = Modifier
                             .align(Alignment.Center)
                             .size(26.dp),
-                        color = NebulaVioletLight,
+                        color = AuroraTeal,
                         strokeWidth = 2.dp
                     )
                 }

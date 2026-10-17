@@ -31,16 +31,21 @@ class MediaSnifferBridge(
         url: String,
         mimeType: String,
         origin: String,
-        elementKind: String
+        elementKind: String,
+        contentDisposition: String
     ) {
-        if (pageUrl.length > 4096 || url.length > 8192 || mimeType.length > 256) return
+        if (
+            pageUrl.length > 4096 || url.length > 8192 || mimeType.length > 256 ||
+            contentDisposition.length > 2048
+        ) return
         try {
             val candidate = MediaSniffAdmission.admit(
                 pageUrl = pageUrl,
                 url = url,
                 mimeType = mimeType.takeIf { it.isNotBlank() },
                 origin = SniffOrigin.fromWire(origin),
-                elementKind = elementKind.takeIf { it.isNotBlank() }
+                elementKind = elementKind.takeIf { it.isNotBlank() },
+                contentDisposition = contentDisposition.takeIf { it.isNotBlank() }
             ) ?: return
             onAdmitted(candidate)
         } catch (error: Throwable) {

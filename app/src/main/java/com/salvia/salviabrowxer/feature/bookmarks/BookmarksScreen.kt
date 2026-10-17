@@ -1,15 +1,14 @@
 package com.salvia.salviabrowxer.feature.bookmarks
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,7 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
@@ -39,13 +37,13 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.BookmarkEntity
 import com.salvia.salviabrowxer.ui.components.ListEmptyState
 import com.salvia.salviabrowxer.ui.components.ListSearchRow
+import com.salvia.salviabrowxer.ui.components.ScreenHeader
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
-import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 
 @Composable
 fun BookmarksScreen(
@@ -55,20 +53,8 @@ fun BookmarksScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
-        Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
-            }
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
-        }
+    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
+        ScreenHeader(title = stringResource(R.string.bookmarks), onBack = onBack)
 
         ListSearchRow(query = state.query, hint = stringResource(R.string.bookmarks_search_hint), onQueryChange = viewModel::updateQuery)
 
@@ -99,8 +85,9 @@ private fun BookmarkRow(bookmark: BookmarkEntity, onOpen: () -> Unit, onDelete: 
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(CharcoalSurface)
+            .border(1.dp, CharcoalBorder.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
             // The on-click label supplements the row's own text; the leading glyph is decorative
             // so the title and URL are not read twice.
             .clickable(role = Role.Button, onClickLabel = openLabel, onClick = onOpen)

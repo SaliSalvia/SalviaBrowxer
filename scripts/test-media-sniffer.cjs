@@ -13,6 +13,8 @@ function set(name) {
 const media = [...set('VIDEO_EXTENSIONS'), ...set('AUDIO_EXTENSIONS'), ...set('PLAYLIST_EXTENSIONS')].join('|');
 const script = kotlin.split('private const val SNIFFER_TEMPLATE = """')[1].split('"""')[0]
   .replace('__MSE_PORT__', 'SalviaMsePort')
+  .replace('__PLAYLIST_MIME_ARRAY__', JSON.stringify(set('PLAYLIST_MIME_TYPES')))
+  .replace('__DASH_EXTENSION__', 'mpd')
   .replace('__MEDIA_EXT__', media)
   .replace('__NON_MEDIA_EXT__', set('NON_MEDIA_EXTENSIONS').join('|'))
   .replace('__SEGMENT_EXT__', set('SEGMENT_EXTENSIONS').join('|'));
@@ -50,7 +52,9 @@ function harness(initial = [], options = {}) {
     open(method, url) { this.url = url; }
     setRequestHeader() {}
     addEventListener(name, cb) { if (name === 'loadend') this.end = cb; }
-    getResponseHeader() { return this.mime; }
+    getResponseHeader(name) {
+      return String(name).toLowerCase() === 'content-disposition' ? this.disposition : this.mime;
+    }
     send() { loads.push(this); }
   }
   const ctx = {
@@ -207,6 +211,66 @@ test('fetch inspects actual redirect response headers, never clones body or adds
   await h.fetch('https://cdn.example.org/redirect');
   assert.deepEqual(urls(h), [url]);
   assert.equal(h.requests.length, 1);
+});
+
+test('Content-Disposition filenames admit extensionless binary responses without reading the body', async () => {
+  const h = harness();
+  const responseUrl = 'https://cdn.example.org/download/opaque-id';
+  const disposition = "attachment; filename*=UTF-8''mix%2Emp4";
+  h.response({
+    url: responseUrl, status: 200,
+    headers: new Headers({ 'content-type': 'application/octet-stream', 'content-disposition': disposition }),
+  });
+  await h.fetch('https://cdn.example.org/download/start');
+  assert.deepEqual(urls(h), [responseUrl]);
+  assert.equal(h.admitted[0][5], disposition);
+  assert.equal(h.requests.length, 1);
+
+  const xhrHarness = harness();
+  const xhr = new xhrHarness.ctx.XMLHttpRequest();
+  xhr.open('GET', 'https://cdn.example.org/download/xhr');
+  xhr.mime = 'application/x-download';
+  xhr.disposition = 'attachment; filename="voice.mp3"';
+  xhr.send(); xhr.responseURL = responseUrl; xhr.status = 200; xhr.end();
+  assert.deepEqual(urls(xhrHarness), [responseUrl]);
+  assert.equal(xhrHarness.admitted[0][5], xhr.disposition);
+});
+
+test('common HLS MIME aliases recognize extensionless playlist responses', async () => {
+  for (const mime of ['application/mpegurl', 'audio/mpegurl', 'audio/x-mpegurl']) {
+    const h = harness();
+    const url = 'https://cdn.example.org/hls/manifest-token';
+    h.response({ url, status: 200, headers: new Headers({ 'content-type': mime }) });
+    await h.fetch(url);
+    assert.deepEqual(urls(h), [url], mime);
+  }
+});
+
+test('Content-Disposition recognizes DASH but still rejects documents and segment filenames', async () => {
+  const dash = harness();
+  const dashUrl = 'https://cdn.example.org/download/manifest-token';
+  dash.response({
+    url: dashUrl, status: 200,
+    headers: new Headers({
+      'content-type': 'application/octet-stream',
+      'content-disposition': 'attachment; filename=manifest.mpd',
+    }),
+  });
+  await dash.fetch(dashUrl);
+  assert.deepEqual(urls(dash), [dashUrl]);
+
+  for (const filename of ['report.pdf', 'segment.ts', 'part.m4s']) {
+    const h = harness();
+    h.response({
+      url: 'https://cdn.example.org/download/opaque-id', status: 200,
+      headers: new Headers({
+        'content-type': 'application/octet-stream',
+        'content-disposition': `attachment; filename="${filename}"`,
+      }),
+    });
+    await h.fetch();
+    assert.equal(h.admitted.length, 0, filename);
+  }
 });
 
 test('Request headers, tuples, multiple ranges, 206 and bytestart never admit fragments', async () => {

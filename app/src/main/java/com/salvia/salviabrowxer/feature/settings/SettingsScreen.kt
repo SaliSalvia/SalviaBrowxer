@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -26,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Save
@@ -46,9 +46,7 @@ import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -81,7 +79,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.os.ConfigurationCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -92,21 +89,15 @@ import com.salvia.salviabrowxer.service.ConnectionKind
 import com.salvia.salviabrowxer.service.ConnectivityGate
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
+import com.salvia.salviabrowxer.ui.components.ScreenHeader
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.BlushPink
-import com.salvia.salviabrowxer.ui.theme.BlushPinkLight
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.NebulaEdge
-import com.salvia.salviabrowxer.ui.theme.NebulaViolet
-import com.salvia.salviabrowxer.ui.theme.NebulaMist
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
-import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
-import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 import java.util.Locale
 import kotlinx.coroutines.flow.collectLatest
 
@@ -171,37 +162,10 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
-            Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
-                }
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
-            }
-            // Brand strip: mark plus app name, so the header reads as app chrome.
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OrbitalBrandMark(size = 34.dp, animate = false)
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = PearlWhite,
-                    letterSpacing = 2.sp
-                )
-            }
-            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            ScreenHeader(title = stringResource(R.string.settings), onBack = onBack)
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) {
                 SettingsSectionTitle(Icons.Default.Search, stringResource(R.string.settings_browser))
                 SettingsItem(Icons.Default.Search, stringResource(R.string.settings_search_engine), state.searchEngine) { dialog = SettingsDialog.SearchEngine }
                 SettingsItem(Icons.Default.Settings, stringResource(R.string.settings_homepage), state.homepage) { dialog = SettingsDialog.Homepage }
@@ -265,7 +229,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Info, stringResource(R.string.settings_about))
                 Box(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-                    OrbitalBrandMark(size = 84.dp, animate = true)
+                    OrbitalBrandMark(size = 72.dp, animate = false)
                 }
                 Text(
                     text = stringResource(R.string.brand_tagline),
@@ -377,9 +341,12 @@ private fun connectionLabel(kind: ConnectionKind): String = stringResource(
 
 @Composable
 fun SettingsSectionTitle(icon: ImageVector, title: String) {
-    Row(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = BlushPink, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = AuroraTeal, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(9.dp))
         Text(title, style = MaterialTheme.typography.titleMedium, color = PearlWhite)
     }
 }
@@ -389,15 +356,16 @@ fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onC
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(NebulaMist.copy(alpha = 0.45f))
-            .border(0.8.dp, NebulaEdge.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+            .padding(vertical = 3.dp)
+            .heightIn(min = 54.dp)
+            .clip(RoundedCornerShape(15.dp))
+            .background(CharcoalSurface)
+            .border(1.dp, CharcoalBorder.copy(alpha = 0.78f), RoundedCornerShape(15.dp))
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .padding(vertical = 11.dp, horizontal = 10.dp),
+            .padding(vertical = 11.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = BlushPinkLight, modifier = Modifier.size(24.dp))
+        Icon(icon, null, tint = AuroraTeal.copy(alpha = 0.92f), modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
@@ -411,16 +379,17 @@ fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = nul
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(NebulaMist.copy(alpha = 0.45f))
-            .border(0.8.dp, NebulaEdge.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+            .padding(vertical = 3.dp)
+            .heightIn(min = 54.dp)
+            .clip(RoundedCornerShape(15.dp))
+            .background(CharcoalSurface)
+            .border(1.dp, CharcoalBorder.copy(alpha = 0.78f), RoundedCornerShape(15.dp))
             // The row owns the action. The switch below is a state indicator only.
             .toggleable(value = isChecked, role = Role.Switch, onValueChange = onCheckedChange)
-            .padding(vertical = 9.dp, horizontal = 10.dp),
+            .padding(vertical = 9.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = BlushPinkLight, modifier = Modifier.size(24.dp))
+        Icon(icon, null, tint = AuroraTeal.copy(alpha = 0.92f), modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
@@ -433,8 +402,8 @@ fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = nul
             onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = PearlWhite,
-                checkedTrackColor = NebulaViolet,
-                checkedBorderColor = NebulaVioletLight,
+                checkedTrackColor = AuroraTealDeep,
+                checkedBorderColor = AuroraTealLight,
                 uncheckedThumbColor = SilverMid,
                 uncheckedTrackColor = CharcoalSurface,
                 uncheckedBorderColor = CharcoalBorder

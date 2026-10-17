@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.feature.history
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,8 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
@@ -49,14 +48,14 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
 import com.salvia.salviabrowxer.ui.components.ListEmptyState
 import com.salvia.salviabrowxer.ui.components.ListSearchRow
+import com.salvia.salviabrowxer.ui.components.ScreenHeader
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
-import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.flow.collectLatest
@@ -75,24 +74,21 @@ fun HistoryScreen(
         viewModel.messages.collectLatest { message -> if (message.isNotBlank()) snackbarHostState.showSnackbar(message) }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
         Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
-            Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.history), style = MaterialTheme.typography.titleLarge, color = PearlWhite, modifier = Modifier.weight(1f))
+            ScreenHeader(
+                title = stringResource(R.string.history),
+                onBack = onBack,
+                trailingContent = {
                     IconButton(onClick = { confirmClear = true }, enabled = state.entries.isNotEmpty()) {
-                        Icon(Icons.Default.ClearAll, stringResource(R.string.settings_clear_history), tint = if (state.entries.isEmpty()) SilverMid.copy(alpha = 0.4f) else SilverMid)
+                        Icon(
+                            Icons.Default.ClearAll,
+                            stringResource(R.string.settings_clear_history),
+                            tint = if (state.entries.isEmpty()) SilverMid.copy(alpha = 0.4f) else SilverMid
+                        )
                     }
                 }
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
-            }
+            )
 
             ListSearchRow(query = state.query, hint = stringResource(R.string.history_search_hint), onQueryChange = viewModel::updateQuery)
 
@@ -144,8 +140,9 @@ private fun HistoryRow(entry: HistoryEntity, onOpen: () -> Unit, onDelete: () ->
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(CharcoalSurface)
+            .border(1.dp, CharcoalBorder.copy(alpha = 0.7f), RoundedCornerShape(16.dp))
             .clickable(role = Role.Button, onClickLabel = openLabel, onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically

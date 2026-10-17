@@ -24,6 +24,10 @@ class MediaUrlRulesTest {
         assertTrue(MediaUrlRules.isPlaylistUrl("https://example.com/hls/manifest.m3u8"))
         assertTrue(MediaUrlRules.isPlaylistUrl("https://example.com/x", "application/vnd.apple.mpegurl"))
         assertTrue(MediaUrlRules.isPlaylistUrl("https://example.com/x", "application/x-mpegURL"))
+        // Servers use these registered and legacy HLS MIME aliases for the same playlist.
+        for (mime in listOf("application/mpegurl", "audio/mpegurl", "audio/x-mpegurl")) {
+            assertTrue(mime, MediaUrlRules.isPlaylistUrl("https://example.com/x", mime))
+        }
         // A bare `manifest` path is a real HLS signal on many CDNs, so it is kept — the document
         // formats that also end in `manifest` are what the exclusions above remove.
         assertTrue(MediaUrlRules.isPlaylistUrl("https://cdn.example.com/hls/manifest?token=abc"))
@@ -95,6 +99,28 @@ class MediaUrlRulesTest {
         assertEquals("m4a", MediaUrlRules.extensionForMime("audio/mp4"))
         assertEquals("mpd", MediaUrlRules.extensionForMime(MediaUrlRules.DASH_MIME_TYPE))
         assertNull(MediaUrlRules.extensionForMime("application/octet-stream"))
+    }
+
+    @Test
+    fun `response filenames provide only allowlisted non-segment media evidence`() {
+        assertEquals("mp4", MediaUrlRules.mediaExtensionFromContentDisposition(
+            "attachment; filename=\"clip.MP4\""
+        ))
+        assertEquals("mp3", MediaUrlRules.mediaExtensionFromContentDisposition(
+            "attachment; filename*=UTF-8''summer+mix%2Emp3"
+        ))
+        assertEquals("m3u8", MediaUrlRules.mediaExtensionFromContentDisposition(
+            "attachment; filename=master.m3u8"
+        ))
+        assertEquals("mpd", MediaUrlRules.mediaExtensionFromContentDisposition(
+            "attachment; filename=manifest.mpd"
+        ))
+        assertNull(MediaUrlRules.mediaExtensionFromContentDisposition("attachment; filename=report.pdf"))
+        assertNull(MediaUrlRules.mediaExtensionFromContentDisposition("attachment; filename=segment.ts"))
+        assertNull(MediaUrlRules.mediaExtensionFromContentDisposition("attachment; filename=segment.m4s"))
+        assertNull(MediaUrlRules.mediaExtensionFromContentDisposition("attachment; filename=clip.mp4a"))
+        assertNull(MediaUrlRules.mediaExtensionFromContentDisposition("attachment; filename=clip.mp4".repeat(100)))
+        assertNull(MediaUrlRules.mediaExtensionFromContentDisposition(null))
     }
 
     // The app used to know only the handful of containers a phone camera produces. File-serving

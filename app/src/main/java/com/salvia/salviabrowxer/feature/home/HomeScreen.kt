@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -72,14 +73,11 @@ import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.AuroraTealFieldFocus
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
-import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
-import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
 import com.salvia.salviabrowxer.ui.theme.EmptySurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletContainer
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
-import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlFieldHint
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverDeep
@@ -133,15 +131,17 @@ fun HomeScreen(
         onPauseOrDispose { }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
+    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
             HomeHeader(onNavigateToBrowser = onNavigateToBrowser)
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                Spacer(Modifier.height(20.dp))
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                Spacer(Modifier.height(28.dp))
+                HomeIntro()
+                Spacer(Modifier.height(22.dp))
                 PasteCard(
                     state = state,
                     fieldLabel = onPasteTitle,
@@ -152,13 +152,7 @@ fun HomeScreen(
                     onDismissSuggestion = viewModel::dismissClipboardSuggestion,
                     onSubmit = submit
                 )
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    text = stringResource(R.string.home_how_it_works),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SilverDeep
-                )
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(26.dp))
                 ActiveDownloads(state = state, viewModel = viewModel, onNavigateToDownloads = onNavigateToDownloads)
                 Spacer(Modifier.height(24.dp))
             }
@@ -172,7 +166,7 @@ fun HomeScreen(
 private fun HomeHeader(onNavigateToBrowser: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             OrbitalBrandMark(size = 34.dp, animate = false, glowIntensity = 0.85f)
@@ -181,18 +175,40 @@ private fun HomeHeader(onNavigateToBrowser: () -> Unit) {
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleMedium,
                 color = PearlWhite,
-                letterSpacing = 2.sp
+                letterSpacing = 1.2.sp
             )
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = onNavigateToBrowser) {
-                Icon(Icons.Default.Public, stringResource(R.string.home_open_browser), tint = PearlWhite)
+            TextButton(
+                onClick = onNavigateToBrowser,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.Public, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.home_open_browser), style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
             }
         }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 1.dp, max = 1.dp)
-                .background(PearlEdgeBrush)
+                .background(CharcoalBorder.copy(alpha = 0.72f))
+        )
+    }
+}
+
+@Composable
+private fun HomeIntro() {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.home_hero_title),
+            style = MaterialTheme.typography.headlineMedium,
+            color = PearlWhite
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.home_hero_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = SilverMid
         )
     }
 }
@@ -218,7 +234,8 @@ private fun PasteCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(CharcoalElevated)
+            .background(CharcoalSurface)
+            .border(1.dp, CharcoalBorder, RoundedCornerShape(22.dp))
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -228,9 +245,15 @@ private fun PasteCard(
                 text = stringResource(R.string.home_paste_title),
                 style = MaterialTheme.typography.labelLarge,
                 color = PearlWhite,
-                letterSpacing = 0.6.sp
+                letterSpacing = 0.2.sp
             )
         }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.home_paste_support),
+            style = MaterialTheme.typography.bodySmall,
+            color = SilverMid
+        )
         Spacer(Modifier.height(14.dp))
 
         Row(
@@ -329,9 +352,9 @@ private fun PasteCard(
             enabled = state.input.isNotBlank(),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .clip(RoundedCornerShape(14.dp)),
-            shape = RoundedCornerShape(14.dp),
+                .heightIn(min = 54.dp)
+                .clip(RoundedCornerShape(15.dp)),
+            shape = RoundedCornerShape(15.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = AuroraTeal,
                 contentColor = MatteCharcoal,
@@ -373,10 +396,8 @@ private fun ActiveDownloads(
                 Text(text = "${state.inFlightCount}", style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
             }
             Spacer(Modifier.weight(1f))
-            if (state.inFlightCount > 0) {
-                TextButton(onClick = onNavigateToDownloads, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text(stringResource(R.string.home_active_see_all), style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
-                }
+            TextButton(onClick = onNavigateToDownloads, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                Text(stringResource(R.string.home_active_see_all), style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -407,17 +428,27 @@ private fun ActiveDownloads(
 
 @Composable
 private fun CardEmpty(text: String) {
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(EmptySurface)
-            .padding(18.dp)
+            .border(1.dp, CharcoalBorder.copy(alpha = 0.72f), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(AuroraTeal.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Download, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(12.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.bodySmall,
-            color = SilverMid
+            color = SilverMid,
+            modifier = Modifier.weight(1f)
         )
     }
 }

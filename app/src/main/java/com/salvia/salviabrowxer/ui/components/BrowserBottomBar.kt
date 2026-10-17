@@ -37,8 +37,8 @@ import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.theme.AccentIndicatorBrush
 import com.salvia.salviabrowxer.ui.theme.BottomBarBrush
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 
@@ -66,8 +66,8 @@ fun BrowserBottomBar(
     menuContentDescription: String = ""
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        // Iridescent hairline on top of the bar
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
+        // A subtle divider gives the page and browser controls a clear edge.
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(CharcoalBorder.copy(alpha = 0.72f)))
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).background(BottomBarBrush).padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically

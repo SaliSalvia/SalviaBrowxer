@@ -38,19 +38,26 @@ import kotlin.math.sin
 fun OrbitalBrandMark(
     modifier: Modifier = Modifier,
     size: Dp = 96.dp,
-    animate: Boolean = true,
+    animate: Boolean = false,
     glowIntensity: Float = 1f
 ) {
-    val transition = rememberInfiniteTransition(label = "orbital")
-    val sweep by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "orbitalSweep"
-    )
+    // Static marks do not keep an infinite animation clock alive. The moving highlight is reserved
+    // for the rare place that explicitly opts in, keeping idle screens cool and battery-friendly.
+    val sweep = if (animate) {
+        val transition = rememberInfiniteTransition(label = "orbital")
+        val animatedSweep by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 14000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "orbitalSweep"
+        )
+        animatedSweep
+    } else {
+        0f
+    }
 
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.size(size)) {

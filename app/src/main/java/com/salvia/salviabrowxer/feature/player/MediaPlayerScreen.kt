@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -207,7 +208,7 @@ fun MediaPlayerScreen(
     val sliderRange = 0f..(duration.coerceAtLeast(1L).toFloat())
     val currentEntry = queue[orderedIndexOf(currentIndex)]
 
-    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
+    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
         // ── Top bar with brand mark ──
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
@@ -451,7 +452,7 @@ fun MediaPlayerScreen(
  */
 @Composable
 private fun UnplayableMedia(title: String, message: String, onDelete: () -> Unit, onBack: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
+    Column(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically

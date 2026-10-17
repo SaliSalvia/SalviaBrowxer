@@ -10,15 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,16 +56,13 @@ import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.media.downloader.TranscodePlan
 import com.salvia.salviabrowxer.ui.components.DownloadItem
+import com.salvia.salviabrowxer.ui.components.ScreenHeader
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
-import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
-import com.salvia.salviabrowxer.ui.theme.TopBarBrush
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 
@@ -100,21 +96,26 @@ fun DownloadsScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
+    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Nebula header with iridescent hairline underneath
-            Column(modifier = Modifier.fillMaxWidth().background(TopBarBrush)) {
-                Row(modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.go_back), tint = PearlWhite) }
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.downloads_title), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = {
-                        when (selectedTabIndex) { 0 -> viewModel.clearAllDownloads(); 2 -> viewModel.clearCompletedDownloads(); 3 -> viewModel.clearFailedDownloads() }
-                    }) { Icon(Icons.Default.ClearAll, stringResource(R.string.action_clear), tint = SilverMid) }
+            ScreenHeader(
+                title = stringResource(R.string.downloads_title),
+                onBack = onBack,
+                trailingContent = {
+                    // The queue has no clear action, so do not leave a button there that does nothing.
+                    if (selectedTabIndex != 1) {
+                        IconButton(onClick = {
+                            when (selectedTabIndex) {
+                                0 -> viewModel.clearAllDownloads()
+                                2 -> viewModel.clearCompletedDownloads()
+                                3 -> viewModel.clearFailedDownloads()
+                            }
+                        }) {
+                            Icon(Icons.Default.ClearAll, stringResource(R.string.action_clear), tint = SilverMid)
+                        }
+                    }
                 }
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PearlEdgeBrush))
-            }
+            )
 
             // Only drawn when there is something behind it: a lock row on an empty folder would be a
             // control that changes nothing, and an empty one would be a promise of a feature that was
@@ -130,13 +131,13 @@ fun DownloadsScreen(
 
             TabRow(
                 selectedTabIndex = selectedTabIndex, containerColor = DeepCharcoal, contentColor = PearlWhite,
-                indicator = { tabPositions -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = NebulaVioletLight, height = 2.dp) },
+                indicator = { tabPositions -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = AuroraTeal, height = 2.dp) },
                 divider = { androidx.compose.material3.HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.6f), thickness = 1.dp) }
             ) {
-                Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_active)} (${state.active.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_queue)} (${state.queued.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_completed)} (${state.completed.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, selectedContentColor = NebulaVioletLight, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_failed)} (${state.failed.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_active)} (${state.active.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_queue)} (${state.queued.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_completed)} (${state.completed.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_failed)} (${state.failed.size})", style = MaterialTheme.typography.labelMedium) })
             }
 
             val items = when (selectedTabIndex) { 0 -> state.active; 1 -> state.queued; 2 -> state.completed; else -> state.failed }
