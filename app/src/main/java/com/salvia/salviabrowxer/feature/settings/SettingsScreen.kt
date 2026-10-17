@@ -91,6 +91,8 @@ import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.ScreenHeader
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.AuroraTealDeep
+import com.salvia.salviabrowxer.ui.theme.AuroraTealLight
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
