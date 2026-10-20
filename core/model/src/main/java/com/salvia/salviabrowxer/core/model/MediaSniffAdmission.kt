@@ -8,10 +8,10 @@ import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
  * and a URL merely referenced by markup states nothing at all.
  */
 enum class SniffOrigin(val wireName: String) {
-    /** An XMLHttpRequest finished and its `Content-Type` was media. */
+    /** An XMLHttpRequest response declared media by MIME, or by a bounded filename header. */
     XHR_RESPONSE("xhr"),
 
-    /** A `fetch()` response header was media. */
+    /** A `fetch()` response declared media by MIME, or by a bounded filename header. */
     FETCH_RESPONSE("fetch"),
 
     /**
@@ -58,6 +58,8 @@ object MediaSniffAdmission {
      * download.
      *
      * @param mimeType the response `Content-Type` when there was one, else `null`.
+     * @param contentDisposition the response's `Content-Disposition` header, used only for a
+     *   server-declared media filename when the MIME is absent or generic.
      * @param partialRange true when the page asked for a **piece** of the resource — a range that
      *   does not start at zero, or that has a bounded end. `bytes=0-` is the whole file and is not
      *   a partial read, which matters because plenty of players fetch a whole progressive MP4 with
@@ -71,7 +73,8 @@ object MediaSniffAdmission {
         mimeType: String?,
         origin: SniffOrigin?,
         partialRange: Boolean = false,
-        elementKind: String? = null
+        elementKind: String? = null,
+        contentDisposition: String? = null
     ): MediaCandidate? {
         if (origin == null) return null
         if (url.length < 12) return null
@@ -97,15 +100,29 @@ object MediaSniffAdmission {
 
         val mime = MediaUrlRules.normalizeMime(mimeType)
         val hasExtension = MediaUrlRules.hasMediaExtension(url)
-        val isPlaylist = MediaUrlRules.isPlaylistUrl(url, mime)
-        val isDash = MediaUrlRules.isDashUrl(url, mime)
+        val dispositionExtension = if (
+            origin == SniffOrigin.XHR_RESPONSE || origin == SniffOrigin.FETCH_RESPONSE
+        ) {
+            MediaUrlRules.mediaExtensionFromContentDisposition(contentDisposition)
+        } else {
+            null
+        }
         val isStrongMime = MediaUrlRules.isMediaMime(mime)
+        // Content-Disposition is a server-declared filename, so it can identify an extension-less
+        // binary response. It cannot overrule an explicit non-media Content-Type or markup evidence.
+        val hasResponseFilenameEvidence = dispositionExtension != null &&
+            (mime == null || MediaUrlRules.isWeakMediaMime(mime))
+        val isPlaylist = MediaUrlRules.isPlaylistUrl(url, mime) ||
+            (hasResponseFilenameEvidence && dispositionExtension == "m3u8")
+        val isDash = MediaUrlRules.isDashUrl(url, mime) ||
+            (hasResponseFilenameEvidence && dispositionExtension == MediaUrlRules.DASH_EXTENSION)
 
         val admitted = when (origin) {
-            // The server named the type, so an extension-less CDN path is exactly what this admits.
+            // The server named the type, or its response filename names a media container. Both are
+            // response evidence the page already received; neither causes another request.
             SniffOrigin.XHR_RESPONSE, SniffOrigin.FETCH_RESPONSE ->
                 isStrongMime || isPlaylist || isDash ||
-                    (hasExtension && MediaUrlRules.isWeakMediaMime(mime))
+                    (hasExtension && MediaUrlRules.isWeakMediaMime(mime)) || hasResponseFilenameEvidence
 
             // The player loaded it. There may be no header and no extension worth trusting.
             SniffOrigin.ELEMENT_METADATA -> true
@@ -122,7 +139,14 @@ object MediaSniffAdmission {
         // server actually said, or stays unknown.
         val effectiveMime = mime?.takeIf { MediaUrlRules.isMediaMime(it) || MediaUrlRules.isDashMime(it) }
 
-        return candidate(pageUrl, url, effectiveMime, elementKind, confidenceFor(origin))
+        return candidate(
+            pageUrl,
+            url,
+            effectiveMime,
+            elementKind,
+            confidenceFor(origin),
+            extensionHint = dispositionExtension
+        )
     }
 
     private fun confidenceFor(origin: SniffOrigin): Float = when (origin) {
@@ -136,12 +160,13 @@ object MediaSniffAdmission {
         url: String,
         mime: String?,
         elementKind: String?,
-        confidence: Float
+        confidence: Float,
+        extensionHint: String? = null
     ): MediaCandidate {
         val fromMime = MediaUrlRules.extensionForMime(mime)
         val fromUrl = MediaUrlRules.pathExtension(url)
             ?.takeIf { it in MediaUrlRules.MEDIA_EXTENSIONS || it == MediaUrlRules.DASH_EXTENSION }
-        var extension = fromMime ?: fromUrl
+        var extension = fromMime ?: fromUrl ?: extensionHint
         var finalMime = mime
 
         if (extension == null && elementKind != null) {

@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,7 +50,6 @@ import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
-import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
@@ -84,7 +84,13 @@ fun DownloadItem(
     val progress = if (totalBytes != null && totalBytes > 0) (download.downloadedBytes.toFloat() / totalBytes) else 0f
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clip(RoundedCornerShape(14.dp)).background(CharcoalElevated).padding(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(CharcoalSurface)
+            .border(1.dp, CharcoalBorder.copy(alpha = 0.72f), RoundedCornerShape(16.dp))
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(CharcoalSurface), contentAlignment = Alignment.Center) {

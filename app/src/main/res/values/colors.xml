@@ -1,37 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Charcoal -->
-    <color name="matte_charcoal">#0A0A0C</color>
-    <color name="deep_charcoal">#141418</color>
-    <color name="charcoal_surface">#1C1C20</color>
-    <color name="charcoal_elevated">#26262C</color>
-    <color name="charcoal_border">#2E2E34</color>
+    <!-- Salvia graphite palette -->
+    <color name="matte_charcoal">#0B1015</color>
+    <color name="deep_charcoal">#121920</color>
+    <color name="charcoal_surface">#19222C</color>
+    <color name="charcoal_elevated">#202B36</color>
+    <color name="charcoal_border">#2B3743</color>
 
-    <!-- Pearl White (7-color iridescent) -->
-    <color name="pearl_white">#F8F7F4</color>
-    <color name="pearl_warm">#F1EFE9</color>
-    <color name="pearl_pink">#FFE4EC</color>
-    <color name="pearl_teal">#D6FFF8</color>
-    <color name="pearl_lavender">#EDE9FF</color>
-    <color name="pearl_blue">#E0F2FF</color>
+    <!-- Neutral foregrounds -->
+    <color name="pearl_white">#F2F5F7</color>
+    <color name="pearl_warm">#E8EDF0</color>
+    <color name="pearl_pink">#F2E4E9</color>
+    <color name="pearl_teal">#DCEFEA</color>
+    <color name="pearl_lavender">#EAE7F3</color>
+    <color name="pearl_blue">#E0EAF1</color>
+    <color name="silver_light">#D9E1E6</color>
+    <color name="silver_mid">#A8B4BE</color>
+    <color name="silver_deep">#84919D</color>
+    <color name="silver_shine">#F8FAFB</color>
 
-    <!-- Silver Metallic -->
-    <color name="silver_light">#E8EAED</color>
-    <color name="silver_mid">#C0C5CE</color>
-    <color name="silver_deep">#9AA0AE</color>
-    <color name="silver_shine">#F5F7FA</color>
+    <!-- Sage/teal primary -->
+    <color name="aurora_teal">#5DD7C3</color>
+    <color name="aurora_teal_light">#A2EBDD</color>
+    <color name="aurora_teal_deep">#238A7B</color>
+    <color name="aurora_container">#193B37</color>
 
-    <!-- Aurora Teal -->
-    <color name="aurora_teal">#00DAC6</color>
-    <color name="aurora_teal_light">#5EF0DD</color>
-    <color name="aurora_teal_deep">#009688</color>
-    <color name="aurora_container">#00332E</color>
-
-    <!-- Nebula Violet -->
-    <color name="nebula_violet">#8B5CF6</color>
-    <color name="nebula_violet_light">#B794FF</color>
-    <color name="nebula_deep">#5B21B6</color>
-    <color name="nebula_container">#1E1042</color>
+    <!-- Violet secondary -->
+    <color name="nebula_violet">#9A83E9</color>
+    <color name="nebula_violet_light">#C3B4F8</color>
+    <color name="nebula_deep">#6852AF</color>
+    <color name="nebula_container">#2B2442</color>
 
     <!-- Legacy aliases -->
     <color name="gold">@color/aurora_teal</color>
@@ -43,12 +41,10 @@
     <color name="primary_container">@color/aurora_container</color>
     <color name="on_primary">@color/matte_charcoal</color>
     <color name="on_primary_container">@color/aurora_teal_light</color>
-
     <color name="secondary">@color/nebula_violet</color>
     <color name="secondary_container">@color/nebula_container</color>
     <color name="on_secondary">#FFFFFF</color>
     <color name="on_secondary_container">@color/nebula_violet_light</color>
-
     <color name="background">@color/matte_charcoal</color>
     <color name="on_background">@color/pearl_white</color>
     <color name="surface">@color/deep_charcoal</color>
@@ -56,17 +52,14 @@
     <color name="surface_variant">@color/charcoal_surface</color>
     <color name="on_surface_variant">@color/silver_mid</color>
 
-    <color name="error">#FF5252</color>
+    <color name="error">#FF7777</color>
     <color name="on_error">#FFFFFF</color>
-
-    <!-- Semantic -->
     <color name="media_detected_indicator">@color/aurora_teal</color>
     <color name="download_button_active">@color/aurora_teal</color>
-    <color name="download_button_inactive">#3A3A42</color>
+    <color name="download_button_inactive">#34414C</color>
     <color name="floating_button_background">@color/charcoal_elevated</color>
     <color name="floating_button_foreground">@color/pearl_white</color>
 
-    <!-- System UI -->
     <color name="status_bar">@color/matte_charcoal</color>
     <color name="navigation_bar">@color/matte_charcoal</color>
 </resources>

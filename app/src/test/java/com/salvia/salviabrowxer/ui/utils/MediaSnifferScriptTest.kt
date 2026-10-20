@@ -18,6 +18,8 @@ class MediaSnifferScriptTest {
     @Test
     fun `every placeholder is substituted`() {
         assertFalse(script.contains("__MEDIA_EXT__"))
+        assertFalse(script.contains("__PLAYLIST_MIME_ARRAY__"))
+        assertFalse(script.contains("__DASH_EXTENSION__"))
         assertFalse(script.contains("__NON_MEDIA_EXT__"))
         assertFalse(script.contains("__SEGMENT_EXT__"))
         assertTrue(script.contains(MediaUrlRules.EXTENSION_ALTERNATION))
@@ -37,6 +39,13 @@ class MediaSnifferScriptTest {
     }
 
     @Test
+    fun `every supported HLS MIME alias is shared with the injected script`() {
+        MediaUrlRules.PLAYLIST_MIME_TYPES.forEach { mime ->
+            assertTrue("missing $mime", script.contains(mime))
+        }
+    }
+
+    @Test
     fun `the response-header hooks are present`() {
         // These three are what make extension-less CDN media detectable; without them the script is
         // back to guessing from the URL and the whole exercise is pointless.
@@ -44,6 +53,8 @@ class MediaSnifferScriptTest {
         // it was handed). MSE mime is tracked per MediaSource now, so there is no page global
         // left to assert on.
         assertTrue(script.contains("getResponseHeader"))
+        assertTrue(script.contains("Content-Disposition"))
+        assertTrue(script.contains("content-disposition"))
         assertTrue(script.contains("headers.get"))
         assertTrue(script.contains("addSourceBuffer"))
     }

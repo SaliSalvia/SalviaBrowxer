@@ -14,7 +14,8 @@ package com.salvia.salviabrowxer.core.model
  * interpolated into the injected JavaScript so the browser side cannot drift from the Kotlin side.
  *
  * Detection here is intentionally evidence-based, not bypass-based. The strong signals are the
- * server’s own `Content-Type`, a player that actually loaded and reported metadata for the URL, and
+ * server’s own `Content-Type`, a server-declared media filename in `Content-Disposition` when the
+ * MIME is absent or generic, a player that actually loaded and reported metadata for the URL, and
  * markup that declares a media type (`<source type="video/mp4">`, a lazy `data-*` player attribute).
  * The weaker but still valid signal is a real media extension on a file the server also marked as
  * weak media. What this object does not do, and does not help anyone do, is fetch URLs on its own,
@@ -50,8 +51,19 @@ object MediaUrlRules {
 
     val PLAYLIST_MIME_TYPES: Set<String> = setOf(
         "application/vnd.apple.mpegurl",
-        "application/x-mpegurl"
+        "application/x-mpegurl",
+        "application/mpegurl",
+        "audio/mpegurl",
+        "audio/x-mpegurl"
     )
+
+    /** The exact same list interpolated into the window sniffer's media-MIME check. */
+    val PLAYLIST_MIME_JS_ARRAY: String = PLAYLIST_MIME_TYPES.joinToString(
+        prefix = "[",
+        postfix = "]",
+        separator = ","
+    ) { mime -> "\"$mime\"" }
+
     const val DASH_MIME_TYPE: String = "application/dash+xml"
 
     /**
@@ -64,11 +76,17 @@ object MediaUrlRules {
     val SEGMENT_EXTENSIONS: Set<String> = setOf("ts", "m4s", "cmfv", "cmfa", "cmft", "mp4a")
 
     /**
-     * CDNs routinely serve real video as `application/octet-stream`. It is therefore evidence
-     * only when the URL also carries a media extension — on its own it must not admit anything,
-     * or every binary download the page makes becomes a candidate.
+     * CDNs routinely serve real video as `application/octet-stream`, and generic download MIME
+     * values are common too. None is evidence on its own: it must be paired with a media extension
+     * in the URL or a media filename declared by the response, so binary API payloads stay out.
      */
-    val WEAK_MEDIA_MIME_TYPES: Set<String> = setOf("application/octet-stream", "binary/octet-stream")
+    val WEAK_MEDIA_MIME_TYPES: Set<String> = setOf(
+        "application/octet-stream",
+        "binary/octet-stream",
+        "application/download",
+        "application/x-download",
+        "application/force-download"
+    )
 
     /**
      * Requests the browser makes for itself that are never media.
@@ -97,6 +115,13 @@ object MediaUrlRules {
     /** Fragments a manifest lists: what a player fetches hundreds of, never a user-facing file. */
     private val SEGMENT_QUERY_MARKERS = listOf("bytestart=", "byteend=")
 
+    private val CONTENT_DISPOSITION_FILENAME_STAR = Regex(
+        """(?i)(?:^|;)\s*filename\*\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]*))"""
+    )
+    private val CONTENT_DISPOSITION_FILENAME = Regex(
+        """(?i)(?:^|;)\s*filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]*))"""
+    )
+
     /** Lowers a header value to a comparable mime: `video/mp4; codecs="avc1"` -> `video/mp4`. */
     fun normalizeMime(raw: String?): String? = raw
         ?.substringBefore(';')
@@ -114,6 +139,52 @@ object MediaUrlRules {
         if (dot <= slash || dot == path.length - 1) return null
         return path.substring(dot + 1).lowercase().takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
     }
+
+    /**
+     * Returns only a known, non-segment media extension named by the response's own
+     * `Content-Disposition` filename. This is evidence from a response the page already received,
+     * not a URL guess or a reason to make another request. RFC 5987 `filename*` is preferred when
+     * present because it is the standards-defined UTF-8 filename parameter.
+     */
+    fun mediaExtensionFromContentDisposition(header: String?): String? {
+        if (header.isNullOrBlank() || header.length > MAX_CONTENT_DISPOSITION_LENGTH) return null
+
+        val extended = dispositionParameterValue(CONTENT_DISPOSITION_FILENAME_STAR.find(header))
+        val plain = dispositionParameterValue(CONTENT_DISPOSITION_FILENAME.find(header))
+        val filename = when {
+            extended != null -> decodeExtendedFilename(extended)
+            plain != null -> plain
+            else -> return null
+        }
+        val extension = pathExtension(filename) ?: return null
+        if (extension in SEGMENT_EXTENSIONS) return null
+        return extension.takeIf { it in MEDIA_EXTENSIONS || it == DASH_EXTENSION }
+    }
+
+    private fun dispositionParameterValue(match: MatchResult?): String? = match
+        ?.groupValues
+        ?.drop(1)
+        ?.firstOrNull { it.isNotEmpty() }
+        ?.trim()
+        ?.trim('"', '\'')
+        ?.takeIf { it.isNotEmpty() }
+
+    private fun decodeExtendedFilename(value: String): String {
+        val firstQuote = value.indexOf('\'')
+        val secondQuote = if (firstQuote >= 0) value.indexOf('\'', firstQuote + 1) else -1
+        val encoded = if (secondQuote >= 0) value.substring(secondQuote + 1) else value
+        val charset = if (firstQuote >= 0 && secondQuote >= 0) {
+            value.substring(0, firstQuote).ifBlank { "UTF-8" }
+        } else {
+            "UTF-8"
+        }
+        return runCatching {
+            // `+` is literal in RFC 5987 (unlike form encoding); protect it from URLDecoder.
+            java.net.URLDecoder.decode(encoded.replace("+", "%2B"), charset)
+        }.getOrDefault(encoded)
+    }
+
+    private const val MAX_CONTENT_DISPOSITION_LENGTH = 2_048
 
     fun hasMediaExtension(url: String): Boolean = pathExtension(url) in MEDIA_EXTENSIONS
 

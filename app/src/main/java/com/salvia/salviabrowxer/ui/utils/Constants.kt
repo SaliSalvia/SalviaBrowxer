@@ -30,7 +30,7 @@ object Constants {
 
     val SUPPORTED_VIDEO_MIME_TYPES = listOf("video/mp4", "video/webm", "video/quicktime", "video/3gpp", "video/x-matroska", "video/x-flv", "video/mp2t", "video/x-msvideo")
     val SUPPORTED_AUDIO_MIME_TYPES = listOf("audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/flac", "audio/ogg", "audio/x-ms-wma")
-    val SUPPORTED_PLAYLIST_MIME_TYPES = listOf("application/vnd.apple.mpegurl", "application/x-mpegURL")
+    val SUPPORTED_PLAYLIST_MIME_TYPES = MediaUrlRules.PLAYLIST_MIME_TYPES.toList()
 
     const val CONNECT_TIMEOUT_SECONDS = 10L
     const val READ_TIMEOUT_SECONDS = 30L
