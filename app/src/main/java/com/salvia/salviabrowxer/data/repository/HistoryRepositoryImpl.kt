@@ -14,6 +14,9 @@ class HistoryRepositoryImpl @Inject constructor(
     override fun searchHistory(query: String): Flow<List<HistoryEntity>> =
         historyDao.search(query)
 
+    override fun searchHistorySuggestions(query: String, limit: Int): Flow<List<HistoryEntity>> =
+        historyDao.searchSuggestions(query, limit)
+
     override suspend fun getHistoryById(id: String): HistoryEntity? = historyDao.getById(id)
 
     override suspend fun addHistory(history: HistoryEntity) = historyDao.insert(history)

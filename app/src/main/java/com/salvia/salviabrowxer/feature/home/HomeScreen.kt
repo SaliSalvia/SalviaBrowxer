@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -131,30 +133,32 @@ fun HomeScreen(
         onPauseOrDispose { }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding()) {
+    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding().imePadding()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
             HomeHeader(onNavigateToBrowser = onNavigateToBrowser)
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(28.dp))
-                HomeIntro()
-                Spacer(Modifier.height(22.dp))
-                PasteCard(
-                    state = state,
-                    fieldLabel = onPasteTitle,
-                    onInputChange = viewModel::onInputChange,
-                    onClear = viewModel::clearInput,
-                    onPaste = viewModel::pasteFromClipboard,
-                    onUseSuggestion = viewModel::useClipboardSuggestion,
-                    onDismissSuggestion = viewModel::dismissClipboardSuggestion,
-                    onSubmit = submit
-                )
-                Spacer(Modifier.height(26.dp))
-                ActiveDownloads(state = state, viewModel = viewModel, onNavigateToDownloads = onNavigateToDownloads)
-                Spacer(Modifier.height(24.dp))
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                Column(modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp).padding(horizontal = 20.dp)) {
+                    Spacer(Modifier.height(28.dp))
+                    HomeIntro()
+                    Spacer(Modifier.height(22.dp))
+                    PasteCard(
+                        state = state,
+                        fieldLabel = onPasteTitle,
+                        onInputChange = viewModel::onInputChange,
+                        onClear = viewModel::clearInput,
+                        onPaste = viewModel::pasteFromClipboard,
+                        onUseSuggestion = viewModel::useClipboardSuggestion,
+                        onDismissSuggestion = viewModel::dismissClipboardSuggestion,
+                        onSubmit = submit
+                    )
+                    Spacer(Modifier.height(26.dp))
+                    ActiveDownloads(state = state, viewModel = viewModel, onNavigateToDownloads = onNavigateToDownloads)
+                    Spacer(Modifier.height(24.dp))
+                }
             }
             Spacer(Modifier.height(8.dp))
         }

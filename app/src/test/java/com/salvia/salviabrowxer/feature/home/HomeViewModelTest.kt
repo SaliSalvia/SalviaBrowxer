@@ -152,6 +152,16 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `submitting a bare host normalizes it before opening`() = runTest {
+        viewModel.onInputChange("example.com/path")
+
+        viewModel.submitInput()
+
+        assertEquals("https://example.com/path", viewModel.openRequests.first())
+        assertEquals("https://example.com/path", viewModel.uiState.value.input)
+    }
+
+    @Test
     fun `submitting something that is not a link explains why`() = runTest {
         viewModel.onInputChange("not a url")
 

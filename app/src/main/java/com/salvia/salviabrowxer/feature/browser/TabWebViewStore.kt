@@ -183,6 +183,8 @@ class TabWebViewStore(
     private var desktopMode = false
     private var cookiesEnabled = true
     private var defaultUserAgent: String? = null
+    /** Background views receive the new UA now and reload only when they next become visible. */
+    private val pendingDesktopReloads = mutableSetOf<String>()
 
     /** Document-start injection needs a WebView new enough to have the feature. */
     private val documentStartSniffer: Boolean = runCatching {
@@ -213,6 +215,7 @@ class TabWebViewStore(
         if (view.parent == null) {
             container.addView(view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
+        if (pendingDesktopReloads.remove(tabId) && view.url?.isNotBlank() == true) view.reload()
         return view
     }
 
@@ -314,6 +317,7 @@ class TabWebViewStore(
     fun hibernate(tabId: String) {
         val view = live.remove(tabId) ?: return
         usage.remove(tabId)
+        pendingDesktopReloads.remove(tabId)
         verifiedFrames.remove(tabId)
         val url = view.url.orEmpty()
         val title = view.title.orEmpty()
@@ -324,6 +328,7 @@ class TabWebViewStore(
     fun destroy(tabId: String) {
         val view = live.remove(tabId) ?: return
         usage.remove(tabId)
+        pendingDesktopReloads.remove(tabId)
         verifiedFrames.remove(tabId)
         destroyView(view)
     }
@@ -332,6 +337,7 @@ class TabWebViewStore(
         live.keys.toList().forEach { destroy(it) }
         usage.clear()
         verifiedFrames.clear()
+        pendingDesktopReloads.clear()
         visibleTabId = null
     }
 
@@ -344,13 +350,21 @@ class TabWebViewStore(
             manager.setAcceptCookie(cookiesEnabled)
             this.cookiesEnabled = cookiesEnabled
         }
-        live.values.forEach { view ->
+        live.forEach { (tabId, view) ->
             if (view.settings.javaScriptEnabled != javaScriptEnabled) view.settings.javaScriptEnabled = javaScriptEnabled
             val ua = WebViewSetup.userAgentFor(defaultUserAgent ?: view.settings.userAgentString, desktopMode)
             if (view.settings.userAgentString != ua) {
                 view.settings.userAgentString = ua
-                // A user-agent change only takes effect on the next load.
-                if (view.url?.isNotBlank() == true) view.reload()
+                // A user-agent change only takes effect on the next load. Keep an inactive page's
+                // current state intact and reload it once it is selected again.
+                if (view.url?.isNotBlank() == true) {
+                    if (tabId == visibleTabId) {
+                        pendingDesktopReloads.remove(tabId)
+                        view.reload()
+                    } else {
+                        pendingDesktopReloads += tabId
+                    }
+                }
             }
         }
     }
@@ -395,8 +409,11 @@ class TabWebViewStore(
     @SuppressLint("SetJavaScriptEnabled")
     private fun create(tabId: String): WebView {
         val view = WebView(context)
-        WebViewSetup.apply(view, javaScriptEnabled, desktopMode)
-        if (defaultUserAgent == null) defaultUserAgent = view.settings.userAgentString
+        // Capture the provider's mobile UA before applying Desktop mode. Capturing it afterwards
+        // makes an initially-desktop tab believe its desktop UA is the mobile baseline, so turning
+        // the feature back off can never restore the actual device UA.
+        val mobileAgent = defaultUserAgent ?: view.settings.userAgentString.also { defaultUserAgent = it }
+        WebViewSetup.apply(view, javaScriptEnabled, desktopMode, defaultAgent = mobileAgent)
         // A bridge per WebView, not one for the store: a blob read belongs to the tab that asked for
         // it, and the view model can then check that tab's page before it accepts a file at all.
         // Blob staging gets its own cache subdirectory so FileProvider only exposes that folder.

@@ -39,6 +39,7 @@ import com.salvia.salviabrowxer.ui.utils.CleartextPolicy
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.utils.MediaOfferability
 import com.salvia.salviabrowxer.ui.utils.MainContentSelector
+import com.salvia.salviabrowxer.ui.utils.HomepageResolver
 import com.salvia.salviabrowxer.ui.utils.MseRecordingUiState
 import com.salvia.salviabrowxer.ui.utils.PageErrorKind
 import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
@@ -79,9 +80,18 @@ sealed interface BrowserCommand {
 
 data class FabPosition(val x: Float = 0f, val y: Float = 0f)
 
+enum class AddressSuggestionSource { BOOKMARK, HISTORY }
+
+data class AddressSuggestion(
+    val title: String,
+    val url: String,
+    val source: AddressSuggestionSource
+)
+
 data class BrowserUiState(
     val url: String = "",
     val addressBarInput: String = "",
+    val addressSuggestions: List<AddressSuggestion> = emptyList(),
     val title: String = "",
     val isLoading: Boolean = false,
     val progress: Int = 0,
@@ -191,6 +201,8 @@ class BrowserViewModel @Inject constructor(
 
     private var detectJob: Job? = null
     private var fabSaveJob: Job? = null
+    private var addressSuggestionJob: Job? = null
+    @Volatile private var pendingDesktopDecision: Boolean? = null
 
     /**
      * The one authority over what a page may write into a recording, shared by every tab this view
@@ -230,7 +242,8 @@ class BrowserViewModel @Inject constructor(
                     isCleartextAllowed = if (state.isCleartextAllowed == startup.isCleartextAllowed) cleartextAllowed else state.isCleartextAllowed
                 )
             }
-            if (homepage != startupUrl && _uiState.value.url == startupUrl) navigate(homepage)
+            val resolvedHomepage = HomepageResolver.resolve(homepage, engine)
+            if (resolvedHomepage != startupUrl && _uiState.value.url == startupUrl) navigate(resolvedHomepage)
         }
         observeSettingsLive()
         observeDownloadQueue()
@@ -325,6 +338,34 @@ class BrowserViewModel @Inject constructor(
 
     private fun observeSettingsLive() {
         viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.homepage.collectLatest { homepage ->
+                _uiState.update { it.copy(homepage = homepage.ifBlank { Constants.DEFAULT_HOMEPAGE }) }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.searchEngine.collectLatest { engine -> _uiState.update { it.copy(searchEngine = engine) } }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.isJavaScriptEnabled.collectLatest { enabled -> _uiState.update { it.copy(isJavaScriptEnabled = enabled) } }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.areCookiesEnabled.collectLatest { enabled -> _uiState.update { it.copy(areCookiesEnabled = enabled) } }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.isDesktopSite.collectLatest { saved ->
+                if (pendingDesktopDecision == saved) pendingDesktopDecision = null
+                val effective = pendingDesktopDecision ?: saved
+                _uiState.update { state ->
+                    if (state.isDesktopSite == effective) state
+                    else state.copy(
+                        isDesktopSite = effective,
+                        isLoading = state.url.isNotBlank(),
+                        progress = if (state.url.isNotBlank()) 0 else state.progress
+                    )
+                }
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
             settingsDataStore.floatingButtonSize.collectLatest { size -> _uiState.update { it.copy(floatingButtonSize = size.coerceIn(40, 72)) } }
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -372,7 +413,8 @@ class BrowserViewModel @Inject constructor(
     // region tabs
     /** A new user-created tab starts at the configured homepage, never as a blank WebView. */
     fun createNewTab(url: String = "", isPrivate: Boolean = false) {
-        val target = url.ifBlank { _uiState.value.homepage.ifBlank { Constants.DEFAULT_HOMEPAGE } }
+        val state = _uiState.value
+        val target = url.ifBlank { HomepageResolver.resolve(state.homepage, state.searchEngine) }
         openTab(target, isPrivate, navigate = true)
     }
 
@@ -388,6 +430,7 @@ class BrowserViewModel @Inject constructor(
         navigate: Boolean,
         privateModeOverride: Boolean? = null
     ): String {
+        cancelAddressSuggestionSearch()
         val privateTab = privateModeOverride ?: (isPrivate || _uiState.value.isPrivateMode)
         val tab = Tab(
             title = if (url.isEmpty()) "New Tab" else url,
@@ -400,6 +443,7 @@ class BrowserViewModel @Inject constructor(
                 currentTabId = tab.id,
                 url = url,
                 addressBarInput = url,
+                addressSuggestions = emptyList(),
                 title = tab.title,
                 isPrivateMode = privateTab,
                 isLoading = navigate && url.isNotEmpty(),
@@ -422,9 +466,10 @@ class BrowserViewModel @Inject constructor(
 
     fun switchTab(tabId: String) {
         val tab = _uiState.value.tabs.firstOrNull { it.id == tabId } ?: return
+        cancelAddressSuggestionSearch()
         _uiState.update { state ->
             state.copy(
-                currentTabId = tab.id, url = tab.url, addressBarInput = tab.url, title = tab.title,
+                currentTabId = tab.id, url = tab.url, addressBarInput = tab.url, addressSuggestions = emptyList(), title = tab.title,
                 isPrivateMode = tab.isPrivate, detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null,
                 isTabSwitcherVisible = false,
                 // A hibernated tab restores the last committed URL; the store reloads it.
@@ -436,6 +481,7 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun closeTab(tabId: String) {
+        cancelAddressSuggestionSearch()
         _uiState.update { state ->
             val index = state.tabs.indexOfFirst { it.id == tabId }
             if (index == -1) return@update state
@@ -444,7 +490,7 @@ class BrowserViewModel @Inject constructor(
             val currentTab = remaining.firstOrNull { it.id == current }
             state.copy(
                 tabs = remaining, currentTabId = current, url = currentTab?.url ?: "",
-                addressBarInput = currentTab?.url ?: "", title = currentTab?.title ?: "",
+                addressBarInput = currentTab?.url ?: "", addressSuggestions = emptyList(), title = currentTab?.title ?: "",
                 isPrivateMode = currentTab?.isPrivate == true,
                 detectedMedia = if (state.currentTabId == current) state.detectedMedia else emptyList(),
                 visibleMediaUrl = if (state.currentTabId == current) state.visibleMediaUrl else null,
@@ -485,27 +531,67 @@ class BrowserViewModel @Inject constructor(
 
     // region navigation
     fun loadFromAddressBar(input: String = _uiState.value.addressBarInput) {
+        cancelAddressSuggestionSearch()
         val target = resolveTargetUrl(input) ?: return
-        _uiState.update { it.copy(addressBarInput = target) }
+        _uiState.update { it.copy(addressBarInput = target, addressSuggestions = emptyList()) }
         navigate(target)
     }
 
-    fun onAddressInputChange(input: String) { _uiState.update { it.copy(addressBarInput = input) } }
+    /** Local, bounded autocomplete. It never sends partially typed text to the network. */
+    fun onAddressInputChange(input: String) {
+        cancelAddressSuggestionSearch()
+        _uiState.update { it.copy(addressBarInput = input, addressSuggestions = emptyList()) }
+
+        val query = input.trim()
+        val snapshot = _uiState.value
+        if (query.length < ADDRESS_SUGGESTION_MIN_LENGTH || query.equals(snapshot.url, ignoreCase = true)) return
+
+        val tabId = snapshot.currentTabId
+        val privateMode = snapshot.isPrivateMode
+        addressSuggestionJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(ADDRESS_SUGGESTION_DEBOUNCE_MILLIS)
+            val bookmarks = runCatching {
+                bookmarkRepository.searchBookmarkSuggestions(query, ADDRESS_SUGGESTION_LIMIT).first()
+            }.getOrDefault(emptyList())
+            // Incognito tabs can still reach saved bookmarks, but never surface browsing history.
+            val history = if (privateMode) emptyList() else runCatching {
+                historyRepository.searchHistorySuggestions(query, ADDRESS_SUGGESTION_LIMIT).first()
+            }.getOrDefault(emptyList())
+            val suggestions = buildList {
+                bookmarks.forEach { add(AddressSuggestion(it.title.ifBlank { it.url }, it.url, AddressSuggestionSource.BOOKMARK)) }
+                history.forEach { add(AddressSuggestion(it.title.ifBlank { it.url }, it.url, AddressSuggestionSource.HISTORY)) }
+            }.distinctBy { it.url.trim() }.take(ADDRESS_SUGGESTION_LIMIT)
+
+            _uiState.update { state ->
+                if (state.addressBarInput != input || state.currentTabId != tabId || state.isPrivateMode != privateMode) state
+                else state.copy(addressSuggestions = suggestions)
+            }
+        }
+    }
+
+    fun selectAddressSuggestion(url: String) = loadFromAddressBar(url)
+
+    private fun cancelAddressSuggestionSearch() {
+        addressSuggestionJob?.cancel()
+        addressSuggestionJob = null
+    }
 
     fun navigate(url: String) {
+        cancelAddressSuggestionSearch()
         val target = normalizeUrl(url) ?: return
         if (CleartextPolicy.isBlocked(target, _uiState.value.isCleartextAllowed)) {
-            _uiState.update { it.copy(blockedCleartextUrl = target, addressBarInput = target, isLoading = false, progress = 0) }
+            _uiState.update { it.copy(blockedCleartextUrl = target, addressBarInput = target, addressSuggestions = emptyList(), isLoading = false, progress = 0) }
             _messages.trySend(context.getString(R.string.error_cleartext_blocked))
             return
         }
-        _uiState.update { state -> state.copy(url = target, addressBarInput = target, isLoading = true, progress = 0, isSecure = target.startsWith("https://"), detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = target, lastVisited = System.currentTimeMillis()) else tab }) }
+        _uiState.update { state -> state.copy(url = target, addressBarInput = target, addressSuggestions = emptyList(), isLoading = true, progress = 0, isSecure = target.startsWith("https://"), detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(url = target, lastVisited = System.currentTimeMillis()) else tab }) }
         _commands.trySend(BrowserCommand.Load(target))
     }
 
     fun goHome() {
-        val target = _uiState.value.homepage.ifBlank { Constants.DEFAULT_HOMEPAGE }
-        if (_uiState.value.url == target) {
+        val state = _uiState.value
+        val target = HomepageResolver.resolve(state.homepage, state.searchEngine)
+        if (state.url == target) {
             _messages.trySend(context.getString(R.string.home_noop_moved))
             return
         }
@@ -526,11 +612,12 @@ class BrowserViewModel @Inject constructor(
     fun onPageStarted(tabId: String?, url: String?) {
         val safeUrl = url ?: return
         val target = tabId ?: _uiState.value.currentTabId ?: return
+        if (target == _uiState.value.currentTabId) cancelAddressSuggestionSearch()
         // A form or link can still reach http:// even when the address bar refused it.
         if (CleartextPolicy.isBlocked(safeUrl, _uiState.value.isCleartextAllowed)) {
             if (target == _uiState.value.currentTabId) {
                 _commands.trySend(BrowserCommand.Stop)
-                _uiState.update { it.copy(blockedCleartextUrl = safeUrl, isLoading = false) }
+                _uiState.update { it.copy(blockedCleartextUrl = safeUrl, addressSuggestions = emptyList(), isLoading = false) }
                 _messages.trySend(context.getString(R.string.error_cleartext_blocked))
             }
             return
@@ -540,6 +627,7 @@ class BrowserViewModel @Inject constructor(
             state.copy(
                 url = if (isCurrent) safeUrl else state.url,
                 addressBarInput = if (isCurrent) safeUrl else state.addressBarInput,
+                addressSuggestions = if (isCurrent) emptyList() else state.addressSuggestions,
                 isLoading = if (isCurrent) true else state.isLoading,
                 isSecure = if (isCurrent) safeUrl.startsWith("https://") else state.isSecure,
                 detectedMedia = if (isCurrent) emptyList() else state.detectedMedia,
@@ -553,9 +641,10 @@ class BrowserViewModel @Inject constructor(
 
     /** SPA pushState/replaceState changes page identity without an onPageStarted callback. */
     fun onHistoryUrlChanged(tabId: String, url: String) {
+        if (tabId == _uiState.value.currentTabId) cancelAddressSuggestionSearch()
         _uiState.update { state ->
             if (tabId != state.currentTabId || url == state.url) return@update state
-            state.copy(url = url, addressBarInput = url, detectedMedia = emptyList(),
+            state.copy(url = url, addressBarInput = url, addressSuggestions = emptyList(), detectedMedia = emptyList(),
                 visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null, tabs = state.tabs.map { tab ->
                     if (tab.id == tabId) tab.copy(url = url) else tab
                 })
@@ -1361,13 +1450,36 @@ class BrowserViewModel @Inject constructor(
     // endregion
 
     // region browser settings & data
-    fun setPrivateMode(isPrivate: Boolean) { _uiState.update { state -> state.copy(isPrivateMode = isPrivate, tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(isPrivate = isPrivate) else tab }) } }
+    fun setPrivateMode(isPrivate: Boolean) {
+        cancelAddressSuggestionSearch()
+        _uiState.update { state ->
+            state.copy(
+                isPrivateMode = isPrivate,
+                addressSuggestions = emptyList(),
+                tabs = state.tabs.map { tab -> if (tab.id == state.currentTabId) tab.copy(isPrivate = isPrivate) else tab }
+            )
+        }
+    }
 
-    /** Desktop site is a real toggle: it is persisted and the store reloads the open page. */
+    /** Desktop site is persisted, applied to every tab and reloaded with the new user agent. */
     fun toggleDesktopSite() {
         val next = !_uiState.value.isDesktopSite
-        _uiState.update { it.copy(isDesktopSite = next) }
-        viewModelScope.launch(Dispatchers.IO) { runCatching { settingsDataStore.setDesktopSite(next) } }
+        pendingDesktopDecision = next
+        _uiState.update { state ->
+            state.copy(
+                isDesktopSite = next,
+                isLoading = state.url.isNotBlank(),
+                progress = if (state.url.isNotBlank()) 0 else state.progress
+            )
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val persisted = runCatching { settingsDataStore.setDesktopSite(next) }.isSuccess
+            if (!persisted && pendingDesktopDecision == next) {
+                pendingDesktopDecision = null
+                val saved = runCatching { settingsDataStore.isDesktopSite.first() }.getOrDefault(!next)
+                _uiState.update { it.copy(isDesktopSite = saved) }
+            }
+        }
     }
 
     fun saveFabPosition(x: Float, y: Float) {
@@ -1513,6 +1625,9 @@ class BrowserViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "BrowserViewModel"
+        private const val ADDRESS_SUGGESTION_LIMIT = 5
+        private const val ADDRESS_SUGGESTION_MIN_LENGTH = 2
+        private const val ADDRESS_SUGGESTION_DEBOUNCE_MILLIS = 140L
 
         /** Long enough that opening a tab and typing in it are one write, short enough to survive a kill. */
         private const val SESSION_PERSIST_SETTLE_MILLIS = 900L

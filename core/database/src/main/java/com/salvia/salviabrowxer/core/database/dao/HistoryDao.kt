@@ -26,6 +26,9 @@ interface HistoryDao {
     @Query("SELECT * FROM history WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY visitedAt DESC")
     fun search(query: String): Flow<List<HistoryEntity>>
 
+    @Query("SELECT * FROM history WHERE title LIKE '%' || :query || '%' OR url LIKE '%' || :query || '%' ORDER BY visitedAt DESC LIMIT :limit")
+    fun searchSuggestions(query: String, limit: Int): Flow<List<HistoryEntity>>
+
     @Query("DELETE FROM history WHERE id = :id")
     suspend fun deleteById(id: String)
 

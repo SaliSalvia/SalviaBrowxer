@@ -7,8 +7,8 @@ object Constants {
     const val PACKAGE_NAME = "com.salvia.salviabrowxer"
 
     const val DEFAULT_HOMEPAGE = "https://www.google.com"
-    const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
-    const val DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    /** Used only when a non-standard WebView provider exposes no Chrome version token. */
+    const val FALLBACK_DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
     const val DEFAULT_DOWNLOAD_DIRECTORY = "SalviaBrowxer"
     const val MAX_SIMULTANEOUS_DOWNLOADS = 3
