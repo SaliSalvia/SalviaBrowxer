@@ -25,8 +25,9 @@ versionName `1.0.0`.
 - **Browsing** — a real multi-tab browser: up to eight live WebViews, one per tab, and beyond that
   the least recently used tab is hibernated and restored by URL. The chrome is split so every
   control keeps a 48 dp touch target on a 360 dp phone: history in the top bar next to the address
-  field and the media pill, and reload / stop, downloads, tabs and the overflow menu along the
-  bottom. Home moved into the overflow menu when reload / stop took its slot, so nothing became
+  field and the media pill, and reload / stop, tabs, settings and the overflow menu along the
+  bottom - above a three-ring dock: the left ring counts and opens the downloads in progress, the
+  big centre ring is home, and the right ring counts and opens the finished ones, so nothing is
   unreachable. A tab switcher with close, new tab and new private tab, private tabs that never
   write history and are never restored (they are **not** a separate cookie jar - the WebView profile
   is shared, and the app says so in the tab switcher instead of implying isolation), find in page, share and copy link, five search engines, JavaScript and cookie

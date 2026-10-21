@@ -105,7 +105,7 @@ fun SalviaBrowxerAppContent(
     val navController = rememberNavController()
 
     LaunchedEffect(openDownloads) {
-        if (openDownloads && navController.currentDestination?.route != ROUTE_DOWNLOADS) {
+        if (openDownloads && navController.currentDestination?.route != ROUTE_DOWNLOADS_PATTERN) {
             navController.navigate(ROUTE_DOWNLOADS)
         }
     }
@@ -145,7 +145,10 @@ fun SalviaBrowxerAppContent(
                 .getStateFlow<String?>(KEY_PASTED_LINK, null)
                 .collectAsStateWithLifecycle()
             BrowserScreen(
-                onNavigateToDownloads = { navController.navigate(ROUTE_DOWNLOADS) },
+                onNavigateToDownloads = { tab ->
+                    // Tab 0 is the default route; a named tab is only in the URL when it differs.
+                    navController.navigate(if (tab == 0) ROUTE_DOWNLOADS else "$ROUTE_DOWNLOADS?tab=$tab") { launchSingleTop = true }
+                },
                 onNavigateToSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onNavigateToBookmarks = { navController.navigate(ROUTE_BOOKMARKS) },
                 onNavigateToHistory = { navController.navigate(ROUTE_HISTORY) },
@@ -158,8 +161,14 @@ fun SalviaBrowxerAppContent(
                 onExternalUrlConsumed = onIncomingUrlConsumed
             )
         }
-        composable(ROUTE_DOWNLOADS) {
+        composable(
+            route = ROUTE_DOWNLOADS_PATTERN,
+            arguments = listOf(navArgument("tab") { type = NavType.IntType; defaultValue = 0 })
+        ) { entry ->
             DownloadsScreen(
+                // The dock's rings name their destination: the left ring lands on Active,
+                // the right one on Completed.
+                initialTabIndex = entry.arguments?.getInt("tab") ?: 0,
                 onBack = { navController.popBackStack() },
                 onPlayInApp = { path, title -> navigateToPlayer(navController, path, title) }
             )
@@ -245,6 +254,8 @@ fun navigateToPlayer(navController: NavController, url: String, title: String) {
 private const val ROUTE_HOME = "home"
 private const val ROUTE_BROWSER = "browser"
 private const val ROUTE_DOWNLOADS = "downloads"
+/** The pattern the downloads route is registered with; plain "downloads" still matches it. */
+private const val ROUTE_DOWNLOADS_PATTERN = "downloads?tab={tab}"
 private const val ROUTE_BOOKMARKS = "bookmarks"
 private const val ROUTE_HISTORY = "history"
 private const val ROUTE_SETTINGS = "settings"

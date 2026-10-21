@@ -94,6 +94,7 @@ import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.ui.components.BrowserBottomBar
 import com.salvia.salviabrowxer.ui.components.BrowserMenuItem
 import com.salvia.salviabrowxer.ui.components.BrowserTopBar
+import com.salvia.salviabrowxer.ui.components.DOWNLOADS_TAB_ACTIVE
 import com.salvia.salviabrowxer.ui.components.FindInPageBar
 import com.salvia.salviabrowxer.ui.components.FloatingDownloadButton
 import com.salvia.salviabrowxer.ui.components.MediaQualitySelectionSheet
@@ -113,7 +114,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun BrowserScreen(
-    onNavigateToDownloads: () -> Unit,
+    /** Lands on the downloads screen; the Int is the tab to open (0 active, 2 completed). */
+    onNavigateToDownloads: (Int) -> Unit = {},
     onNavigateToSettings: () -> Unit,
     onNavigateToBookmarks: () -> Unit,
     onNavigateToHistory: () -> Unit,
@@ -520,7 +522,7 @@ fun BrowserScreen(
         } else {
             null
         },
-        BrowserMenuItem(stringResource(R.string.downloads), Icons.Default.Download, onClick = onNavigateToDownloads),
+        BrowserMenuItem(stringResource(R.string.downloads), Icons.Default.Download, onClick = { onNavigateToDownloads(DOWNLOADS_TAB_ACTIVE) }),
         BrowserMenuItem(stringResource(R.string.home_start_screen), Icons.Default.Dashboard, onClick = { onNavigateToHome?.invoke() }, isEnabled = onNavigateToHome != null),
         BrowserMenuItem(stringResource(R.string.settings), Icons.Default.Settings, onClick = onNavigateToSettings)
     )
@@ -691,8 +693,14 @@ fun BrowserScreen(
                 onSettingsClick = onNavigateToSettings,
                 onTabsClick = remember(viewModel) { { viewModel.openTabSwitcher() } },
                 menuItems = menuItems,
+                // The centre ring is "home": the browsable homepage while a page is open, the
+                // app's own start screen when the browser has nothing to show.
+                onHomeClick = remember(viewModel, hasPage, onNavigateToHome) {
+                    { if (hasPage) viewModel.goHome() else onNavigateToHome?.invoke() }
+                },
                 isLoading = state.isLoading,
                 activeDownloadCount = state.activeDownloadCount,
+                completedDownloadCount = state.completedDownloadCount,
                 tabsCount = state.tabs.size,
                 menuContentDescription = stringResource(R.string.menu)
             )
