@@ -14,6 +14,9 @@ class BookmarkRepositoryImpl @Inject constructor(
     override fun searchBookmarks(query: String): Flow<List<BookmarkEntity>> =
         bookmarkDao.search(query)
 
+    override fun searchBookmarkSuggestions(query: String, limit: Int): Flow<List<BookmarkEntity>> =
+        bookmarkDao.searchSuggestions(query, limit)
+
     override suspend fun getBookmarkById(id: String): BookmarkEntity? = bookmarkDao.getById(id)
 
     override suspend fun addBookmark(bookmark: BookmarkEntity) = bookmarkDao.insert(bookmark)

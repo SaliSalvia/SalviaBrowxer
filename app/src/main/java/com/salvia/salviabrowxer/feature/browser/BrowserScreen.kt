@@ -410,6 +410,7 @@ fun BrowserScreen(
     val hasPage = state.url.isNotBlank()
     val onUrlChange = remember(viewModel) { { input: String -> viewModel.onAddressInputChange(input) } }
     val onUrlSubmit = remember(viewModel) { { input: String -> viewModel.loadFromAddressBar(input) } }
+    val onAddressSuggestionSelected = remember(viewModel) { { url: String -> viewModel.selectAddressSuggestion(url) } }
     val onBackClick = remember(viewModel) { { viewModel.goBack() } }
     val onForwardClick = remember(viewModel) { { viewModel.goForward() } }
     // One control, two honest states: the bottom bar reloads a settled page and stops a loading
@@ -542,7 +543,10 @@ fun BrowserScreen(
                 onBackClick = onBackClick,
                 onForwardClick = onForwardClick,
                 mediaCount = mediaCount,
-                onMediaClick = onMediaClick
+                onMediaClick = onMediaClick,
+                addressSuggestions = state.addressSuggestions,
+                currentTabId = state.currentTabId,
+                onSuggestionSelected = onAddressSuggestionSelected
             )
 
             findState?.let { find ->

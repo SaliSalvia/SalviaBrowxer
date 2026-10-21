@@ -227,7 +227,7 @@
     <string name="home_hero_subtitle">Open a page or paste a direct media link. Keep your browsing and downloads in one place.</string>
     <string name="home_paste_title">Paste a link</string>
     <string name="home_paste_support">A webpage or a direct video, audio, or playlist link</string>
-    <string name="home_paste_hint">https://…</string>
+    <string name="home_paste_hint">https://… or example.com</string>
     <string name="home_paste_from_clipboard">Paste from clipboard</string>
     <string name="home_clear_input">Clear</string>
     <string name="home_open_link">Open link</string>

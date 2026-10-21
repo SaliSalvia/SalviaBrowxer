@@ -2,7 +2,9 @@ package com.salvia.salviabrowxer.feature.browser
 
 import android.content.Context
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import com.salvia.salviabrowxer.core.database.entities.BookmarkEntity
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
+import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
 import com.salvia.salviabrowxer.core.model.MediaFormat
@@ -20,10 +22,15 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -103,6 +110,42 @@ class BrowserViewModelTest {
         viewModel.loadFromAddressBar()
 
         assertEquals("https://example.com", viewModel.uiState.value.url)
+    }
+
+    @Test
+    fun `address suggestions are local bounded and bookmark-first`() = runBlocking {
+        every { bookmarkRepository.searchBookmarkSuggestions("exa", 5) } returns flowOf(
+            listOf(BookmarkEntity(title = "Example bookmark", url = "https://example.com"))
+        )
+        every { historyRepository.searchHistorySuggestions("exa", 5) } returns flowOf(
+            listOf(
+                HistoryEntity(title = "Example visit", url = "https://example.org"),
+                HistoryEntity(title = "Duplicate", url = "https://example.com")
+            )
+        )
+
+        viewModel.onAddressInputChange("exa")
+        val suggestions = withTimeout(3_000) {
+            viewModel.uiState.first { it.addressSuggestions.size == 2 }.addressSuggestions
+        }
+
+        assertEquals("https://example.com", suggestions[0].url)
+        assertEquals(AddressSuggestionSource.BOOKMARK, suggestions[0].source)
+        assertEquals("https://example.org", suggestions[1].url)
+        assertEquals(AddressSuggestionSource.HISTORY, suggestions[1].source)
+    }
+
+    @Test
+    fun `private tabs never query browsing history for address suggestions`() = runBlocking {
+        every { bookmarkRepository.searchBookmarkSuggestions("exa", 5) } returns flowOf(emptyList())
+        viewModel.createNewTab("https://example.com/private", isPrivate = true)
+
+        viewModel.onAddressInputChange("exa")
+        verify(timeout = 2_000, exactly = 1) { bookmarkRepository.searchBookmarkSuggestions("exa", 5) }
+        delay(180)
+
+        verify(exactly = 0) { historyRepository.searchHistorySuggestions(any(), any()) }
+        assertTrue(viewModel.uiState.value.addressSuggestions.isEmpty())
     }
 
     @Test
@@ -361,6 +404,27 @@ class BrowserViewModelTest {
         viewModel.toggleDesktopSite()
         assertFalse(viewModel.uiState.value.isDesktopSite)
         coVerify(timeout = 5_000, exactly = 1) { settingsDataStore.setDesktopSite(false) }
+    }
+
+    @Test
+    fun `saved desktop mode is applied on startup and can be switched back off`() = runBlocking {
+        every { settingsDataStore.isDesktopSite } returns flowOf(true)
+        val restoredViewModel = BrowserViewModel(
+            historyRepository = historyRepository,
+            bookmarkRepository = bookmarkRepository,
+            downloadRepository = downloadRepository,
+            settingsDataStore = settingsDataStore,
+            mediaDetector = mediaDetector,
+            mediaResolver = mediaResolver,
+            sessionRestorer = sessionRestorer,
+            diagnostics = diagnostics,
+            context = context
+        )
+
+        withTimeout(3_000) { restoredViewModel.uiState.first { it.isDesktopSite } }
+        restoredViewModel.toggleDesktopSite()
+
+        assertFalse(restoredViewModel.uiState.value.isDesktopSite)
     }
 
     @Test

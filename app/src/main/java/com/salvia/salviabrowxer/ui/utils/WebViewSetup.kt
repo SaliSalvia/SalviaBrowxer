@@ -15,9 +15,16 @@ import android.webkit.WebView
  */
 object WebViewSetup {
 
+    private val chromeVersionPattern = Regex("Chrome/([0-9]+(?:\\.[0-9]+){1,3})")
+
     /** Long-lived flags that never change while the app runs. */
     @SuppressLint("SetJavaScriptEnabled")
-    fun apply(webView: WebView, javaScriptEnabled: Boolean, desktopMode: Boolean) {
+    fun apply(
+        webView: WebView,
+        javaScriptEnabled: Boolean,
+        desktopMode: Boolean,
+        defaultAgent: String? = null
+    ) {
         webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
         webView.isVerticalScrollBarEnabled = false
         webView.isHorizontalScrollBarEnabled = false
@@ -54,7 +61,7 @@ object WebViewSetup {
             @Suppress("DEPRECATION")
             setRenderPriority(WebSettings.RenderPriority.HIGH)
         }
-        setUserAgent(webView, desktopMode, defaultAgent = null)
+        setUserAgent(webView, desktopMode, defaultAgent = defaultAgent)
     }
 
     /** Applies the mobile or desktop user agent; [defaultAgent] is the WebView's own mobile UA. */
@@ -64,5 +71,16 @@ object WebViewSetup {
     }
 
     fun userAgentFor(mobileAgent: String, desktopMode: Boolean): String =
-        if (desktopMode) Constants.DESKTOP_USER_AGENT else mobileAgent
+        if (desktopMode) desktopUserAgentFor(mobileAgent) else mobileAgent
+
+    /**
+     * Keep desktop identification in step with the WebView provider actually installed on the
+     * device. A fixed Chrome token ages out and can make sites serve the wrong desktop experience.
+     */
+    fun desktopUserAgentFor(mobileAgent: String): String {
+        val version = chromeVersionPattern.find(mobileAgent)?.groupValues?.getOrNull(1)
+            ?: chromeVersionPattern.find(Constants.FALLBACK_DESKTOP_USER_AGENT)?.groupValues?.getOrNull(1)
+            ?: "122.0.0.0"
+        return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$version Safari/537.36"
+    }
 }

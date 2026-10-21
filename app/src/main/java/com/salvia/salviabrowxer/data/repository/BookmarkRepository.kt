@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 interface BookmarkRepository {
     fun getAllBookmarks(): Flow<List<BookmarkEntity>>
     fun searchBookmarks(query: String): Flow<List<BookmarkEntity>>
+    /** Small, recently-updated result set for the address bar. */
+    fun searchBookmarkSuggestions(query: String, limit: Int): Flow<List<BookmarkEntity>>
     suspend fun getBookmarkById(id: String): BookmarkEntity?
     suspend fun addBookmark(bookmark: BookmarkEntity)
     suspend fun updateBookmark(bookmark: BookmarkEntity)

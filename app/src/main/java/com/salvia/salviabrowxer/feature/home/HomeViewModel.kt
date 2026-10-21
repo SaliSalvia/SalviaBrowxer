@@ -11,6 +11,7 @@ import com.salvia.salviabrowxer.core.model.PastedLink
 import com.salvia.salviabrowxer.core.model.PastedLinkKind
 import com.salvia.salviabrowxer.data.repository.DownloadRepository
 import com.salvia.salviabrowxer.service.DownloadService
+import com.salvia.salviabrowxer.ui.utils.HomeLinkResolver
 import com.salvia.salviabrowxer.ui.utils.SharedLinkParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -44,7 +45,7 @@ data class HomeUiState(
      * Uses the same classifier as submission, so the button never promises a download for something
      * that would then be rejected.
      */
-    val inputIsMediaFile: Boolean get() = PastedLink.classify(input) == PastedLinkKind.MEDIA_FILE
+    val inputIsMediaFile: Boolean get() = HomeLinkResolver.classify(input) == PastedLinkKind.MEDIA_FILE
 }
 
 /**
@@ -149,8 +150,8 @@ class HomeViewModel @Inject constructor(
      * found. Which of the two happens is decided downstream, not here.
      */
     fun submitInput() {
-        val url = _uiState.value.input.trim()
-        if (PastedLink.classify(url) == null) {
+        val url = HomeLinkResolver.resolve(_uiState.value.input)
+        if (url == null) {
             _messages.trySend(context.getString(R.string.home_invalid_link))
             return
         }
