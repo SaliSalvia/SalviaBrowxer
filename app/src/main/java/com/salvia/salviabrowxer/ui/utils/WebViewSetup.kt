@@ -40,7 +40,10 @@ object WebViewSetup {
             allowContentAccess = false
             allowFileAccessFromFileURLs = false
             allowUniversalAccessFromFileURLs = false
+            // Support user-initiated target=_blank/window.open tabs, but never permit a page to
+            // spawn windows without a user gesture.
             javaScriptCanOpenWindowsAutomatically = false
+            setSupportMultipleWindows(true)
             @Suppress("DEPRECATION")
             setGeolocationEnabled(false)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
