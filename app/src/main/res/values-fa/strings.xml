@@ -91,6 +91,7 @@
     <string name="media_detected">%d رسانه یافت شد</string>
     <string name="no_media_detected">رسانهٔ قابل‌دانلودی یافت نشد</string>
     <string name="select_quality">انتخاب کیفیت</string>
+    <string name="file_name_label">نام فایل</string>
     <string name="download_start">آغاز دانلود</string>
     <string name="media_pill_description">%1$d رسانه در این صفحه</string>
     <string name="media_button_description">%1$d رسانه در این صفحه. سینی رسانه را می‌گشاید.</string>

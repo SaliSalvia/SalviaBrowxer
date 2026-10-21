@@ -1254,7 +1254,7 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun handleFormatSelected(format: MediaFormat) {
+    fun handleFormatSelected(format: MediaFormat, customFileName: String? = null) {
         val sheet = _uiState.value.qualitySheet ?: return
         val unsupported = sheet.unsupported ?: unsupportedReasonFor(sheet.candidate)
         if (unsupported != null) {
@@ -1268,7 +1268,7 @@ class BrowserViewModel @Inject constructor(
             _commands.trySend(BrowserCommand.FetchBlob(format.url, pageUrl))
             return
         }
-        enqueueDownload(format)
+        enqueueDownload(format, customFileName)
     }
 
     // region live web views
@@ -1384,7 +1384,7 @@ class BrowserViewModel @Inject constructor(
     // endregion
 
     // region downloads
-    fun enqueueDownload(format: MediaFormat) {
+    fun enqueueDownload(format: MediaFormat, customFileName: String? = null) {
         val sheet = _uiState.value.qualitySheet ?: return
         val candidate = sheet.candidate
         // Defence in depth: an unsupported stream must never reach the queue, even if a future
@@ -1397,7 +1397,7 @@ class BrowserViewModel @Inject constructor(
         // Read on this (main) thread: a WebView is main-thread-only, and the coroutine below runs on IO.
         val sessionUserAgent = _uiState.value.currentTabId?.let { webViewStore?.userAgent(it) }
         viewModelScope.launch(Dispatchers.IO) {
-            enqueue(candidate, sheet.mediaInfo.title, format, sessionUserAgent)
+            enqueue(candidate, sheet.mediaInfo.title, format, sessionUserAgent, customFileName)
         }
     }
 
@@ -1408,7 +1408,7 @@ class BrowserViewModel @Inject constructor(
      * `blob:` URL can never become a row through here — the format selection path routes it to the
      * page's own reader instead.
      */
-    private suspend fun enqueue(candidate: MediaCandidate, mediaTitle: String, format: MediaFormat, sessionUserAgent: String?) {
+    private suspend fun enqueue(candidate: MediaCandidate, mediaTitle: String, format: MediaFormat, sessionUserAgent: String?, customFileName: String? = null) {
         if (format.url.startsWith("blob:", ignoreCase = true)) return
         // Defence in depth for the one-tap path, which reaches here without a sheet to check first.
         val unsupported = unsupportedReasonFor(candidate)
@@ -1419,7 +1419,9 @@ class BrowserViewModel @Inject constructor(
         withContext(Dispatchers.IO) {
             val title = mediaTitle.takeIf { it.isNotBlank() } ?: candidate.pageUrl
             val extension = format.extension.takeIf { it.isNotBlank() } ?: com.salvia.salviabrowxer.media.downloader.DownloadManager.extensionFromUrl(format.url)
-            val filename = sanitizeFilename(com.salvia.salviabrowxer.media.downloader.DownloadManager.generateFilename(title, extension))
+            // A name typed in the sheet wins; blank or dot-only input falls back to the page title.
+            val customBase = customFileName?.let { sanitizeFilename(it) }?.takeIf { it.isNotBlank() && it.substringBefore('.').isNotBlank() }
+            val filename = sanitizeFilename(com.salvia.salviabrowxer.media.downloader.DownloadManager.generateFilename(customBase ?: title, extension))
             val destination = runCatching { downloadRepository.getDefaultDownloadDestination() }.getOrNull()?.takeIf { it.isNotBlank() }
                 ?: context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.absolutePath ?: context.filesDir.absolutePath
             // The candidate remembers the page it was found on; the tab supplies the client. Both go

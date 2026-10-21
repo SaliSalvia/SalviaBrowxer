@@ -732,9 +732,9 @@ fun BrowserScreen(
                 unsupported = sheet.unsupported,
                 onDismiss = remember(viewModel) { { viewModel.closeQualitySheet() } },
                 onQualitySelected = remember(viewModel, ensureNotificationPermission) {
-                    { format ->
+                    { format, fileName ->
                         ensureNotificationPermission()
-                        viewModel.handleFormatSelected(format)
+                        viewModel.handleFormatSelected(format, fileName)
                     }
                 },
                 // Recording is offered only where the device can do it, and while the sheet is open

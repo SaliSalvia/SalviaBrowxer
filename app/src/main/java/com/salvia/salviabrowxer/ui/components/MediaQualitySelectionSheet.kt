@@ -32,6 +32,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -76,13 +78,14 @@ import com.salvia.salviabrowxer.ui.theme.SilverShine
 import com.salvia.salviabrowxer.ui.utils.MseRecordingUiState
 import com.salvia.salviabrowxer.ui.utils.UnsupportedMedia
 import com.salvia.salviabrowxer.ui.utils.formatFileSize
+import com.salvia.salviabrowxer.ui.utils.sanitizeFilename
 
 @Composable
 fun MediaQualitySelectionSheet(
     mediaInfo: MediaInfo,
     isResolving: Boolean,
     onDismiss: () -> Unit,
-    onQualitySelected: (MediaFormat) -> Unit,
+    onQualitySelected: (MediaFormat, String?) -> Unit,
     /**
      * Set when this stream cannot be saved at all, so the sheet explains instead of offering.
      *
@@ -108,6 +111,9 @@ fun MediaQualitySelectionSheet(
     // the user is left with when a stream cannot be downloaded as a file (a blob, a live-ish player).
     val canRecord = onRecord != null && recording.isSupported && !recording.isRecording
     var selectedFormat by remember(mediaInfo.title, formats.size) { mutableStateOf<MediaFormat?>(formats.firstOrNull()) }
+    // The page's own title, sanitized, is the suggestion; the user can rename before the file is
+    // written, so no download lands with a name nobody chose.
+    var fileName by remember(mediaInfo.title) { mutableStateOf(sanitizeFilename(mediaInfo.title)) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
@@ -216,6 +222,25 @@ fun MediaQualitySelectionSheet(
                         }
                     }
                 }
+                if (unsupported == null) {
+                    OutlinedTextField(
+                        value = fileName,
+                        onValueChange = { fileName = it },
+                        label = { Text(stringResource(R.string.file_name_label)) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = PearlWhite,
+                            unfocusedTextColor = PearlWhite,
+                            focusedBorderColor = AuroraTeal,
+                            unfocusedBorderColor = CharcoalBorder,
+                            focusedContainerColor = CharcoalSurface,
+                            unfocusedContainerColor = CharcoalSurface
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
                 Spacer(Modifier.height(16.dp))
                 HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.7f))
                 Spacer(Modifier.height(10.dp))
@@ -268,7 +293,7 @@ fun MediaQualitySelectionSheet(
                 }
                 Spacer(Modifier.height(16.dp))
                 Button(
-                    onClick = { selectedFormat?.let { onQualitySelected(it) } },
+                    onClick = { selectedFormat?.let { format -> onQualitySelected(format, fileName.takeIf { it.isNotBlank() }) } },
                     // A probe still running never blocks a download the page already exposed.
                     enabled = selectedFormat != null,
                     // A floor, not a fixed height: the label grows with the font scale.
