@@ -2,7 +2,13 @@ package com.salvia.salviabrowxer.feature.browser
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
+import android.os.Message
+import android.view.View
 import android.view.ViewGroup
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.ValueCallback
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -51,9 +57,16 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class TabWebViewStore(
     private val context: Context,
-    private val callbacks: Callbacks,
+    callbacks: Callbacks,
     private val maxLiveTabs: Int = MAX_LIVE_TABS
 ) {
+
+    @Volatile private var callbacks: Callbacks = callbacks
+
+    /** The view model owns this store across screen navigation; refresh UI callbacks on re-entry. */
+    fun updateCallbacks(callbacks: Callbacks) {
+        this.callbacks = callbacks
+    }
 
     interface Callbacks {
         fun onPageStarted(tabId: String, url: String)
@@ -89,6 +102,25 @@ class TabWebViewStore(
             mimeType: String?,
             contentLength: Long
         )
+        /** A page requested a user-selected file. The system picker owns the URI grant. */
+        fun onShowFileChooser(
+            tabId: String,
+            params: WebChromeClient.FileChooserParams,
+            callback: ValueCallback<Array<Uri>>
+        ): Boolean
+        /** Create a same-privacy-mode tab for a user-initiated target=_blank/window.open. */
+        fun onCreatePopupTab(sourceTabId: String): String?
+        /** Remove a popup tab if WebView could not be allocated for it. */
+        fun onPopupTabCreationFailed(tabId: String)
+        /** Host a page's HTML5 fullscreen view over the browser chrome. */
+        fun onShowCustomView(tabId: String, view: View, callback: WebChromeClient.CustomViewCallback)
+        fun onHideCustomView(tabId: String)
+        fun onJsAlert(tabId: String, url: String?, message: String?, result: JsResult?): Boolean
+        fun onJsConfirm(tabId: String, url: String?, message: String?, result: JsResult?): Boolean
+        fun onJsBeforeUnload(tabId: String, url: String?, message: String?, result: JsResult?): Boolean
+        fun onJsPrompt(
+            tabId: String, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?
+        ): Boolean
         /**
          * A page says it is about to feed the recording armed for this tab, and which mime it is.
          * [sourceOrigin] and [isMainFrame] are the frame's own coordinates, which is what keeps an
@@ -456,6 +488,71 @@ class TabWebViewStore(
                     callbacks.onProgress(tabId, newProgress)
                 }
             }
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                if (filePathCallback == null) return false
+                if (fileChooserParams == null) {
+                    filePathCallback.onReceiveValue(null)
+                    return true
+                }
+                return callbacks.onShowFileChooser(tabId, fileChooserParams, filePathCallback)
+            }
+
+            override fun onCreateWindow(
+                webView: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                // New windows are a common web feature, but unattended pop-up spam is not. WebView
+                // is configured not to allow JavaScript-created windows without a user gesture.
+                if (!isUserGesture || resultMsg == null) return false
+                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                val childTabId = callbacks.onCreatePopupTab(tabId) ?: return false
+                val popup = runCatching { webViewFor(childTabId, "") }.getOrElse {
+                    callbacks.onPopupTabCreationFailed(childTabId)
+                    return false
+                }
+                transport.webView = popup
+                return runCatching {
+                    resultMsg.sendToTarget()
+                    true
+                }.getOrElse {
+                    destroy(childTabId)
+                    callbacks.onPopupTabCreationFailed(childTabId)
+                    false
+                }
+            }
+
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (view == null || callback == null) return
+                callbacks.onShowCustomView(tabId, view, callback)
+            }
+
+            override fun onHideCustomView() {
+                callbacks.onHideCustomView(tabId)
+            }
+
+            override fun onJsAlert(web: WebView?, url: String?, message: String?, result: JsResult?): Boolean =
+                callbacks.onJsAlert(tabId, url, message, result)
+
+            override fun onJsConfirm(web: WebView?, url: String?, message: String?, result: JsResult?): Boolean =
+                callbacks.onJsConfirm(tabId, url, message, result)
+
+            override fun onJsBeforeUnload(web: WebView?, url: String?, message: String?, result: JsResult?): Boolean =
+                callbacks.onJsBeforeUnload(tabId, url, message, result)
+
+            override fun onJsPrompt(
+                web: WebView?,
+                url: String?,
+                message: String?,
+                defaultValue: String?,
+                result: JsPromptResult?
+            ): Boolean = callbacks.onJsPrompt(tabId, url, message, defaultValue, result)
         }
         view.setFindListener { activeMatchOrdinal, numberOfMatches, isDoneCounting ->
             if (isDoneCounting) callbacks.onFindResult(tabId, numberOfMatches, activeMatchOrdinal)

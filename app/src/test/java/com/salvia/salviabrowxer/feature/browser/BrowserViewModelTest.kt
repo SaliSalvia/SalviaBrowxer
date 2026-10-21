@@ -182,6 +182,36 @@ class BrowserViewModelTest {
     }
 
     @Test
+    fun `new tabs open the configured homepage and do not retain the previous address`() {
+        viewModel.createNewTab("https://example.com/previous")
+
+        viewModel.createNewTab()
+
+        val state = viewModel.uiState.value
+        assertEquals(state.homepage, state.url)
+        assertEquals(state.homepage, state.addressBarInput)
+        assertEquals(state.homepage, state.currentTab?.url)
+        assertFalse(state.canGoBack)
+        assertFalse(state.canGoForward)
+    }
+
+    @Test
+    fun `popup tab starts blank and inherits the source privacy mode`() {
+        viewModel.createNewTab("https://example.com/private", isPrivate = true)
+        val sourceTabId = viewModel.uiState.value.currentTabId!!
+
+        val popupTabId = viewModel.createPopupTab(sourceTabId)
+
+        assertNotNull(popupTabId)
+        val state = viewModel.uiState.value
+        assertEquals(popupTabId, state.currentTabId)
+        assertTrue(state.isPrivateMode)
+        assertEquals("", state.url)
+        assertEquals("", state.addressBarInput)
+        assertTrue(state.currentTab!!.isPrivate)
+    }
+
+    @Test
     fun `switchTab and closeTab keep the current tab consistent`() {
         viewModel.createNewTab("https://example.com")
         val firstTabId = viewModel.uiState.value.tabs.first().id

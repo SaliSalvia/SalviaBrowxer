@@ -370,12 +370,54 @@ class BrowserViewModel @Inject constructor(
     }
 
     // region tabs
-    fun createNewTab(url: String = "", isPrivate: Boolean = false) { openTab(url, isPrivate, navigate = url.isNotEmpty()) }
+    /** A new user-created tab starts at the configured homepage, never as a blank WebView. */
+    fun createNewTab(url: String = "", isPrivate: Boolean = false) {
+        val target = url.ifBlank { _uiState.value.homepage.ifBlank { Constants.DEFAULT_HOMEPAGE } }
+        openTab(target, isPrivate, navigate = true)
+    }
 
-    private fun openTab(url: String, isPrivate: Boolean, navigate: Boolean) {
-        val tab = Tab(title = if (url.isEmpty()) "New Tab" else url, url = url, isPrivate = isPrivate || _uiState.value.isPrivateMode)
-        _uiState.update { state -> state.copy(tabs = state.tabs + tab.copy(position = state.tabs.size), currentTabId = tab.id, url = url.ifEmpty { state.url }, addressBarInput = url.ifEmpty { state.addressBarInput }, detectedMedia = emptyList(), visibleMediaUrl = null, mainMediaUrl = null, qualitySheet = null) }
+    /** A popup opened by a page keeps the source tab's privacy mode but starts without the homepage. */
+    fun createPopupTab(sourceTabId: String): String? {
+        val source = _uiState.value.tabs.firstOrNull { it.id == sourceTabId } ?: return null
+        return openTab(url = "", isPrivate = false, navigate = false, privateModeOverride = source.isPrivate)
+    }
+
+    private fun openTab(
+        url: String,
+        isPrivate: Boolean,
+        navigate: Boolean,
+        privateModeOverride: Boolean? = null
+    ): String {
+        val privateTab = privateModeOverride ?: (isPrivate || _uiState.value.isPrivateMode)
+        val tab = Tab(
+            title = if (url.isEmpty()) "New Tab" else url,
+            url = url,
+            isPrivate = privateTab
+        )
+        _uiState.update { state ->
+            state.copy(
+                tabs = state.tabs + tab.copy(position = state.tabs.size),
+                currentTabId = tab.id,
+                url = url,
+                addressBarInput = url,
+                title = tab.title,
+                isPrivateMode = privateTab,
+                isLoading = navigate && url.isNotEmpty(),
+                progress = 0,
+                canGoBack = false,
+                canGoForward = false,
+                detectedMedia = emptyList(),
+                visibleMediaUrl = null,
+                mainMediaUrl = null,
+                qualitySheet = null,
+                isMediaTrayVisible = false,
+                isTabSwitcherVisible = false,
+                findInPage = null,
+                blockedCleartextUrl = null
+            )
+        }
         if (navigate && url.isNotEmpty()) _commands.trySend(BrowserCommand.Load(url))
+        return tab.id
     }
 
     fun switchTab(tabId: String) {
@@ -1153,8 +1195,11 @@ class BrowserViewModel @Inject constructor(
      * the tabs now survive both in-app navigation and rotation; [onCleared] is the single place that
      * releases them.
      */
-    fun webViewStore(context: Context, callbacks: TabWebViewStore.Callbacks): TabWebViewStore =
-        webViewStore ?: TabWebViewStore(context, callbacks).also { webViewStore = it }
+    fun webViewStore(context: Context, callbacks: TabWebViewStore.Callbacks): TabWebViewStore {
+        val store = webViewStore ?: TabWebViewStore(context, callbacks).also { webViewStore = it }
+        store.updateCallbacks(callbacks)
+        return store
+    }
 
     override fun onCleared() {
         // A recording cannot outlive the process that would file it: the file is deleted rather than

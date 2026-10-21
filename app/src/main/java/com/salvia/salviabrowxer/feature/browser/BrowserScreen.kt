@@ -1,10 +1,23 @@
 package com.salvia.salviabrowxer.feature.browser
 
 import android.Manifest
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.widget.EditText
 import android.widget.FrameLayout
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -25,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
@@ -40,12 +54,14 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,10 +78,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.model.MediaCandidate
@@ -109,11 +131,28 @@ fun BrowserScreen(
     viewModel: BrowserViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val noMediaMessage = stringResource(R.string.no_media_detected)
     val notificationsDeniedMessage = stringResource(R.string.notifications_denied_downloads_anyway)
+    var pendingFileChooser by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    var pendingFileChooserTabId by remember { mutableStateOf<String?>(null) }
+    val fileChooserLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val callback = pendingFileChooser
+        val ownerTabId = pendingFileChooserTabId
+        pendingFileChooser = null
+        pendingFileChooserTabId = null
+        val selected = runCatching {
+            WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+        }.getOrNull()?.takeIf { viewModel.uiState.value.tabs.any { tab -> tab.id == ownerTabId } }
+        callback?.onReceiveValue(selected)
+    }
+    var fullscreenContent by remember { mutableStateOf<BrowserFullscreenContent?>(null) }
+    var activeScriptDialog by remember { mutableStateOf<AlertDialog?>(null) }
+    var browserScreenActive by remember { mutableStateOf(true) }
+    val activity = remember(context) { context.findActivity() }
 
     var pageAreaSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -121,7 +160,7 @@ fun BrowserScreen(
     // the store instance itself lives in the view model: a `remember`ed store died with this
     // composable, so opening Downloads, Settings or the player destroyed every WebView and coming
     // back reloaded the page from the network.
-    val storeCallbacks = remember(viewModel) {
+    val storeCallbacks = remember(viewModel, context, lifecycleOwner, fileChooserLauncher) {
         object : TabWebViewStore.Callbacks {
             override fun onPageStarted(tabId: String, url: String) = viewModel.onPageStarted(tabId, url)
             override fun onPageFinished(tabId: String, url: String, title: String?) = viewModel.onPageFinished(tabId, url, title)
@@ -150,9 +189,186 @@ fun BrowserScreen(
                 mimeType: String?,
                 contentLength: Long
             ) = viewModel.onDownloadRequested(tabId, url, userAgent, contentDisposition, mimeType, contentLength)
+            override fun onShowFileChooser(
+                tabId: String,
+                params: WebChromeClient.FileChooserParams,
+                callback: ValueCallback<Array<Uri>>
+            ): Boolean {
+                if (!browserScreenActive ||
+                    !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) ||
+                    viewModel.uiState.value.currentTabId != tabId
+                ) {
+                    callback.onReceiveValue(null)
+                    return true
+                }
+                pendingFileChooser?.onReceiveValue(null)
+                pendingFileChooser = callback
+                pendingFileChooserTabId = tabId
+                return try {
+                    fileChooserLauncher.launch(params.createIntent())
+                    true
+                } catch (_: Exception) {
+                    pendingFileChooser = null
+                    pendingFileChooserTabId = null
+                    callback.onReceiveValue(null)
+                    true
+                }
+            }
+            override fun onCreatePopupTab(sourceTabId: String): String? =
+                if (browserScreenActive &&
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                    viewModel.uiState.value.currentTabId == sourceTabId
+                ) {
+                    viewModel.createPopupTab(sourceTabId)
+                } else null
+            override fun onPopupTabCreationFailed(tabId: String) = viewModel.closeTab(tabId)
+            override fun onShowCustomView(tabId: String, view: View, callback: WebChromeClient.CustomViewCallback) {
+                if (!browserScreenActive ||
+                    !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) ||
+                    viewModel.uiState.value.currentTabId != tabId
+                ) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+                fullscreenContent?.let { runCatching { it.callback.onCustomViewHidden() } }
+                fullscreenContent = BrowserFullscreenContent(tabId, view, callback)
+            }
+            override fun onHideCustomView(tabId: String) {
+                if (!browserScreenActive) return
+                val current = fullscreenContent
+                if (current?.tabId == tabId) {
+                    fullscreenContent = null
+                    runCatching { current.callback.onCustomViewHidden() }
+                }
+            }
+            private fun isVisibleTab(tabId: String): Boolean =
+                browserScreenActive &&
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+                    viewModel.uiState.value.currentTabId == tabId
+            private fun scriptDialogTitle(url: String?): String {
+                val host = url?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+                    ?.takeIf { it.isNotBlank() }
+                val appName = context.getString(R.string.app_name)
+                return if (host == null) appName else "$appName · $host"
+            }
+            private fun showScriptDialog(dialog: AlertDialog) {
+                activeScriptDialog?.cancel()
+                activeScriptDialog = dialog
+                dialog.setOnDismissListener {
+                    if (activeScriptDialog === dialog) activeScriptDialog = null
+                }
+                dialog.show()
+            }
+            override fun onJsAlert(tabId: String, url: String?, message: String?, result: JsResult?): Boolean {
+                if (result == null) return false
+                if (!isVisibleTab(tabId)) { result.confirm(); return true }
+                return runCatching {
+                    val dialog = AlertDialog.Builder(context)
+                        .setTitle(scriptDialogTitle(url))
+                        .setMessage(message.orEmpty())
+                        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+                        .setOnCancelListener { result.cancel() }
+                        .create()
+                    showScriptDialog(dialog)
+                    true
+                }.getOrElse { result.cancel(); true }
+            }
+            override fun onJsConfirm(tabId: String, url: String?, message: String?, result: JsResult?): Boolean =
+                showScriptConfirm(tabId, url, message, result)
+            override fun onJsBeforeUnload(tabId: String, url: String?, message: String?, result: JsResult?): Boolean =
+                showScriptConfirm(tabId, url, message, result)
+            private fun showScriptConfirm(tabId: String, url: String?, message: String?, result: JsResult?): Boolean {
+                if (result == null) return false
+                if (!isVisibleTab(tabId)) { result.cancel(); return true }
+                return runCatching {
+                    val dialog = AlertDialog.Builder(context)
+                        .setTitle(scriptDialogTitle(url))
+                        .setMessage(message.orEmpty())
+                        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+                        .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
+                        .setOnCancelListener { result.cancel() }
+                        .create()
+                    showScriptDialog(dialog)
+                    true
+                }.getOrElse { result.cancel(); true }
+            }
+            override fun onJsPrompt(
+                tabId: String,
+                url: String?,
+                message: String?,
+                defaultValue: String?,
+                result: JsPromptResult?
+            ): Boolean {
+                if (result == null) return false
+                if (!isVisibleTab(tabId)) { result.cancel(); return true }
+                return runCatching {
+                    val input = EditText(context).apply {
+                        setText(defaultValue.orEmpty())
+                        setSelection(text.length)
+                        setSingleLine(true)
+                    }
+                    val dialog = AlertDialog.Builder(context)
+                        .setTitle(scriptDialogTitle(url))
+                        .setMessage(message.orEmpty())
+                        .setView(input)
+                        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm(input.text.toString()) }
+                        .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
+                        .setOnCancelListener { result.cancel() }
+                        .create()
+                    showScriptDialog(dialog)
+                    true
+                }.getOrElse { result.cancel(); true }
+            }
         }
     }
     val store = remember(context, viewModel, storeCallbacks) { viewModel.webViewStore(context, storeCallbacks) }
+
+    LaunchedEffect(fullscreenContent != null, activity) {
+        val window = activity?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (fullscreenContent != null) {
+            controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    DisposableEffect(lifecycleOwner, activity) {
+        fun dismissFullscreen() {
+            val activeFullscreen = fullscreenContent ?: return
+            fullscreenContent = null
+            runCatching { activeFullscreen.callback.onCustomViewHidden() }
+        }
+        fun restoreSystemBars() {
+            activity?.window?.let { window ->
+                runCatching { WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars()) }
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> browserScreenActive = true
+                Lifecycle.Event.ON_STOP -> {
+                    browserScreenActive = false
+                    runCatching { activeScriptDialog?.cancel() }
+                    dismissFullscreen()
+                    restoreSystemBars()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            browserScreenActive = false
+            val pendingChooser = pendingFileChooser
+            pendingFileChooser = null
+            pendingFileChooserTabId = null
+            runCatching { pendingChooser?.onReceiveValue(null) }
+            runCatching { activeScriptDialog?.cancel() }
+            dismissFullscreen()
+            restoreSystemBars()
+        }
+    }
 
     // POST_NOTIFICATIONS is requested in context, the first time a download is enqueued.
     // Denying it never blocks the transfer; it only means no progress notification.
@@ -167,6 +383,25 @@ fun BrowserScreen(
                 notificationAsked = true
                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+        }
+    }
+
+    BackHandler(
+        enabled = fullscreenContent != null || state.isTabSwitcherVisible || state.qualitySheet != null ||
+            state.isMediaTrayVisible || state.findInPage != null || state.blockedCleartextUrl != null || state.canGoBack
+    ) {
+        when {
+            fullscreenContent != null -> {
+                val current = fullscreenContent
+                fullscreenContent = null
+                runCatching { current?.callback?.onCustomViewHidden() }
+            }
+            state.isTabSwitcherVisible -> viewModel.closeTabSwitcher()
+            state.qualitySheet != null -> viewModel.closeQualitySheet()
+            state.isMediaTrayVisible -> viewModel.closeMediaTray()
+            state.findInPage != null -> viewModel.closeFindInPage()
+            state.blockedCleartextUrl != null -> viewModel.dismissCleartextBlock()
+            state.canGoBack -> viewModel.goBack()
         }
     }
 
@@ -506,6 +741,56 @@ fun BrowserScreen(
                 onStopRecording = stopRecording
             )
         }
+
+        fullscreenContent?.let { custom ->
+            AndroidView(
+                factory = { FrameLayout(it) },
+                update = { container ->
+                    if (custom.view.parent !== container) {
+                        (custom.view.parent as? ViewGroup)?.removeView(custom.view)
+                        container.removeAllViews()
+                        container.addView(
+                            custom.view,
+                            FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxSize().zIndex(10f)
+            )
+            IconButton(
+                onClick = {
+                    fullscreenContent = null
+                    runCatching { custom.callback.onCustomViewHidden() }
+                },
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).zIndex(11f)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = stringResource(R.string.player_exit_fullscreen),
+                    tint = PearlWhite
+                )
+            }
+        }
     }
 
+}
+
+private data class BrowserFullscreenContent(
+    val tabId: String,
+    val view: View,
+    val callback: WebChromeClient.CustomViewCallback
+)
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        val base = current.baseContext
+        if (base === current) return null
+        current = base
+    }
+    return current as? Activity
 }
