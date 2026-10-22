@@ -39,6 +39,22 @@ object SessionReferer {
         return if (sameSite(page, targetUrl)) page else originOf(page)
     }
 
+    /**
+     * The value for the `Origin` header, or null when the request must not carry one.
+     *
+     * A page's own `fetch()` of a cross-origin manifest carries `Origin` — the page's origin and
+     * nothing else — and a hotlink check that compares it is the last guard some CDNs keep, so a
+     * re-fetch without it arrives as a client the page never was. Same-origin requests carry no
+     * `Origin` at all, and this returns exactly that there: a header the browser would never have
+     * sent is how a download announces itself as synthetic.
+     */
+    fun originHeaderFor(pageUrl: String?, targetUrl: String): String? {
+        val page = pageUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (!page.startsWith("http://", true) && !page.startsWith("https://", true)) return null
+        if (sameSite(page, targetUrl)) return null
+        return originOf(page).trimEnd('/')
+    }
+
     /** `scheme://host[:port]/`, the shape a browser sends cross-origin. */
     private fun originOf(url: String): String {
         val schemeEnd = url.indexOf("://")
