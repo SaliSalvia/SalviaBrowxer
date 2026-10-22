@@ -120,7 +120,8 @@ versionName `1.0.0`.
   option that the app downloads as two streams and muxes itself. The sheet opens immediately from
   what the page already told us and refines its rows when the probe returns, and it never blocks the
   download button while the probe is still running. A size that is not known is reported as
-  unavailable rather than guessed.
+  unavailable rather than guessed. The file's name is offered as an editable field, so it can
+  be renamed before the download is written; a blank name keeps the page's own title.
 - **Downloads** — foreground `dataSync` service, Room-backed queue, pause / cancel / retry,
   direct files resume over HTTP Range from a `.part` file (including after process death) and, when
   the server states the file's length and accepts ranges, are fetched over several connections at

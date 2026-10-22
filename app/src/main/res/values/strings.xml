@@ -90,6 +90,7 @@
     <string name="media_detected">%d media detected</string>
     <string name="no_media_detected">No downloadable media detected</string>
     <string name="select_quality">Select Quality</string>
+    <string name="file_name_label">File name</string>
     <string name="download_start">Start Download</string>
     <string name="media_pill_description">%1$d media items on this page</string>
     <string name="media_button_description">%1$d media on this page. Opens the media tray.</string>
