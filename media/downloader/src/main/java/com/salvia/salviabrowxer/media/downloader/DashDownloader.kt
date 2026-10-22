@@ -27,7 +27,7 @@ class DashDownloader(
     private val okHttpClient: OkHttpClient
 ) {
 
-    fun fetchManifest(url: String, userAgent: String, referer: String?, origin: String?): DashManifest? {
+    fun fetchManifest(url: String, userAgent: String, referer: String?, origin: String? = null): DashManifest? {
         val xml = runCatching {
             val request = Request.Builder().url(url)
                 .header("User-Agent", userAgent)
@@ -50,7 +50,7 @@ class DashDownloader(
         target: File,
         userAgent: String,
         referer: String?,
-        origin: String?,
+        origin: String? = null,
         progressEveryMillis: Long = DownloadManager.PROGRESS_THROTTLE_MILLIS,
         onProgress: suspend (DownloadSnapshot) -> Unit = {},
         shouldAbort: suspend () -> AbortReason? = { null }
