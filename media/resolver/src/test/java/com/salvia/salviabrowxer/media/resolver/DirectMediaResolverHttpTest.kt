@@ -1,5 +1,7 @@
 package com.salvia.salviabrowxer.media.resolver
 
+import com.salvia.salviabrowxer.core.model.HlsRenditionId
+import com.salvia.salviabrowxer.core.model.HlsSelection
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -77,6 +79,29 @@ class DirectMediaResolverHttpTest {
         assertTrue("the variant URL must be absolutized", info.formats[0].url.endsWith("/hls/high/index.m3u8"))
         assertEquals("360p", info.formats[1].format)
         assertEquals(2, info.videoFormats.size)
+    }
+
+    @Test
+    fun `a master playlist with separate EXT-X-MEDIA audio offers merged video+audio rows`() = runBlocking {
+        val master = """
+            #EXTM3U
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Commentary",URI="audio/commentary/index.m3u8"
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",DEFAULT=YES,URI="audio/en/index.m3u8"
+            #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,AUDIO="aud"
+            high/index.m3u8
+        """.trimIndent()
+        serve(mapOf("/hls/master.m3u8" to ("application/vnd.apple.mpegurl" to master.toByteArray())))
+
+        val info = resolver.resolve(server.url("/hls/master.m3u8").toString())
+
+        assertEquals(1, info.formats.size)
+        assertEquals("1080p + audio", info.formats[0].format)
+        assertTrue("the variant URL must be absolutized", info.formats[0].url.endsWith("/hls/high/index.m3u8"))
+        val selection = HlsRenditionId.parse(info.formats[0].id)
+        assertTrue("the id must round-trip as a merged selection", selection is HlsSelection.Merged)
+        selection as HlsSelection.Merged
+        assertTrue(selection.videoUrl.endsWith("/hls/high/index.m3u8"))
+        assertTrue("the DEFAULT audio rendition wins and is absolutized", selection.audioUrl.endsWith("/hls/audio/en/index.m3u8"))
     }
 
     @Test

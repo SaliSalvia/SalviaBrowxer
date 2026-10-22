@@ -1453,7 +1453,10 @@ class BrowserViewModel @Inject constructor(
                 selectedQuality = format.format,
                 mimeType = format.mimeType,
                 totalBytes = format.size?.takeIf { it > 0L },
-                renditionId = format.id.takeIf { format.isDash },
+                // A DASH row stores which representations it wants; an HLS master that names its
+                // audio separately stores which variant AND which audio playlist. Both are
+                // re-fetched at transfer time, so the id is the only thing the row must carry.
+                renditionId = format.id.takeIf { format.isDash || format.isHls },
                 // A pasted direct link reports itself as its own "page"; a request must never refer
                 // to itself, so such a row carries no page at all.
                 pageUrl = candidate.pageUrl.takeIf { it.isNotBlank() && it != format.url },

@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.service.queue
 
 import com.salvia.salviabrowxer.core.model.DashRenditionId
+import com.salvia.salviabrowxer.core.model.HlsRenditionId
 import com.salvia.salviabrowxer.media.downloader.RangePlanner
 
 /** Which of the three transfer shapes a queued row becomes. */
@@ -13,7 +14,8 @@ enum class TransferKind { DASH, HLS, DIRECT }
  * test could reach it and where the HLS test (`url.contains(".m3u8")`) lived next to network code.
  * Pulling it out makes the *decision* testable on the JVM: DASH is decided by the row's
  * `renditionId` alone (a manifest URL is re-fetched at transfer time, so the URL proves nothing),
- * HLS by the final URL or the mime the server sent, and everything else is a plain file.
+ * HLS by its own renditionId, the final URL, or the mime the server sent, and everything else is
+ * a plain file.
  */
 data class TransferPlan(
     val kind: TransferKind,
@@ -34,7 +36,7 @@ data class TransferPlan(
 
         fun of(renditionId: String?, finalUrl: String, mimeType: String?, parallelConnections: Int): TransferPlan {
             val dash = DashRenditionId.parse(renditionId) != null
-            val hls = isHls(finalUrl, mimeType)
+            val hls = HlsRenditionId.parse(renditionId) != null || isHls(finalUrl, mimeType)
             return when {
                 dash -> TransferPlan(TransferKind.DASH, retryable = true, parallelRange = false)
                 hls -> TransferPlan(TransferKind.HLS, retryable = true, parallelRange = false)
