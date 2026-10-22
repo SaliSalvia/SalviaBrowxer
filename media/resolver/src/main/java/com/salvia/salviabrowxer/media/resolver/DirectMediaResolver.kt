@@ -34,17 +34,24 @@ class DirectMediaResolver(
         // Same-site pages keep their full URL, cross-site pages only their origin — the browser's own
         // referrer policy (see SessionReferer).
         val referer = SessionReferer.headerFor(pageUrl, url)
+        // And the page's cross-origin fetches carried `Origin` too: the same policy object decides,
+        // so a probe never carries a header the page's own request would not have had.
+        val origin = SessionReferer.originHeaderFor(pageUrl, url)
 
         // When the URL path itself names a manifest, its playlist fetch is independent of the
         // metadata probe, so the two run together. The quality sheet used to wait for the probe
         // (HEAD, sometimes a ranged GET) and *then* the playlist: a serial pair of round trips.
         // Overlapping them is what makes the sheet fill in sooner on adaptive pages.
         val hint = manifestHint(url)
-        val hlsDeferred = if (hint == ManifestHint.HLS) async { tryParseHlsVariants(url, ua, pageUrl) } else null
+        val hlsDeferred = if (hint == ManifestHint.HLS) async { fetchPlaylistBody(url, ua, pageUrl) } else null
         val dashDeferred = if (hint == ManifestHint.DASH) async { tryParseDash(url, ua, pageUrl) } else null
 
         // Try HEAD first; fall back to GET with Range if HEAD is rejected
-        val headRequest = Request.Builder().url(url).head().header("User-Agent", ua).apply { referer?.let { header("Referer", it) } }.build()
+        val headRequest = Request.Builder().url(url).head().header("User-Agent", ua)
+            .apply {
+                referer?.let { header("Referer", it) }
+                origin?.let { header("Origin", it) }
+            }.build()
         runCatching { okHttpClient.newCall(headRequest).execute() }.getOrNull()?.use { r ->
             if (r.isSuccessful) {
                 contentLength = r.header("Content-Length")?.toLongOrNull() ?: r.body?.contentLength()?.takeIf { it > 0 }
@@ -54,7 +61,11 @@ class DirectMediaResolver(
         }
 
         if (mimeType.isBlank() || contentLength == null) {
-            val getRequest = Request.Builder().url(url).get().header("User-Agent", ua).header("Range", "bytes=0-0").apply { referer?.let { header("Referer", it) } }.build()
+            val getRequest = Request.Builder().url(url).get().header("User-Agent", ua).header("Range", "bytes=0-0")
+                .apply {
+                    referer?.let { header("Referer", it) }
+                    origin?.let { header("Origin", it) }
+                }.build()
             runCatching { okHttpClient.newCall(getRequest).execute() }.getOrNull()?.use { r ->
                 if (mimeType.isBlank()) mimeType = r.header("Content-Type")?.substringBefore(';')?.trim().orEmpty()
                 if (contentLength == null) {
@@ -89,15 +100,49 @@ class DirectMediaResolver(
             )
         }
 
-        // Expand the HLS master playlist into one selectable quality per variant.
+        // Expand an HLS manifest into selectable qualities. A master playlist yields one row per
+        // variant; a media playlist — the page linked the playable playlist itself, or the master
+        // lives behind a URL that never names it — yields one row whose duration and liveness the
+        // playlist's own tags state outright.
         if (isHls) {
-            val hlsFormats = hlsDeferred?.await() ?: tryParseHlsVariants(url, ua, pageUrl)
-            if (hlsFormats.isNotEmpty()) {
-                return@withContext MediaInfo(
-                    title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
-                    formats = hlsFormats, audioFormats = hlsFormats.filter { it.isAudio }, videoFormats = hlsFormats.filter { it.isVideo },
-                    combinedFormats = hlsFormats, source = url, extractor = "direct-hls", webpageUrl = url
-                )
+            val body = hlsDeferred?.await() ?: fetchPlaylistBody(url, ua, pageUrl)
+            if (body != null && "#EXTM3U" in body) {
+                if ("#EXT-X-STREAM-INF" in body) {
+                    val hlsFormats = parseHlsMaster(body, url)
+                    if (hlsFormats.isNotEmpty()) {
+                        return@withContext MediaInfo(
+                            title = title.ifEmpty { "Media" }, thumbnail = null, duration = null,
+                            formats = hlsFormats, audioFormats = hlsFormats.filter { it.isAudio }, videoFormats = hlsFormats.filter { it.isVideo },
+                            combinedFormats = hlsFormats, source = url, extractor = "direct-hls", webpageUrl = url
+                        )
+                    }
+                } else {
+                    val summary = parseHlsMediaSummary(body)
+                    // The duration is what the sheet shows for a stream whose total length no other
+                    // layer ever learns: the sum of the playlist's own #EXTINF values.
+                    val durationMs = summary?.let { (it.durationSeconds * 1000).toLong() }
+                    // A live playlist never ends, so it cannot be saved as a finite file. The honest
+                    // answer is no formats at all — the sheet keeps its explanation instead of a
+                    // transfer that would fail at the first sliding-window update.
+                    if (summary == null || !summary.hasEndList) {
+                        return@withContext MediaInfo(
+                            title = title.ifEmpty { "Media" }, thumbnail = null, duration = durationMs,
+                            formats = emptyList(), audioFormats = emptyList(), videoFormats = emptyList(),
+                            combinedFormats = emptyList(), source = url, extractor = null, webpageUrl = url
+                        )
+                    }
+                    val format = MediaFormat(
+                        id = url,
+                        format = "HLS·" + summary.segmentCount + " segments",
+                        url = url, mimeType = "application/vnd.apple.mpegurl", extension = "m3u8",
+                        isVideo = true, isHls = true
+                    )
+                    return@withContext MediaInfo(
+                        title = title.ifEmpty { "Media" }, thumbnail = null, duration = durationMs,
+                        formats = listOf(format), audioFormats = emptyList(), videoFormats = listOf(format),
+                        combinedFormats = listOf(format), source = url, extractor = "direct-hls", webpageUrl = url
+                    )
+                }
             }
             // Fall back to a single "HLS" entry so the sheet still has exactly one option.
         }
@@ -132,21 +177,53 @@ class DirectMediaResolver(
         }
     }
 
-    /** Lightweight HLS variant parser: reads the master playlist and emits one [MediaFormat] per variant.
-     *  Bounded: at most 8 variants, 48 KiB of playlist body, and capped to 4s of network time via OkHttp timeouts
-     *  so this adds zero jank for non-HLS URLs and stays fast even on hostile CDNs.
+    /**
+     * The playlist body, bounded to 48 KiB so an adversarial CDN cannot turn a metadata fetch into
+     * an OOM; null means the fetch failed and the caller falls back to a single HLS entry.
      */
-    private fun tryParseHlsVariants(masterUrl: String, userAgent: String, pageUrl: String?): List<MediaFormat> {
-        val body = runCatching {
-            val req = Request.Builder().url(masterUrl).get().header("User-Agent", userAgent).header("Accept", "*/*")
-                .apply { SessionReferer.headerFor(pageUrl, masterUrl)?.let { header("Referer", it) } }.build()
+    private fun fetchPlaylistBody(playlistUrl: String, userAgent: String, pageUrl: String?): String? {
+        val req = Request.Builder().url(playlistUrl).get().header("User-Agent", userAgent).header("Accept", "*/*")
+            .apply {
+                SessionReferer.headerFor(pageUrl, playlistUrl)?.let { header("Referer", it) }
+                SessionReferer.originHeaderFor(pageUrl, playlistUrl)?.let { header("Origin", it) }
+            }.build()
+        return runCatching {
             okHttpClient.newCall(req).execute().use { r ->
-                if (!r.isSuccessful) return emptyList()
-                val bytes = r.body?.bytes() ?: return emptyList()
+                if (!r.isSuccessful) return null
+                val bytes = r.body?.bytes() ?: return null
                 if (bytes.size > 48 * 1024) bytes.copyOf(48 * 1024) else bytes
             }.toString(Charsets.UTF_8)
-        }.getOrNull() ?: return emptyList()
+        }.getOrNull()
+    }
 
+    /**
+     * What a *media* playlist says about itself: the sum of its `#EXTINF` durations, its segment
+     * count, and whether it ends (`#EXT-X-ENDLIST`). The first is the duration the quality sheet
+     * shows for a stream no other layer ever measures; the last is what tells a VOD stream from a
+     * live one before a transfer is ever started.
+     */
+    private data class HlsMediaSummary(val durationSeconds: Double, val segmentCount: Int, val hasEndList: Boolean)
+
+    private fun parseHlsMediaSummary(body: String): HlsMediaSummary? {
+        var duration = 0.0
+        var segments = 0
+        for (line in body.lineSequence()) {
+            val trimmed = line.trim()
+            when {
+                trimmed.startsWith("#EXTINF:") ->
+                    trimmed.substringAfter(':').substringBefore(',').trim().toDoubleOrNull()?.let { duration += it }
+                trimmed.isNotEmpty() && !trimmed.startsWith("#") -> segments++
+            }
+        }
+        if (segments == 0) return null
+        return HlsMediaSummary(durationSeconds = duration, segmentCount = segments, hasEndList = "#EXT-X-ENDLIST" in body)
+    }
+
+    /**
+     * Lightweight HLS master parser: one [MediaFormat] per variant, at most 8 variants.
+     *  Highest quality first — the sheet surfaces 1080p at the top.
+     */
+    private fun parseHlsMaster(body: String, masterUrl: String): List<MediaFormat> {
         if ("#EXTM3U" !in body) return emptyList()
         val lines = body.lineSequence().map { it.trim() }.toList()
         val base = masterUrl.substringBeforeLast('/') + "/"
@@ -198,7 +275,7 @@ class DirectMediaResolver(
             )
             idx++
         }
-        // Highest quality first — InShot surfaces 1080p at the top
+        // Highest quality first — the sheet surfaces 1080p at the top
         return formats.sortedByDescending { (it.height ?: 0) * 1000 + (it.bitrate ?: 0) }
     }
 
@@ -207,7 +284,10 @@ class DirectMediaResolver(
         val xml = runCatching {
             val req = Request.Builder().url(manifestUrl).get()
                 .header("User-Agent", userAgent).header("Accept", "*/*")
-                .apply { SessionReferer.headerFor(pageUrl, manifestUrl)?.let { header("Referer", it) } }.build()
+                .apply {
+                    SessionReferer.headerFor(pageUrl, manifestUrl)?.let { header("Referer", it) }
+                    SessionReferer.originHeaderFor(pageUrl, manifestUrl)?.let { header("Origin", it) }
+                }.build()
             okHttpClient.newCall(req).execute().use { r ->
                 if (!r.isSuccessful) return null
                 val bytes = r.body?.bytes() ?: return null
@@ -238,8 +318,7 @@ class DirectMediaResolver(
                 width = video.width,
                 height = video.height,
                 bitrate = video.bandwidth?.let { (it / 1000).toInt() },
-                isVideo = true,
-                isDash = true
+                isVideo = true, isDash = true
             )
         }
         val audioFormats = audios.map { audio ->
@@ -252,8 +331,7 @@ class DirectMediaResolver(
                 extension = "m4a",
                 size = estimatedSize(audio.bandwidth, manifest.durationSeconds),
                 bitrate = audio.bandwidth?.let { (it / 1000).toInt() },
-                isAudio = true,
-                isDash = true
+                isAudio = true, isDash = true
             )
         }
         val combined = videoFormats.ifEmpty { audioFormats }
@@ -278,7 +356,7 @@ class DirectMediaResolver(
         val starIdx = contentDisposition.indexOf("filename*=")
         if (starIdx != -1) {
             val v = contentDisposition.substring(starIdx + 10).substringBefore(';').trim().trim('"','\'')
-            val decoded = v.substringAfter("''", v)
+            val decoded = v.substringAfter("'I", v)
             try { return java.net.URLDecoder.decode(decoded, "UTF-8") } catch (_: Exception) { return decoded }
         }
         val idx = contentDisposition.indexOf("filename=")
