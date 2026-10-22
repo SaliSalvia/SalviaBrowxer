@@ -15,7 +15,8 @@ data class FileDownload(
     val directory: String,
     val filename: String,
     val userAgent: String? = DEFAULT_DOWNLOAD_USER_AGENT,
-    val referer: String? = null
+    val referer: String? = null,
+    val origin: String? = null
 ) {
     companion object {
         const val DEFAULT_DOWNLOAD_USER_AGENT =
@@ -64,14 +65,15 @@ class DownloadManager(
     /**
      * Follows whatever redirect stands between the URL that was detected and the file itself.
      *
-     * `userAgent` and `referer` are the session the row was started with. Passing them matters: a HEAD
+     * `userAgent`, `referer` and `origin` are the session the row was started with. Passing them matters: a HEAD
      * that arrives as a bare client is refused by a hotlink guard, and then the transfer goes to the
      * original URL and fails there instead of walking the redirect it was supposed to follow.
      */
-    fun getFinalUrl(url: String, userAgent: String? = null, referer: String? = null): String {
+    fun getFinalUrl(url: String, userAgent: String? = null, referer: String? = null, origin: String? = null): String {
         val request = Request.Builder().url(url).head()
             .header("User-Agent", userAgent?.takeIf { it.isNotBlank() } ?: FileDownload.DEFAULT_DOWNLOAD_USER_AGENT)
             .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+            .apply { origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) } }
             .build()
         return okHttpClient.newCall(request).execute().use { response -> response.request.url.toString() }
     }
@@ -145,6 +147,7 @@ class DownloadManager(
             .apply {
                 download.userAgent?.takeIf { it.isNotBlank() }?.let { header("User-Agent", it) }
                 download.referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) }
+                download.origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) }
             }
             .build()
         val response = runCatching { okHttpClient.newCall(request).execute() }.getOrNull() ?: return null
@@ -170,6 +173,7 @@ class DownloadManager(
         val requestBuilder = Request.Builder().url(download.url)
         download.userAgent?.takeIf { it.isNotBlank() }?.let { requestBuilder.header("User-Agent", it) }
         download.referer?.takeIf { it.isNotBlank() }?.let { requestBuilder.header("Referer", it) }
+        download.origin?.takeIf { it.isNotBlank() }?.let { requestBuilder.header("Origin", it) }
         // Some CDNs require Accept header to serve binary
         requestBuilder.header("Accept", "*/*")
         if (resumeFrom > 0L) requestBuilder.header("Range", "bytes=$resumeFrom-")

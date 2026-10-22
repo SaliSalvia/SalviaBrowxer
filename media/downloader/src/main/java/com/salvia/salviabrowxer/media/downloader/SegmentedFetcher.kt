@@ -62,6 +62,7 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
         partFile: File,
         userAgent: String,
         referer: String?,
+        origin: String?,
         progressEveryMillis: Long,
         onProgress: suspend (DownloadSnapshot) -> Unit,
         shouldAbort: suspend () -> AbortReason?
@@ -122,7 +123,7 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
                         semaphore.withPermit {
                             if (isStaged(stagingDir, index)) return@withPermit
                             shouldAbort()?.let { throw DownloadAbortedException(it) }
-                            fetchPart(parts[index], stagingDir, index, userAgent, referer, keyCache, shouldAbort)
+                            fetchPart(parts[index], stagingDir, index, userAgent, referer, origin, keyCache, shouldAbort)
                             val staged = stagedFile(stagingDir, index)
                             completedBytes.addAndGet(staged.length())
                             completedCount.incrementAndGet()
@@ -157,6 +158,7 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
         index: Int,
         userAgent: String,
         referer: String?,
+        origin: String?,
         keyCache: ConcurrentHashMap<String, ByteArray>,
         shouldAbort: suspend () -> AbortReason?
     ) {
@@ -165,6 +167,7 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
             .header("Accept", "*/*")
             .apply { part.range?.let { header("Range", "bytes=${it.first}-${it.last}") } }
             .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+            .apply { origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) } }
             .get().build()
         val tmp = File(stagingDir, "${partName(index)}.$TMP_SUFFIX")
         try {
@@ -185,7 +188,7 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
                         }
                     }
                 } else {
-                    val key = keyCache[part.keyUri] ?: fetchKey(part.keyUri, userAgent, referer).also { keyCache[part.keyUri] = it }
+                    val key = keyCache[part.keyUri] ?: fetchKey(part.keyUri, userAgent, referer, origin).also { keyCache[part.keyUri] = it }
                     val decrypted = decryptAes128(body.bytes(), key, part.iv ?: ZERO_IV)
                     tmp.writeBytes(decrypted)
                 }
@@ -196,11 +199,12 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
         }
     }
 
-    private fun fetchKey(url: String, userAgent: String, referer: String?): ByteArray {
+    private fun fetchKey(url: String, userAgent: String, referer: String?, origin: String?): ByteArray {
         val request = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Accept", "*/*")
             .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+            .apply { origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) } }
             .get().build()
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("HLS key fetch failed HTTP ${response.code}")
