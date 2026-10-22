@@ -484,7 +484,7 @@ class DownloadService : Service() {
             refreshSummaryThrottled()
         }
         val abort: suspend () -> AbortReason? = { abortReasonFor(downloadId) }
-        if (selection is HlsSelection.Merged) {
+        return if (selection is HlsSelection.Merged) {
             // The audio URI came from the master playlist EXT-X-MEDIA tag and never went through
             // the redirect resolution the variant did, so that happens here, at transfer time,
             // with the same session headers the variant got.
@@ -522,7 +522,7 @@ class DownloadService : Service() {
                 onProgress = progress,
                 shouldAbort = abort
             )
-            return Transfer(result.file, result.contentType ?: "video/mp2t", remuxToMp4 = true)
+            Transfer(result.file, result.contentType ?: "video/mp2t", remuxToMp4 = true)
         }
     }
 
