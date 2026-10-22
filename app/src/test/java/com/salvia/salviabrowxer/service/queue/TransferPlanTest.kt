@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.service.queue
 
 import com.salvia.salviabrowxer.core.model.DashRenditionId
+import com.salvia.salviabrowxer.core.model.HlsRenditionId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,6 +19,20 @@ class TransferPlanTest {
 
         assertEquals(TransferKind.DASH, plan.kind)
         assertTrue("a dash transfer stages segments, so it can resume", plan.retryable)
+        assertFalse("the segmented fetcher is already parallel", plan.parallelRange)
+    }
+
+    @Test
+    fun `a row with an hls rendition id is an hls transfer`() {
+        val plan = TransferPlan.of(
+            HlsRenditionId.merged("https://cdn.example/hls/high/index.m3u8", "https://cdn.example/hls/audio/index.m3u8"),
+            "https://cdn.example/hls/redirected",
+            "application/octet-stream",
+            1
+        )
+
+        assertEquals(TransferKind.HLS, plan.kind)
+        assertTrue("an hls transfer stages segments, so it can resume", plan.retryable)
         assertFalse("the segmented fetcher is already parallel", plan.parallelRange)
     }
 

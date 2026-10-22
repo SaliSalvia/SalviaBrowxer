@@ -115,7 +115,9 @@ versionName `1.0.0`.
 - **Quality sheet** — resolver runs HEAD, falls back to a ranged GET when HEAD is refused, and
   fetches the playlist *in parallel with that probe* whenever the URL path already names a manifest,
   so the rows appear sooner instead of after two serial round trips. It expands an HLS master
-  playlist into one row per variant (resolution, bitrate, size when known).
+  playlist into one row per variant (resolution, bitrate, size when known) — and when the master
+  names its audio separately (`EXT-X-MEDIA:TYPE=AUDIO`), that row is a video+audio pair the app
+  downloads as two playlists and muxes into one file, so the saved variant is not silent.
   A clear, **static, single-period MPEG-DASH** manifest is parsed the same way: each `Representation`
   becomes a row, and a video rendition is paired with the best audio into a single “1080p + audio”
   option that the app downloads as two streams and muxes itself. The sheet opens immediately from
@@ -142,8 +144,8 @@ versionName `1.0.0`.
   `Service.onTimeout`: it pauses its running transfers with a stable marker, tells the user in a
   plain notification that opening the app resumes them, and stops itself cleanly — the cap is the
   system's to give back, and the app would rather stop honestly than be killed as a failure. A segmented
-  transfer is then **remuxed into a plain MP4 with `MediaMuxer`** (no re-encode), and a DASH
-  video+audio pair is **muxed into one file** — so the saved file plays in any gallery or player,
+  transfer is then **remuxed into a plain MP4 with `MediaMuxer`** (no re-encode), and a DASH or separate-audio
+  HLS video+audio pair is **muxed into one file** — so the saved file plays in any gallery or player,
   not only in this app. The finished file's duration and a frame are read locally for the library
   rows, and (by default) it is also **published to the system media store** so galleries and other
   apps can open it. A finished download that is not in the store yet also offers an explicit
@@ -247,7 +249,7 @@ Claimed behaviour is covered by the cheapest layer that can actually execute it:
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| JVM unit tests (plus a Node harness for the injected page script, `scripts/test-media-sniffer.cjs`) | the recorder's segment writer, the recording port's message decoder, the origin rules the bridges are gated on, DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`) — including AES-128 decryption, `EXT-X-BYTERANGE`, variant selection and resumable staged parts — resolver HLS-variant expansion against a real server, rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
+| JVM unit tests (plus a Node harness for the injected page script, `scripts/test-media-sniffer.cjs`) | the recorder's segment writer, the recording port's message decoder, the origin rules the bridges are gated on, DASH manifest parsing and refusal rules, HLS/DASH segment reassembly against a real HTTP server (a `MockWebServer`) — including AES-128 decryption, `EXT-X-BYTERANGE`, variant selection and resumable staged parts — resolver HLS-variant (incl. separate EXT-X-MEDIA audio) expansion against a real server, rendition-id encoding, the download queue's rate/ETA, the export permission flow | `:core:model`, `:media:resolver`, `:media:downloader`, `:app` |
 | Robolectric | The media-store export executed against the real framework at **API 24** (public-folder copy, media scanner, no-overwrite) and at **API 33** (`MediaStore` pending-flag protocol, byte fidelity) | `:app` `MediaStoreExporterTest` |
 | Instrumented | The real store publish on a device (bytes read back through `ContentResolver`, the row queryable), a real **AES-128 HLS** download decrypted on-device with Android’s own JCE against a local server, and the launch smoke check | `.github/workflows/emulator_verification.yml` |
 

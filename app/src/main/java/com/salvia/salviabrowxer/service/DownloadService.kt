@@ -24,6 +24,8 @@ import com.salvia.salviabrowxer.core.model.DashRepresentation
 import com.salvia.salviabrowxer.core.model.DashSelection
 import com.salvia.salviabrowxer.core.model.DownloadProgress
 import com.salvia.salviabrowxer.core.model.DownloadState
+import com.salvia.salviabrowxer.core.model.HlsRenditionId
+import com.salvia.salviabrowxer.core.model.HlsSelection
 import com.salvia.salviabrowxer.core.model.MediaUrlRules
 import com.salvia.salviabrowxer.core.model.SessionReferer
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
@@ -317,12 +319,13 @@ class DownloadService : Service() {
             // it is unit-testable rather than three branches inside a network call.
             val plan = TransferPlan.of(stored.renditionId, finalUrl, stored.mimeType, parallelConnections)
             val dashSelection = DashRenditionId.parse(stored.renditionId)
+            val hlsSelection = HlsRenditionId.parse(stored.renditionId)
             // A segmented transfer is retried after a transient failure. The parts it already
             // staged are kept, so the retry resumes instead of re-fetching from the first segment.
             val transfer = transferWithRetry(downloadId, segmented = plan.retryable) { attempt ->
                 when (plan.kind) {
                     TransferKind.DASH -> downloadDashRendition(stored, downloadId, finalUrl, dashSelection!!, reuseCompleted = attempt > 0)
-                    TransferKind.HLS -> downloadHlsStream(stored, downloadId, finalUrl)
+                    TransferKind.HLS -> downloadHlsStream(stored, downloadId, finalUrl, hlsSelection, reuseCompleted = attempt > 0)
                     TransferKind.DIRECT -> directTransfer(stored, downloadId, finalUrl)
                 }
             }
@@ -468,25 +471,94 @@ class DownloadService : Service() {
         return Transfer(result.file, result.contentType, remuxToMp4 = false)
     }
 
-    private suspend fun downloadHlsStream(stored: DownloadEntity, downloadId: String, finalUrl: String): Transfer {
+    private suspend fun downloadHlsStream(
+        stored: DownloadEntity,
+        downloadId: String,
+        finalUrl: String,
+        selection: HlsSelection?,
+        reuseCompleted: Boolean
+    ): Transfer {
         val base = baseName(stored.filename)
-        // The playlist is assembled as a raw transport stream; it becomes an MP4 in finalizeTransfer.
-        val result = hlsDownloader.download(
+        val progress: suspend (DownloadSnapshot) -> Unit = { snapshot ->
+            handleProgress(downloadId, snapshot)
+            refreshSummaryThrottled()
+        }
+        val abort: suspend () -> AbortReason? = { abortReasonFor(downloadId) }
+        if (selection is HlsSelection.Merged) {
+            // The audio URI came from the master playlist EXT-X-MEDIA tag and never went through
+            // the redirect resolution the variant did, so that happens here, at transfer time,
+            // with the same session headers the variant got.
+            val audioUrl = runCatching {
+                downloadManager.getFinalUrl(selection.audioUrl, sessionUserAgent(stored), sessionReferer(stored, selection.audioUrl))
+            }.getOrNull()?.takeIf { it.isNotBlank() } ?: selection.audioUrl
+            val directory = File(stored.destination).also { if (!it.exists()) it.mkdirs() }
+            val videoRaw = File(directory, "$base.video.tmp")
+            val audioRaw = File(directory, "$base.audio.tmp")
+            fetchHlsPlaylist(videoRaw, stored, finalUrl, reuseCompleted, progress, abort)
+            fetchHlsPlaylist(audioRaw, stored, audioUrl, reuseCompleted, progress, abort)
+            val merged = DownloadManager.nonConflicting(File(directory, "$base.mp4"))
+            if (trackMerger.merge(videoRaw, audioRaw, merged)) {
+                videoRaw.delete(); audioRaw.delete()
+                // MediaMuxer already wrote a plain MP4, so no further container rewrite is due.
+                Transfer(merged, "video/mp4", remuxToMp4 = false)
+            } else {
+                // Honest fallback, the DASH merged path's rule: the picture survives and is
+                // remuxed below as usual, and the sound that could not be joined to it is
+                // dropped, rather than the whole download failing.
+                audioRaw.delete()
+                Transfer(videoRaw, "video/mp2t", remuxToMp4 = true)
+            }
+        } else {
+            // The playlist is assembled as a raw transport stream; it becomes an MP4 in finalizeTransfer.
+            val result = hlsDownloader.download(
+                download = FileDownload(
+                    id = stored.id,
+                    url = finalUrl,
+                    directory = stored.destination,
+                    filename = "$base.hls.ts",
+                    userAgent = sessionUserAgent(stored),
+                    referer = sessionReferer(stored, finalUrl)
+                ),
+                onProgress = progress,
+                shouldAbort = abort
+            )
+            return Transfer(result.file, result.contentType ?: "video/mp2t", remuxToMp4 = true)
+        }
+    }
+
+    /**
+     * Downloads one HLS playlist unless a previous attempt of this same download already produced
+     * the whole file — the HLS twin of [fetchDashRepresentation]'s reuse rule, for the same
+     * reason: a finished playlist is the coarsest resume unit, so a retry does not fetch a whole
+     * track again. On the first attempt any stale file is removed first, so a later retry can
+     * trust whatever it finds.
+     */
+    private suspend fun fetchHlsPlaylist(
+        target: File,
+        stored: DownloadEntity,
+        url: String,
+        reuseCompleted: Boolean,
+        onProgress: suspend (DownloadSnapshot) -> Unit,
+        shouldAbort: suspend () -> AbortReason?
+    ): DownloadResult {
+        if (target.exists()) {
+            if (reuseCompleted && target.length() > 0L) {
+                return DownloadResult(file = target, bytesWritten = target.length(), totalBytes = target.length(), contentType = "video/mp2t")
+            }
+            target.delete()
+        }
+        return hlsDownloader.download(
             download = FileDownload(
                 id = stored.id,
-                url = finalUrl,
-                directory = stored.destination,
-                filename = "$base.hls.ts",
+                url = url,
+                directory = target.parentFile?.absolutePath ?: stored.destination,
+                filename = target.name,
                 userAgent = sessionUserAgent(stored),
-                referer = sessionReferer(stored, finalUrl)
+                referer = sessionReferer(stored, url)
             ),
-            onProgress = { snapshot ->
-                handleProgress(downloadId, snapshot)
-                refreshSummaryThrottled()
-            },
-            shouldAbort = { abortReasonFor(downloadId) }
+            onProgress = onProgress,
+            shouldAbort = shouldAbort
         )
-        return Transfer(result.file, result.contentType ?: "video/mp2t", remuxToMp4 = true)
     }
 
     /**

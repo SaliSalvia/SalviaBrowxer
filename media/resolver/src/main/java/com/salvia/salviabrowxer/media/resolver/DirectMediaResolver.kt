@@ -2,6 +2,7 @@ package com.salvia.salviabrowxer.media.resolver
 
 import com.salvia.salviabrowxer.core.model.DashManifest
 import com.salvia.salviabrowxer.core.model.DashRenditionId
+import com.salvia.salviabrowxer.core.model.HlsRenditionId
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
 import com.salvia.salviabrowxer.core.model.SessionReferer
@@ -149,6 +150,20 @@ class DirectMediaResolver(
         if ("#EXTM3U" !in body) return emptyList()
         val lines = body.lineSequence().map { it.trim() }.toList()
         val base = masterUrl.substringBeforeLast('/') + "/"
+        // A master playlist can name its audio separately (`#EXT-X-MEDIA:TYPE=AUDIO`): every video
+        // variant is then a silent track and the sound lives in its own playlist. The DEFAULT
+        // rendition wins when there is one, otherwise the first, and its URI travels with the
+        // selection — otherwise the saved file would be a silent video.
+        val audioLines = lines.filter { it.startsWith("#EXT-X-MEDIA:") && it.contains("TYPE=AUDIO") && it.contains("URI=") }
+        val audioUri = (audioLines.firstOrNull { it.contains("DEFAULT=YES") } ?: audioLines.firstOrNull())
+            ?.let { Regex("URI=\"([^\"]+)\"").find(it)?.groupValues?.getOrNull(1)?.trim() }
+        val audioUrl = audioUri?.let { uri ->
+            when {
+                uri.startsWith("http://") || uri.startsWith("https://") -> uri
+                uri.startsWith("/") -> runCatching { java.net.URI(masterUrl).let { u -> "${u.scheme}://${u.host}${if (u.port != -1) ":${u.port}" else ""}$uri" } }.getOrDefault(uri)
+                else -> base + uri
+            }
+        }
         val formats = mutableListOf<MediaFormat>()
         var idx = 0
         for (i in lines.indices) {
@@ -174,7 +189,9 @@ class DirectMediaResolver(
             // Bandwidth is in bits/s — keep a kbps estimate for the sheet
             val bitrateKbps = bandwidth?.let { (it / 1000).toInt() }
             formats += MediaFormat(
-                id = absUrl, format = label, url = absUrl,
+                id = if (audioUrl != null) HlsRenditionId.merged(absUrl, audioUrl) else HlsRenditionId.video(absUrl),
+                format = if (audioUrl != null) "$label + audio" else label,
+                url = absUrl,
                 mimeType = "application/vnd.apple.mpegurl", extension = "m3u8",
                 width = w, height = h, bitrate = bitrateKbps,
                 isVideo = true, isHls = true
