@@ -113,6 +113,8 @@ data class BrowserUiState(
     /** Set when http:// navigation was refused, so the chrome can explain it and offer to allow. */
     val blockedCleartextUrl: String? = null,
     val activeDownloadCount: Int = 0,
+    /** How many transfers have finished; the dock's right ring and the Completed tab agree on it. */
+    val completedDownloadCount: Int = 0,
     val detectedMedia: List<MediaCandidate> = emptyList(),
     /** An admitted URL currently associated with the visible player, not proof of main content. */
     val visibleMediaUrl: String? = null,
@@ -247,6 +249,7 @@ class BrowserViewModel @Inject constructor(
         }
         observeSettingsLive()
         observeDownloadQueue()
+        observeCompletedDownloads()
         observeMseRecording()
         observeSession()
     }
@@ -407,6 +410,21 @@ class BrowserViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .conflate()
                 .collectLatest { count -> _uiState.update { it.copy(activeDownloadCount = count) } }
+        }
+    }
+
+    /**
+     * The finished count for the dock's right ring: how many transfers have actually landed. It
+     * observes the same Room table the queue observer does, so the ring's badge and the
+     * Completed tab of the downloads screen can never disagree.
+     */
+    private fun observeCompletedDownloads() {
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadRepository.getDownloadsByState(DownloadState.COMPLETED)
+                .map { finished -> finished.size }
+                .distinctUntilChanged()
+                .conflate()
+                .collectLatest { count -> _uiState.update { it.copy(completedDownloadCount = count) } }
         }
     }
 

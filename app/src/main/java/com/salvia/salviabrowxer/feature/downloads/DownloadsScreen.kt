@@ -70,11 +70,13 @@ import kotlinx.coroutines.flow.receiveAsFlow
 fun DownloadsScreen(
     onBack: () -> Unit,
     onPlayInApp: (String, String) -> Unit = { _, _ -> },
+    /** The tab to land on first (0 active, 1 queue, 2 completed, 3 failed) - the dock's rings use it. */
+    initialTabIndex: Int = 0,
     viewModel: DownloadsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var selectedTabIndex by remember { mutableIntStateOf(initialTabIndex.coerceIn(0, 3)) }
     // The password prompt is state of this screen, not of the list: it is a modal question, and the
     // folder locking again on its own must close it.
     var showUnlock by remember { mutableStateOf(false) }
