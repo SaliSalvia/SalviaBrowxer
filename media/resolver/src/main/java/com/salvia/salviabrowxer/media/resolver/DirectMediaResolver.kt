@@ -133,7 +133,7 @@ class DirectMediaResolver(
                     }
                     val format = MediaFormat(
                         id = url,
-                        format = "HLS·" + summary.segmentCount + " segments",
+                        format = "HLS · " + summary.segmentCount + " segments",
                         url = url, mimeType = "application/vnd.apple.mpegurl", extension = "m3u8",
                         isVideo = true, isHls = true
                     )
@@ -356,7 +356,7 @@ class DirectMediaResolver(
         val starIdx = contentDisposition.indexOf("filename*=")
         if (starIdx != -1) {
             val v = contentDisposition.substring(starIdx + 10).substringBefore(';').trim().trim('"','\'')
-            val decoded = v.substringAfter("'I", v)
+            val decoded = v.substringAfter("''", v)
             try { return java.net.URLDecoder.decode(decoded, "UTF-8") } catch (_: Exception) { return decoded }
         }
         val idx = contentDisposition.indexOf("filename=")
