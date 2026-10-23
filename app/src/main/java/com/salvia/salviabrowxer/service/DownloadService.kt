@@ -309,7 +309,7 @@ class DownloadService : Service() {
         try {
             downloadRepository.updateDownloadState(downloadId, DownloadState.PREPARING)
             val finalUrl = runCatching {
-                downloadManager.getFinalUrl(stored.url, sessionUserAgent(stored), sessionReferer(stored, stored.url))
+                downloadManager.getFinalUrl(stored.url, sessionUserAgent(stored), sessionReferer(stored, stored.url), sessionOrigin(stored, stored.url))
             }.getOrNull()?.takeIf { it.isNotBlank() } ?: stored.url
             val preparing = stored.copy(finalUrl = finalUrl, status = DownloadState.DOWNLOADING, error = null, temporaryPath = temporaryPathFor(stored).absolutePath, updatedAt = System.currentTimeMillis())
             downloadRepository.updateDownload(preparing)
@@ -432,8 +432,9 @@ class DownloadService : Service() {
     private fun baseName(filename: String): String = filename.substringBeforeLast('.', filename).ifBlank { "download" }
 
     /**
-     * The session a transfer belongs to: the page it was started from, sent as `Referer`, and the
-     * user agent that page was loaded with. Both are replayed on every request the transfer makes —
+     * The session a transfer belongs to: the page it was started from, sent as `Referer`, the
+     * user agent that page was loaded with, and — cross-site only — the page origin as `Origin`.
+     * All three are replayed on every request the transfer makes —
      * first byte, resumed byte, segment, key and manifest — so a server that guards its media by
      * origin or client sees the request it would have served to the page itself. Cookies are not part
      * of this: they live in the shared OkHttp jar (see `SessionCookieJar`) and are never copied around.
@@ -449,6 +450,13 @@ class DownloadService : Service() {
     private fun sessionReferer(stored: DownloadEntity, targetUrl: String): String? =
         SessionReferer.headerFor(stored.pageUrl, targetUrl)
 
+    /**
+     * The `Origin` the page itself would send for this target: present only cross-site, and only
+     * the origin — a same-site fetch sends no `Origin` header, and neither does the transfer.
+     */
+    private fun sessionOrigin(stored: DownloadEntity, targetUrl: String): String? =
+        SessionReferer.originHeaderFor(stored.pageUrl, targetUrl)
+
     private suspend fun directTransfer(stored: DownloadEntity, downloadId: String, finalUrl: String): Transfer {
         val result = downloadManager.download(
             download = FileDownload(
@@ -457,7 +465,8 @@ class DownloadService : Service() {
                 directory = stored.destination,
                 filename = stored.filename,
                 userAgent = sessionUserAgent(stored),
-                referer = sessionReferer(stored, finalUrl)
+                referer = sessionReferer(stored, finalUrl),
+                origin = sessionOrigin(stored, finalUrl)
             ),
             // A direct file may use several Range connections; a server that cannot serve them is
             // detected by the probe, not assumed, and the transfer falls back to one stream.
@@ -489,7 +498,7 @@ class DownloadService : Service() {
             // the redirect resolution the variant did, so that happens here, at transfer time,
             // with the same session headers the variant got.
             val audioUrl = runCatching {
-                downloadManager.getFinalUrl(selection.audioUrl, sessionUserAgent(stored), sessionReferer(stored, selection.audioUrl))
+                downloadManager.getFinalUrl(selection.audioUrl, sessionUserAgent(stored), sessionReferer(stored, selection.audioUrl), sessionOrigin(stored, selection.audioUrl))
             }.getOrNull()?.takeIf { it.isNotBlank() } ?: selection.audioUrl
             val directory = File(stored.destination).also { if (!it.exists()) it.mkdirs() }
             val videoRaw = File(directory, "$base.video.tmp")
@@ -517,7 +526,8 @@ class DownloadService : Service() {
                     directory = stored.destination,
                     filename = "$base.hls.ts",
                     userAgent = sessionUserAgent(stored),
-                    referer = sessionReferer(stored, finalUrl)
+                    referer = sessionReferer(stored, finalUrl),
+                origin = sessionOrigin(stored, finalUrl)
                 ),
                 onProgress = progress,
                 shouldAbort = abort
@@ -554,7 +564,8 @@ class DownloadService : Service() {
                 directory = target.parentFile?.absolutePath ?: stored.destination,
                 filename = target.name,
                 userAgent = sessionUserAgent(stored),
-                referer = sessionReferer(stored, url)
+                referer = sessionReferer(stored, url),
+                origin = sessionOrigin(stored, url)
             ),
             onProgress = onProgress,
             shouldAbort = shouldAbort
@@ -573,6 +584,7 @@ class DownloadService : Service() {
         target: File,
         userAgent: String,
         referer: String?,
+        origin: String?,
         reuseCompleted: Boolean,
         onProgress: suspend (DownloadSnapshot) -> Unit,
         shouldAbort: suspend () -> AbortReason?
@@ -583,7 +595,7 @@ class DownloadService : Service() {
             }
             target.delete()
         }
-        return dashDownloader.downloadRepresentation(representation, target, userAgent, referer, onProgress = onProgress, shouldAbort = shouldAbort)
+        return dashDownloader.downloadRepresentation(representation, target, userAgent, referer, origin, onProgress = onProgress, shouldAbort = shouldAbort)
     }
 
     /** Re-reads the manifest and downloads the chosen DASH representation(s). */
@@ -598,7 +610,8 @@ class DownloadService : Service() {
         // Segments and keys inherit the manifest's referer: they come from the same host as the
         // manifest that named them.
         val referer = sessionReferer(stored, manifestUrl)
-        val manifest = dashDownloader.fetchManifest(manifestUrl, userAgent, referer)
+        val origin = sessionOrigin(stored, manifestUrl)
+        val manifest = dashDownloader.fetchManifest(manifestUrl, userAgent, referer, origin)
             ?: throw IOException(getString(R.string.error_dash_unsupported))
         val base = baseName(stored.filename)
         val directory = File(stored.destination).also { if (!it.exists()) it.mkdirs() }
@@ -612,13 +625,13 @@ class DownloadService : Service() {
             is DashSelection.Video -> {
                 val representation = manifest.representationById(selection.videoId)
                     ?: throw IOException("DASH video rendition is no longer in the manifest")
-                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, referer, reuseCompleted, progress, abort)
+                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, referer, origin, reuseCompleted, progress, abort)
                 Transfer(result.file, representation.mimeType, remuxToMp4 = true)
             }
             is DashSelection.Audio -> {
                 val representation = manifest.representationById(selection.audioId)
                     ?: throw IOException("DASH audio rendition is no longer in the manifest")
-                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, referer, reuseCompleted, progress, abort)
+                val result = fetchDashRepresentation(representation, File(directory, "$base.dash.tmp"), userAgent, referer, origin, reuseCompleted, progress, abort)
                 Transfer(result.file, representation.mimeType, remuxToMp4 = true)
             }
             is DashSelection.Merged -> {
@@ -628,8 +641,8 @@ class DownloadService : Service() {
                     ?: throw IOException("DASH audio rendition is no longer in the manifest")
                 val videoRaw = File(directory, "$base.video.tmp")
                 val audioRaw = File(directory, "$base.audio.tmp")
-                fetchDashRepresentation(videoRepresentation, videoRaw, userAgent, referer, reuseCompleted, progress, abort)
-                fetchDashRepresentation(audioRepresentation, audioRaw, userAgent, referer, reuseCompleted, progress, abort)
+                fetchDashRepresentation(videoRepresentation, videoRaw, userAgent, referer, origin, reuseCompleted, progress, abort)
+                fetchDashRepresentation(audioRepresentation, audioRaw, userAgent, referer, origin, reuseCompleted, progress, abort)
                 val merged = DownloadManager.nonConflicting(File(directory, "$base.mp4"))
                 if (trackMerger.merge(videoRaw, audioRaw, merged)) {
                     videoRaw.delete(); audioRaw.delete()

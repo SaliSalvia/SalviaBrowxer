@@ -27,12 +27,13 @@ class DashDownloader(
     private val okHttpClient: OkHttpClient
 ) {
 
-    fun fetchManifest(url: String, userAgent: String, referer: String?): DashManifest? {
+    fun fetchManifest(url: String, userAgent: String, referer: String?, origin: String? = null): DashManifest? {
         val xml = runCatching {
             val request = Request.Builder().url(url)
                 .header("User-Agent", userAgent)
                 .header("Accept", "*/*")
                 .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+                .apply { origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) } }
                 .get().build()
             okHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
@@ -49,6 +50,7 @@ class DashDownloader(
         target: File,
         userAgent: String,
         referer: String?,
+        origin: String? = null,
         progressEveryMillis: Long = DownloadManager.PROGRESS_THROTTLE_MILLIS,
         onProgress: suspend (DownloadSnapshot) -> Unit = {},
         shouldAbort: suspend () -> AbortReason? = { null }
@@ -56,7 +58,7 @@ class DashDownloader(
         // The single-file shape (`SegmentBase`): one resource, sliced by byte ranges the manifest
         // named and its own `sidx` index describes.
         if (representation.isSingleFile) {
-            return downloadSingleFile(representation, target, userAgent, referer, progressEveryMillis, onProgress, shouldAbort)
+            return downloadSingleFile(representation, target, userAgent, referer, origin, progressEveryMillis, onProgress, shouldAbort)
         }
         if (representation.segmentUrls.isEmpty()) throw IOException("DASH representation has no segments")
         val parent = target.parentFile ?: throw IOException("DASH target has no parent directory")
@@ -76,6 +78,7 @@ class DashDownloader(
             partFile = partFile,
             userAgent = userAgent,
             referer = referer,
+            origin = origin,
             progressEveryMillis = progressEveryMillis,
             onProgress = onProgress,
             shouldAbort = shouldAbort
@@ -114,6 +117,7 @@ class DashDownloader(
         target: File,
         userAgent: String,
         referer: String?,
+        origin: String?,
         progressEveryMillis: Long,
         onProgress: suspend (DownloadSnapshot) -> Unit,
         shouldAbort: suspend () -> AbortReason?
@@ -123,8 +127,8 @@ class DashDownloader(
         val partFile = File(parent, "${target.name}.${DownloadManager.PART_SUFFIX}")
         if (partFile.exists()) partFile.delete()
 
-        val totalBytes = probeLength(url, userAgent, referer)
-        val parts = planSingleFileRanges(url, representation, totalBytes, userAgent, referer)
+        val totalBytes = probeLength(url, userAgent, referer, origin)
+        val parts = planSingleFileRanges(url, representation, totalBytes, userAgent, referer, origin)
             ?: listOf(SegmentPart(url = url))
 
         SegmentedFetcher(okHttpClient).fetch(
@@ -133,6 +137,7 @@ class DashDownloader(
             partFile = partFile,
             userAgent = userAgent,
             referer = referer,
+            origin = origin,
             progressEveryMillis = progressEveryMillis,
             onProgress = onProgress,
             shouldAbort = shouldAbort
@@ -162,10 +167,11 @@ class DashDownloader(
         representation: DashRepresentation,
         totalBytes: Long?,
         userAgent: String,
-        referer: String?
+        referer: String?,
+        origin: String?
     ): List<SegmentPart>? {
         val indexRange = representation.indexRange ?: return null
-        val indexBytes = fetchRange(url, indexRange, userAgent, referer) ?: return null
+        val indexBytes = fetchRange(url, indexRange, userAgent, referer, origin) ?: return null
         val entries = SegmentIndexBox.parse(indexBytes, indexRange.first) ?: return null
 
         // Everything up to and including the index: the file type box, the initialisation data and
@@ -191,12 +197,13 @@ class DashDownloader(
     }
 
     /** `Content-Range` total for a one-byte ranged request, or null when the server will not say. */
-    private fun probeLength(url: String, userAgent: String, referer: String?): Long? = runCatching {
+    private fun probeLength(url: String, userAgent: String, referer: String?, origin: String?): Long? = runCatching {
         val request = Request.Builder().url(url)
             .header("Range", "bytes=0-0")
             .header("Accept", "*/*")
             .header("User-Agent", userAgent)
             .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+            .apply { origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) } }
             .get().build()
         okHttpClient.newCall(request).execute().use { response ->
             if (response.code != 206) return@use null
@@ -205,12 +212,13 @@ class DashDownloader(
     }.getOrNull()
 
     /** The bytes of one range, or null when the request failed or the body is short. */
-    private fun fetchRange(url: String, range: LongRange, userAgent: String, referer: String?): ByteArray? = runCatching {
+    private fun fetchRange(url: String, range: LongRange, userAgent: String, referer: String?, origin: String?): ByteArray? = runCatching {
         val request = Request.Builder().url(url)
             .header("Range", "bytes=${range.first}-${range.last}")
             .header("Accept", "*/*")
             .header("User-Agent", userAgent)
             .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+            .apply { origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) } }
             .get().build()
         okHttpClient.newCall(request).execute().use { response ->
             if (response.code != 206) return@use null

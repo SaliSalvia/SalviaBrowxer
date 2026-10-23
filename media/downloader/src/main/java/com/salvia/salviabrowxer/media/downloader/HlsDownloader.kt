@@ -53,8 +53,9 @@ class HlsDownloader(
         val playlistUrl = download.url
         val userAgent = download.userAgent ?: FileDownload.DEFAULT_DOWNLOAD_USER_AGENT
         val referer = download.referer
+        val origin = download.origin
 
-        val playlistText = fetchText(playlistUrl, userAgent, referer)
+        val playlistText = fetchText(playlistUrl, userAgent, referer, origin)
             ?: throw IOException("Unable to fetch HLS playlist")
 
         if ("#EXTM3U" !in playlistText) throw IOException("Not a valid HLS playlist")
@@ -83,6 +84,7 @@ class HlsDownloader(
             partFile = partFile,
             userAgent = userAgent,
             referer = referer,
+            origin = origin,
             progressEveryMillis = progressEveryMillis,
             onProgress = onProgress,
             shouldAbort = shouldAbort
@@ -205,11 +207,12 @@ class HlsDownloader(
         return iv
     }
 
-    private fun fetchText(url: String, userAgent: String, referer: String?): String? {
+    private fun fetchText(url: String, userAgent: String, referer: String?, origin: String?): String? {
         val req = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Accept", "*/*")
             .apply { referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
+            .apply { origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) } }
             .get().build()
         okHttpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null

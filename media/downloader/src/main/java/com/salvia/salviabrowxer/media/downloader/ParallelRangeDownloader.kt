@@ -140,6 +140,7 @@ internal class ParallelRangeDownloader(
             .apply {
                 download.userAgent?.takeIf { it.isNotBlank() }?.let { header("User-Agent", it) }
                 download.referer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) }
+                download.origin?.takeIf { it.isNotBlank() }?.let { header("Origin", it) }
             }
             .build()
 
