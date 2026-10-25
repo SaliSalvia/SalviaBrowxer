@@ -49,6 +49,9 @@
     <string name="tab_open">Open this tab</string>
     <string name="find_query_field">Text to find on the page</string>
     <string name="download_enqueued">Added to download queue</string>
+    <string name="download_already_downloading">Already downloading: %1$s — its row is in Downloads</string>
+    <string name="download_already_downloaded">Already downloaded: %1$s — it is in Downloads</string>
+    <string name="download_finished_named">Downloaded: %1$s</string>
     <string name="download_convert_needs_local_file">This file lives in the folder you chose, so it cannot be converted here — open it from that folder instead</string>
     <string name="download_convert">Convert to MP4</string>
     <string name="download_convert_progress">Converting… %1$d%%</string>
