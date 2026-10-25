@@ -1402,6 +1402,17 @@ class BrowserViewModel @Inject constructor(
     // endregion
 
     // region downloads
+    /** The states in which a row's transfer is still live, so a second request for the same URL is a duplicate. */
+    private val inFlightStates = setOf(
+        DownloadState.DOWNLOADING,
+        DownloadState.QUEUED,
+        DownloadState.RETRYING,
+        DownloadState.RESOLVING,
+        DownloadState.PREPARING,
+        DownloadState.PROCESSING,
+        DownloadState.PAUSED
+    )
+
     fun enqueueDownload(format: MediaFormat, customFileName: String? = null) {
         val sheet = _uiState.value.qualitySheet ?: return
         val candidate = sheet.candidate
@@ -1435,6 +1446,28 @@ class BrowserViewModel @Inject constructor(
             return
         }
         withContext(Dispatchers.IO) {
+            // The same URL asked for twice is answered, not fetched twice. A row already in flight
+            // gains nothing from a second transfer against the same server, and a completed row
+            // whose file is still on disk is a file that is already here — both say so and stop.
+            // A failed or cancelled row blocks nothing: retrying is what those states are for,
+            // and a completed row whose file has gone missing is treated like one of those.
+            runCatching { downloadRepository.getAllDownloads().first() }.getOrNull().orEmpty()
+                .firstOrNull { it.url == format.url }
+                ?.let { row ->
+                    val fileIsHere = row.finalPath?.let { path -> path.startsWith("content://") || File(path).exists() } == true
+                    when {
+                        row.status in inFlightStates -> {
+                            _uiState.update { it.copy(qualitySheet = null) }
+                            _messages.trySend(context.getString(R.string.download_already_downloading, row.mediaTitle ?: row.filename))
+                            return@withContext
+                        }
+                        row.status == DownloadState.COMPLETED && fileIsHere -> {
+                            _uiState.update { it.copy(qualitySheet = null) }
+                            _messages.trySend(context.getString(R.string.download_already_downloaded, row.mediaTitle ?: row.filename))
+                            return@withContext
+                        }
+                    }
+                }
             val title = mediaTitle.takeIf { it.isNotBlank() } ?: candidate.pageUrl
             val extension = format.extension.takeIf { it.isNotBlank() } ?: com.salvia.salviabrowxer.media.downloader.DownloadManager.extensionFromUrl(format.url)
             // A name typed in the sheet wins; blank or dot-only input falls back to the page title.

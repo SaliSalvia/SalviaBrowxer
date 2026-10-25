@@ -103,9 +103,16 @@ class DownloadsViewModel @Inject constructor(
     val exportPermissionRequest: Flow<String> = _exportPermissionRequest.receiveAsFlow()
     private var pendingExportDownloadId: String? = null
 
+    /**
+     * The statuses the list last saw, so a completion can be announced as a change the user
+     * watched happen rather than as a state the list merely opened with.
+     */
+    private var lastStatuses: Map<String, DownloadState> = emptyMap()
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             downloadRepository.getAllDownloads().distinctUntilChanged().collectLatest { downloads ->
+                announceNewCompletions(downloads)
                 _uiState.update { state ->
                     // A locked row is not drawn until the password has been entered — the list is where
                     // "hidden" has to mean something. The underlying rows are all still in `all`, so the
@@ -474,5 +481,20 @@ class DownloadsViewModel @Inject constructor(
             downloadRepository.deleteDownloadsByState(state)
         }
     }
+    /**
+     * Says a transfer finished, with its name, while the list was on screen to see it happen.
+     *
+     * Only transitions are announced: the first read is the state the screen opened with, not
+     * news, and a row that is created already finished (a captured blob, a saved recording, a
+     * conversion) carries its own message from the flow that produced it.
+     */
+    private fun announceNewCompletions(downloads: List<DownloadEntity>) {
+        val previous = lastStatuses
+        lastStatuses = downloads.associate { it.id to it.status }
+        if (previous.isEmpty()) return
+        downloads.filter { row -> row.status == DownloadState.COMPLETED && previous[row.id] != null && previous[row.id] != DownloadState.COMPLETED }
+            .forEach { row -> _messages.trySend(context.getString(R.string.download_finished_named, row.mediaTitle?.ifBlank { null } ?: row.filename)) }
+    }
+
     fun downloadProgressPercent(download: DownloadEntity): Float { val total = download.totalBytes ?: return 0f; return if (total > 0L) (download.downloadedBytes.toFloat() / total).coerceIn(0f, 1f) else 0f }
 }

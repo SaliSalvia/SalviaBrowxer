@@ -50,6 +50,9 @@
     <string name="tab_open">گشودن این زبانه</string>
     <string name="find_query_field">متنی که در صفحه جست‌وجو می‌شود</string>
     <string name="download_enqueued">به صف دانلود افزوده شد</string>
+    <string name="download_already_downloading">همین حالا در حال دانلود است: %1$s — ردیفش در دانلودهاست</string>
+    <string name="download_already_downloaded">قبلاً دانلود شده: %1$s — در دانلودهاست</string>
+    <string name="download_finished_named">دانلود شد: %1$s</string>
     <string name="download_convert_needs_local_file">این فایل در پوشه‌ای است که خودتان انتخاب کرده‌اید، پس تبدیل در اینجا ممکن نیست — آن را از همان پوشه باز کنید</string>
     <string name="download_convert">تبدیل به MP4</string>
     <string name="download_convert_progress">در حال تبدیل… %1$d%%</string>
