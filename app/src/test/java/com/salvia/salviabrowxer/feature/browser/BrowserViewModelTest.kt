@@ -2,9 +2,11 @@ package com.salvia.salviabrowxer.feature.browser
 
 import android.content.Context
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.BookmarkEntity
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
+import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.model.MediaCandidate
 import com.salvia.salviabrowxer.core.model.MediaCandidate.MediaSource
 import com.salvia.salviabrowxer.core.model.MediaFormat
@@ -479,6 +481,67 @@ class BrowserViewModelTest {
     }
 
     @Test
+    fun `a url whose row is already in flight is answered, not fetched twice`() = runTest {
+        coEvery { downloadRepository.getAllDownloads() } returns
+            flowOf(listOf(duplicateRow(DownloadState.DOWNLOADING)))
+        viewModel.navigate("https://example.com/feed")
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, trayClip())
+        viewModel.openMediaTray()
+        viewModel.downloadOrOffer(viewModel.uiState.value.detectedMedia.first())
+
+        // The honest answer is the whole point: the same URL already has a live row, so the user
+        // is told that instead of paying for the same transfer twice.
+        verify(timeout = 5_000) { context.getString(R.string.download_already_downloading, any()) }
+        // The skip branch returns right after its message, so no row can be created behind it.
+        coVerify(exactly = 0) { downloadRepository.addDownload(any()) }
+    }
+
+    @Test
+    fun `a completed row whose file is still on disk is named instead of re-downloaded`() = runTest {
+        val file = File.createTempFile("already-here", ".mp4")
+        coEvery { downloadRepository.getAllDownloads() } returns
+            flowOf(listOf(duplicateRow(DownloadState.COMPLETED, finalPath = file.absolutePath)))
+        viewModel.navigate("https://example.com/feed")
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, trayClip())
+        viewModel.openMediaTray()
+        viewModel.downloadOrOffer(viewModel.uiState.value.detectedMedia.first())
+
+        // The file still exists where the row says it does, so the transfer is already done —
+        // the answer names it, and nothing is fetched again.
+        verify(timeout = 5_000) { context.getString(R.string.download_already_downloaded, any()) }
+        coVerify(exactly = 0) { downloadRepository.addDownload(any()) }
+    }
+
+    @Test
+    fun `a completed row whose file has gone missing never blocks the retry`() = runTest {
+        coEvery { downloadRepository.getAllDownloads() } returns
+            flowOf(listOf(duplicateRow(DownloadState.COMPLETED, finalPath = "/nowhere/at/all/clip.mp4")))
+        viewModel.navigate("https://example.com/feed")
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, trayClip())
+        viewModel.openMediaTray()
+        viewModel.downloadOrOffer(viewModel.uiState.value.detectedMedia.first())
+
+        // A completed row without its file is a memory, not a download: asking again starts a
+        // real transfer and says the honest "queued", rather than pointing at a file that is gone.
+        coVerify(timeout = 5_000, exactly = 1) { downloadRepository.addDownload(any()) }
+        verify(timeout = 5_000) { context.getString(R.string.download_enqueued) }
+    }
+
+    @Test
+    fun `a failed row is retried, not answered as a duplicate`() = runTest {
+        coEvery { downloadRepository.getAllDownloads() } returns
+            flowOf(listOf(duplicateRow(DownloadState.FAILED)))
+        viewModel.navigate("https://example.com/feed")
+        viewModel.onMediaIntercepted(viewModel.uiState.value.currentTabId, trayClip())
+        viewModel.openMediaTray()
+        viewModel.downloadOrOffer(viewModel.uiState.value.detectedMedia.first())
+
+        // Retrying is what the failed and cancelled states are for, so the second ask queues.
+        coVerify(timeout = 5_000, exactly = 1) { downloadRepository.addDownload(any()) }
+        verify(timeout = 5_000) { context.getString(R.string.download_enqueued) }
+    }
+
+    @Test
     fun `several renditions open the sheet and queue nothing`() = runTest {
         val high = MediaFormat(id = "720p", format = "720p", url = "https://cdn.example.com/720.m3u8",
             mimeType = "application/vnd.apple.mpegurl", extension = "m3u8", height = 720, isVideo = true, isHls = true)
@@ -805,4 +868,24 @@ class BrowserViewModelTest {
         advanceTimeBy(500)
         coVerify(exactly = 1) { settingsDataStore.setFloatingButtonPosition(-120f, -340f) }
     }
+
+    /** The tray clip the duplicate-detection tests ask for, the way the tray itself presents it. */
+    private fun trayClip() = MediaCandidate(
+        pageUrl = "https://example.com/feed",
+        mediaUrl = "https://cdn.example.com/clip.mp4",
+        title = "Clip",
+        mimeType = "video/mp4",
+        extension = "mp4",
+        source = MediaSource.DOM
+    )
+
+    /** A row for that same clip in a chosen state, so a second request meets a known answer. */
+    private fun duplicateRow(status: DownloadState, finalPath: String? = null) = DownloadEntity(
+        id = "dup",
+        url = "https://cdn.example.com/clip.mp4",
+        filename = "clip.mp4",
+        destination = "/tmp",
+        finalPath = finalPath,
+        status = status
+    )
 }

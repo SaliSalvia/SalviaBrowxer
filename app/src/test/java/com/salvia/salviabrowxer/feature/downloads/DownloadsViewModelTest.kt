@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.feature.downloads
 
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.core.storage.MediaStoreExporter
@@ -15,6 +16,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -338,6 +340,49 @@ class DownloadsViewModelTest {
 
         // No file is published when the user declines the grant.
         verify(exactly = 0) { mockMediaStoreExporter.export(any<java.io.File>(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a transfer that completes on screen is announced by name`() = runTest {
+        val rows = MutableStateFlow(listOf(download("1", DownloadState.DOWNLOADING)))
+        coEvery { mockDownloadRepository.getAllDownloads() } returns rows
+        val vm = newViewModel()
+        withContext(Dispatchers.Default) { withTimeout(5_000L) { vm.uiState.first { it.active.size == 1 } } }
+
+        rows.value = listOf(download("1", DownloadState.COMPLETED))
+
+        withContext(Dispatchers.Default) { withTimeout(5_000L) { vm.uiState.first { it.completed.size == 1 } } }
+        // The announcement decision runs before the buckets are published, so once the row sits in
+        // "completed" the message has been said: it names the file that finished, not just the fact.
+        verify(timeout = 5_000) { mockContext.getString(R.string.download_finished_named, "1.mp4") }
+    }
+
+    @Test
+    fun `the first read is the state the screen opened with, not news`() = runTest {
+        coEvery { mockDownloadRepository.getAllDownloads() } returns
+            flowOf(listOf(download("1", DownloadState.COMPLETED)))
+        val vm = newViewModel()
+        withContext(Dispatchers.Default) { withTimeout(5_000L) { vm.uiState.first { it.completed.size == 1 } } }
+
+        // A row that is already finished when the list first appears did not "just finish", and
+        // the announce step has already run by the time the bucket is published, so no later call
+        // can follow: only a transition this screen saw happen is ever announced.
+        verify(exactly = 0) { mockContext.getString(R.string.download_finished_named, any()) }
+    }
+
+    @Test
+    fun `a transfer that stops without completing is not announced`() = runTest {
+        val rows = MutableStateFlow(listOf(download("1", DownloadState.DOWNLOADING)))
+        coEvery { mockDownloadRepository.getAllDownloads() } returns rows
+        val vm = newViewModel()
+        withContext(Dispatchers.Default) { withTimeout(5_000L) { vm.uiState.first { it.active.size == 1 } } }
+
+        rows.value = listOf(download("1", DownloadState.CANCELLED))
+
+        withContext(Dispatchers.Default) { withTimeout(5_000L) { vm.uiState.first { it.failed.size == 1 } } }
+        // A transfer that ends without a file is a cancellation, not a completion: the
+        // announcement is for finished downloads only.
+        verify(exactly = 0) { mockContext.getString(R.string.download_finished_named, any()) }
     }
 
     private fun download(id: String, status: DownloadState) = DownloadEntity(
