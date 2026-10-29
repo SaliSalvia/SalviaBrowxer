@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavType
@@ -50,6 +51,9 @@ class MainActivity : ComponentActivity() {
     private var incomingUrl by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before anything else: the splash takes over the cold-start window and hands it to the
+        // first real frame. A browser opened many times a day is felt "fast" here first.
+        installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         openDownloadsRequested = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
