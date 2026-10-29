@@ -5,6 +5,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -14,6 +19,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavType
@@ -120,12 +127,29 @@ fun SalviaBrowxerAppContent(
         }
     }
 
+    // One transition pair for the whole graph: a short slide in the direction of travel, faded
+    // in over it, and played backwards on pop. Direction is decided in exactly one place, so an
+    // RTL locale slides the other way and "forward" still means what the eye expects.
+    val forward = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
+
     NavHost(
         navController = navController,
         // The app is a browser first, so the browser is what the user meets on launch: the media
         // tray and its pill are what turn browsing into downloading, and the paste field stays one
         // tap away in the overflow menu ("Start screen") for when a link is already in hand.
-        startDestination = ROUTE_BROWSER
+        startDestination = ROUTE_BROWSER,
+        enterTransition = {
+            slideInHorizontally(animationSpec = tween(220)) { forward * it / 5 } + fadeIn(animationSpec = tween(220))
+        },
+        exitTransition = {
+            slideOutHorizontally(animationSpec = tween(160)) { forward * -it / 6 } + fadeOut(animationSpec = tween(160))
+        },
+        popEnterTransition = {
+            slideInHorizontally(animationSpec = tween(220)) { forward * -it / 5 } + fadeIn(animationSpec = tween(220))
+        },
+        popExitTransition = {
+            slideOutHorizontally(animationSpec = tween(160)) { forward * it / 6 } + fadeOut(animationSpec = tween(160))
+        }
     ) {
         composable(ROUTE_HOME) {
             HomeScreen(
