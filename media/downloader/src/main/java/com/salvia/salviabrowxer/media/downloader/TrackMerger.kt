@@ -42,7 +42,9 @@ class TrackMerger {
             muxer!!.start()
             val buffer = ByteBuffer.allocate(BUFFER_SIZE)
             val info = MediaCodec.BufferInfo()
-            val wrote = copyTracks(videoExtractor, mappedVideo, muxer!!, buffer, info) or
+            // Both tracks must land before the merge counts as a success: with `or`, a failed video copy
+            // short-circuited into true, and the caller then deleted the raw video it believed was merged.
+            val wrote = copyTracks(videoExtractor, mappedVideo, muxer!!, buffer, info) &&
                 copyTracks(audioExtractor, mappedAudio, muxer!!, buffer, info)
             if (!wrote) return false
             muxer!!.stop()

@@ -1,6 +1,7 @@
 package com.salvia.salviabrowxer.service.queue
 
 import com.salvia.salviabrowxer.core.concurrent.SlotLimiter
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,15 @@ class DownloadWorkQueue(
     private val inFlight = AtomicInteger(0)
     private var processorJob: Job? = null
 
+    /**
+     * The ids a running transfer owns. A re-enqueued copy of an id that is already claimed is
+     * skipped instead of started: the queue screen requeues every resumable row on open, so an
+     * actively downloading row is handed to the channel again while its transfer is running, and a
+     * double-tapped resume does the same. Two transfers against one row would write the same
+     * `.part` file from two connections at once.
+     */
+    private val claimed = ConcurrentHashMap.newKeySet<String>()
+
     /** How many ids have been taken out of the queue and not yet finished. */
     val inFlightCount: Int get() = inFlight.get()
 
@@ -60,11 +70,20 @@ class DownloadWorkQueue(
                 inFlight.incrementAndGet()
                 launch {
                     try {
-                        limiter.acquire()
-                        try {
-                            process(downloadId)
-                        } finally {
-                            limiter.release()
+                        // The claim happens the moment the id leaves the channel, before the limiter
+                        // wait, so the window in which a re-enqueued copy could start a duplicate
+                        // transfer does not exist. The copy that owns the claim owns the row.
+                        if (claimed.add(downloadId)) {
+                            try {
+                                limiter.acquire()
+                                try {
+                                    process(downloadId)
+                                } finally {
+                                    limiter.release()
+                                }
+                            } finally {
+                                claimed.remove(downloadId)
+                            }
                         }
                     } catch (cancellation: CancellationException) {
                         throw cancellation

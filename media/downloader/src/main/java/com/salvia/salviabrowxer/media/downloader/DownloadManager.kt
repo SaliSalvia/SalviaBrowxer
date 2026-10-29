@@ -102,7 +102,9 @@ class DownloadManager(
         onProgress: suspend (DownloadSnapshot) -> Unit = {},
         shouldAbort: suspend () -> AbortReason? = { null }
     ): DownloadResult {
-        if (parallelConnections >= RangePlanner.MIN_CONNECTIONS) {
+        // A single-stream .part from an earlier attempt must not be raced by a parallel plan that
+        // writes its own joined output over the same name — when it exists, resume it alone.
+        if (parallelConnections >= RangePlanner.MIN_CONNECTIONS && !partialFileFor(download).exists()) {
             val plan = RangePlanner.plan(rangedLengthOf(download), parallelConnections)
             if (plan != null) {
                 try {

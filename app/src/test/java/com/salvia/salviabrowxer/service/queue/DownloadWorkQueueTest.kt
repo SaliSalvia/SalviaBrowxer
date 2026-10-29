@@ -244,4 +244,34 @@ class DownloadWorkQueueTest {
 
         assertEquals("a cancelled processor is not an idle queue", 0, recorder.idleCalls.get())
     }
+
+    @Test
+    fun `a re-enqueued id is skipped while its transfer is still running`() = runTest {
+        val recorder = Recorder()
+        val gate = CompletableDeferred<Unit>()
+        val queue = DownloadWorkQueue(
+            limiter = SlotLimiter(3),
+            process = { id ->
+                recorder.started += id
+                gate.await()
+                recorder.finished += id
+            }
+        )
+
+        queue.enqueue("same")
+        queue.start(this)
+        advanceUntilIdle()
+
+        // The queue screen requeues resumable rows on every open, and a double-tapped resume
+        // enqueues twice; the second copy must not start a second transfer of the same row.
+        queue.enqueue("same")
+        advanceUntilIdle()
+        assertEquals(listOf("same"), recorder.started)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf("same"), recorder.finished)
+        assertTrue(queue.isIdle)
+        queue.finish()
+    }
 }

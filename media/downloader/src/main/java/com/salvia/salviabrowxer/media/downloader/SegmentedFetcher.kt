@@ -175,11 +175,18 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
                 if (!response.isSuccessful) throw IOException("Segment failed HTTP ${response.code} for ${part.url}")
                 val body = response.body ?: throw IOException("Empty segment body for ${part.url}")
                 if (part.keyUri == null) {
+                    // Room is not polled per 64 KiB chunk: the abort check is throttled, so a multi-gigabyte
+                    // stream costs a handful of queries instead of tens of thousands.
+                    var abortCheckAt = 0L
                     body.byteStream().use { input ->
                         FileOutputStream(tmp).use { output ->
                             val buffer = ByteArray(BUFFER_SIZE)
                             while (true) {
-                                shouldAbort()?.let { throw DownloadAbortedException(it) }
+                                val now = System.currentTimeMillis()
+                                if (now >= abortCheckAt) {
+                                    abortCheckAt = now + ABORT_CHECK_MILLIS
+                                    shouldAbort()?.let { throw DownloadAbortedException(it) }
+                                }
                                 val read = input.read(buffer)
                                 if (read == -1) break
                                 output.write(buffer, 0, read)
@@ -224,6 +231,8 @@ internal class SegmentedFetcher(private val okHttpClient: OkHttpClient) {
         /** Four segments in flight: fast on a real connection, still gentle to a phone. */
         const val PARALLELISM = 4
         private const val BUFFER_SIZE = 64 * 1024
+        /** How often the copy loop re-reads the row for a pause or cancel — often enough to feel instant, rarely enough to matter. */
+        const val ABORT_CHECK_MILLIS = 250L
         private const val TMP_SUFFIX = "tmp"
         private const val AES_KEY_SIZE = 16
         private val ZERO_IV = ByteArray(16)
