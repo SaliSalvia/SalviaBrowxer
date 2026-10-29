@@ -48,6 +48,7 @@
         -->
         <activity
             android:name=".MainActivity"
+            android:theme="@style/Theme.SalviaBrowxer.Starting"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
             android:launchMode="singleTop"

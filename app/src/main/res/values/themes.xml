@@ -8,4 +8,12 @@
         <item name="colorPrimaryContainer">@color/primary_container</item>
         <item name="colorSecondary">@color/secondary</item>
     </style>
+
+    <!-- The launch theme: the splash draws its window over the same charcoal the app uses as its
+         windowBackground, so the handoff to the first frame has no flash of a different colour.
+         postSplashScreenTheme hands the activity back to the real theme the app is styled by. -->
+    <style name="Theme.SalviaBrowxer.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/matte_charcoal</item>
+        <item name="postSplashScreenTheme">@style/Theme.SalviaBrowxer</item>
+    </style>
 </resources>
