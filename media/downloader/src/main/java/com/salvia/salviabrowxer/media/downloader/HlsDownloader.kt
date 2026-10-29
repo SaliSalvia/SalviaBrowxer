@@ -169,7 +169,7 @@ class HlsDownloader(
             val iv = currentIv ?: sequenceIv(mediaSequence + segmentIndex)
             mediaParts += SegmentPart(url = url, range = range, keyUri = currentKeyUri, iv = iv)
             segmentIndex++
-            if (mediaParts.size >= MAX_SEGMENTS) break
+            if (mediaParts.size >= MAX_SEGMENTS) throw IOException("HLS playlist has more than $MAX_SEGMENTS segments; refusing to save a truncated stream")
         }
 
         val parts = ArrayList<SegmentPart>(mediaParts.size + 1)
@@ -217,8 +217,8 @@ class HlsDownloader(
         okHttpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null
             val bytes = resp.body?.bytes() ?: return null
-            // Cap master playlist at 256 KiB — prevents OOM on adversarial CDN responses
-            if (bytes.size > 256 * 1024) return bytes.copyOf(256 * 1024).toString(Charsets.UTF_8)
+            // Cap the playlist body at a generous 2 MiB — a hostile response is refused loudly, never silently truncated.
+            if (bytes.size > PLAYLIST_BODY_LIMIT_BYTES) throw IOException("Playlist body exceeds $PLAYLIST_BODY_LIMIT_BYTES bytes; refusing to parse a truncated manifest")
             return bytes.toString(Charsets.UTF_8)
         }
     }
@@ -256,6 +256,8 @@ class HlsDownloader(
 
     private companion object {
         /** A hard bound on the segments one playlist may contribute, to keep a hostile manifest small. */
-        const val MAX_SEGMENTS = 2000
+        const val MAX_SEGMENTS = 4000
+        /** The largest playlist body fetchText will parse; a bigger manifest is refused loudly, never silently truncated. */
+        const val PLAYLIST_BODY_LIMIT_BYTES = 2 * 1024 * 1024
     }
 }
