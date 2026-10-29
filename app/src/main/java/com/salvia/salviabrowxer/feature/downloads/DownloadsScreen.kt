@@ -233,6 +233,9 @@ private fun DownloadList(
     LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
         items(items, key = { it.id }, contentType = { it.status }) { download ->
             DownloadItem(
+                // The list re-sorts as transfers move between buckets; animating the placement
+                // says "it moved" instead of jumping the row somewhere the eye must find again.
+                modifier = Modifier.animateItem(),
                 download = download,
                 onOpenClick = {
                     val mime = download.mimeType ?: ""
