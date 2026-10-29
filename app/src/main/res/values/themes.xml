@@ -14,6 +14,7 @@
          postSplashScreenTheme hands the activity back to the real theme the app is styled by. -->
     <style name="Theme.SalviaBrowxer.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/matte_charcoal</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/salvia_brand</item>
         <item name="postSplashScreenTheme">@style/Theme.SalviaBrowxer</item>
     </style>
 </resources>

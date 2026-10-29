@@ -1,35 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Salvia graphite palette -->
-    <color name="matte_charcoal">#0B1015</color>
-    <color name="deep_charcoal">#121920</color>
-    <color name="charcoal_surface">#19222C</color>
-    <color name="charcoal_elevated">#202B36</color>
-    <color name="charcoal_border">#2B3743</color>
+    <!-- Near-black surfaces with muted violet depth -->
+    <color name="matte_charcoal">#000000</color>
+    <color name="deep_charcoal">#100B15</color>
+    <color name="charcoal_surface">#1A1420</color>
+    <color name="charcoal_elevated">#261D2E</color>
+    <color name="charcoal_border">#3A2D46</color>
 
     <!-- Neutral foregrounds -->
     <color name="pearl_white">#F2F5F7</color>
     <color name="pearl_warm">#E8EDF0</color>
     <color name="pearl_pink">#F2E4E9</color>
-    <color name="pearl_teal">#DCEFEA</color>
+    <color name="pearl_teal">#EAE5EF</color>
     <color name="pearl_lavender">#EAE7F3</color>
-    <color name="pearl_blue">#E0EAF1</color>
+    <color name="pearl_blue">#EAE5EF</color>
     <color name="silver_light">#D9E1E6</color>
     <color name="silver_mid">#A8B4BE</color>
     <color name="silver_deep">#84919D</color>
     <color name="silver_shine">#F8FAFB</color>
 
-    <!-- Sage/teal primary -->
-    <color name="aurora_teal">#5DD7C3</color>
-    <color name="aurora_teal_light">#A2EBDD</color>
-    <color name="aurora_teal_deep">#238A7B</color>
-    <color name="aurora_container">#193B37</color>
+    <!-- Crimson primary -->
+    <color name="aurora_teal">#E7284F</color>
+    <color name="aurora_teal_light">#FF8197</color>
+    <color name="aurora_teal_deep">#BD1737</color>
+    <color name="aurora_container">#471421</color>
 
     <!-- Violet secondary -->
-    <color name="nebula_violet">#9A83E9</color>
-    <color name="nebula_violet_light">#C3B4F8</color>
-    <color name="nebula_deep">#6852AF</color>
-    <color name="nebula_container">#2B2442</color>
+    <color name="nebula_violet">#AC52F2</color>
+    <color name="nebula_violet_light">#D19AFF</color>
+    <color name="nebula_deep">#7529BC</color>
+    <color name="nebula_container">#301642</color>
 
     <!-- Legacy aliases -->
     <color name="gold">@color/aurora_teal</color>
@@ -52,11 +52,11 @@
     <color name="surface_variant">@color/charcoal_surface</color>
     <color name="on_surface_variant">@color/silver_mid</color>
 
-    <color name="error">#FF7777</color>
+    <color name="error">#FF8197</color>
     <color name="on_error">#FFFFFF</color>
     <color name="media_detected_indicator">@color/aurora_teal</color>
     <color name="download_button_active">@color/aurora_teal</color>
-    <color name="download_button_inactive">#34414C</color>
+    <color name="download_button_inactive">#3A2D46</color>
     <color name="floating_button_background">@color/charcoal_elevated</color>
     <color name="floating_button_foreground">@color/pearl_white</color>
 

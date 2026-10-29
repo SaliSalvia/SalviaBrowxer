@@ -208,6 +208,17 @@ class TabWebViewStore(
 
     /** Attaches the tab's WebView to [container], detaching whatever was there before. */
     fun attach(container: ViewGroup, tabId: String, initialUrl: String): WebView {
+        val alreadyAttached = live[tabId]
+        if (
+            visibleTabId == tabId &&
+            alreadyAttached != null &&
+            container.childCount == 1 &&
+            container.getChildAt(0) === alreadyAttached &&
+            tabId !in pendingDesktopReloads
+        ) {
+            return alreadyAttached
+        }
+
         visibleTabId = tabId
         val view = webViewFor(tabId, initialUrl)
         (view.parent as? ViewGroup)?.takeIf { it !== container }?.removeView(view)

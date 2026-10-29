@@ -294,6 +294,21 @@ fun BrowserScreen(
         }
     }
     val store = remember(context, viewModel, storeCallbacks) { viewModel.webViewStore(context, storeCallbacks) }
+    val liveTabIds = remember(state.tabs) { state.tabs.map { it.id }.toSet() }
+
+    // These operations touch every live WebView, so run them only when tabs or browser settings
+    // actually change instead of on every progress/title/download recomposition.
+    LaunchedEffect(store, liveTabIds, state.currentTabId) {
+        if (state.currentTabId != null) store.retain(liveTabIds)
+    }
+    LaunchedEffect(store, state.isJavaScriptEnabled, state.areCookiesEnabled, state.isDesktopSite) {
+        store.applySettings(state.isJavaScriptEnabled, state.areCookiesEnabled, state.isDesktopSite)
+    }
+    LaunchedEffect(store, state.currentTabId) {
+        val tabId = state.currentTabId ?: return@LaunchedEffect
+        viewModel.onTabActivated(tabId)
+        viewModel.updateNavigationState(tabId, store.canGoBack(tabId), store.canGoForward(tabId))
+    }
 
     LaunchedEffect(fullscreenContent != null, activity) {
         val window = activity?.window ?: return@LaunchedEffect
@@ -545,17 +560,16 @@ fun BrowserScreen(
                     .onSizeChanged { size -> pageAreaSize = size }
             ) {
                 AndroidView(
-                    factory = { ctx -> FrameLayout(ctx) },
+                    factory = { ctx ->
+                        // Seed persisted WebView preferences before the first page is attached.
+                        store.applySettings(state.isJavaScriptEnabled, state.areCookiesEnabled, state.isDesktopSite)
+                        FrameLayout(ctx)
+                    },
                     update = { container ->
                         val tabId = state.currentTabId
                         if (tabId != null) {
-                            // Closed tabs lose their WebView; live ones keep history and scroll.
-                            store.retain(state.tabs.map { it.id }.toSet())
                             val initialUrl = state.tabs.firstOrNull { it.id == tabId }?.url.orEmpty()
-                            val view: WebView = store.attach(container, tabId, initialUrl)
-                            store.applySettings(state.isJavaScriptEnabled, state.areCookiesEnabled, state.isDesktopSite)
-                            viewModel.onTabActivated(tabId)
-                            viewModel.updateNavigationState(tabId, view.canGoBack(), view.canGoForward())
+                            store.attach(container, tabId, initialUrl)
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -568,7 +582,7 @@ fun BrowserScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        OrbitalBrandMark(size = 88.dp, animate = false)
+                        OrbitalBrandMark(size = 112.dp, animate = false)
                         Spacer(Modifier.height(20.dp))
                         Text(
                             text = stringResource(R.string.app_name),

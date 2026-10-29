@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SalviaBrowxer</string>
-    <string name="app_description">یک مرورگر اندروید سریع، مدرن و حرفه‌ای با شناسایی هوشمند رسانه و امکان دانلود.</string>
+    <string name="app_description">مرورگر قدرتمند برای استفادهٔ روزمره، با تشخیص خودکار رسانه و دانلودگر حرفه‌ای.</string>
 
     <!-- Browser -->
     <string name="browser_title">مرورگر</string>
@@ -221,7 +221,7 @@
     <string name="about_license">پروانه</string>
     <string name="about_privacy_policy">سیاست حریم خصوصی</string>
     <string name="about_source_code">کد منبع</string>
-    <string name="brand_tagline">سریع، خصوصی، و دقیق در رسانه</string>
+    <string name="brand_tagline">مرورگر قدرتمند روزمره، با تشخیص خودکار رسانه و دانلودگر حرفه‌ای</string>
 
     <!-- Task list: rate and estimate, reported by the transfer itself -->
     <string name="download_speed">%1$s بر ثانیه</string>

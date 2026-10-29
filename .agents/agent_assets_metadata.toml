@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4HPxa8xf83AEJBoP77Ry8"
+uri = "file://attached_assets/salvia_crab_logo_final.png"
+type = "image"
+title = "لوگوی خرچنگ SalviaBrowxer"
+description = "نسخهٔ مربعی با خرچنگ مرکزی و فقط سه رنگ مشکی، قرمز و بنفش."
+logical_id = "6c94fcd1-1ed5-4f64-b521-451b07fb10cc"
+content_hash = "sha256:329ac4d0e4350373db1aaeffbbe3dba011b61d609b63c55a303667804ad8d5f9"
+size = 6625
+mtime_ms = 1793305159465
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:c855c723-b082-49a9-96d7-f8a9dbea1f01/6c94fcd1-1ed5-4f64-b521-451b07fb10cc/f11f7e54-b717-4623-9ddb-26a765443d20"
+storage_version_token = "1793305210121877"
+content_type = "image/png"
