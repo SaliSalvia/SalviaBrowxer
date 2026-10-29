@@ -42,6 +42,26 @@ jobs:
           echo "TAG=v${VERSION_NAME}" >> "$GITHUB_ENV"
           echo "Releasing ${{ env.TAG }}"
 
+      - name: Refuse an unsigned release before building it
+        # Without the signing secrets the Gradle config silently falls back to an unsigned APK,
+        # and the run dies only inside "Verify APK signature" after a full release build, with an
+        # error that never names the real cause. Naming it here, in the first minute of the run,
+        # is the difference between a one-line fix and an afternoon of guessing.
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        run: |
+          missing=0
+          for v in SIGNING_KEYSTORE_BASE64 SIGNING_KEYSTORE_PASSWORD SIGNING_KEY_ALIAS; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not configured in repository secrets; the release would come out unsigned. Add it under Settings -> Secrets and variables -> Actions."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "All signing secrets are present."
+
       - name: Skip if this tag is already released
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         env:
