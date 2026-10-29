@@ -44,8 +44,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -76,6 +78,7 @@ fun FloatingDownloadButton(
     onOffsetChanged: (Offset) -> Unit = {}
 ) {
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val buttonSizePx = with(density) { buttonSize.toPx() }
 
     var offsetX by remember { mutableFloatStateOf(initialOffset.x) }
@@ -121,7 +124,12 @@ fun FloatingDownloadButton(
             .clip(CircleShape)
             .background(CharcoalElevated)
             .pointerInput(containerSize) {
-                detectDragGestures(onDragEnd = { onOffsetChanged(Offset(offsetX, offsetY)) }) { change, dragAmount ->
+                // A pickup tick, not a per-frame buzz: the drag is confirmed once, at the
+                // moment the button leaves where it was pinned.
+                detectDragGestures(
+                    onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) },
+                    onDragEnd = { onOffsetChanged(Offset(offsetX, offsetY)) }
+                ) { change, dragAmount ->
                     change.consume()
                     val next = clamp(offsetX + dragAmount.x, offsetY + dragAmount.y)
                     offsetX = next.x; offsetY = next.y
@@ -131,8 +139,16 @@ fun FloatingDownloadButton(
             // consumes movement, and a press that turns into movement cancels the tap cleanly.
             .pointerInput(onClick, onLongClick) {
                 detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { onLongClick() }
+                    // The same cue for both: the thumb confirms the press, and the different
+                    // action on screen is what tells tap and long-press apart.
+                    onTap = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onClick()
+                    },
+                    onLongPress = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongClick()
+                    }
                 )
             },
         contentAlignment = Alignment.Center
