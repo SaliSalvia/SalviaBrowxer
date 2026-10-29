@@ -254,6 +254,16 @@ class DownloadService : Service() {
         }
     }
 
+    /**
+     * The Android 14 shape of the same callback: the two-argument [onTimeout] only exists from
+     * API 35, and without this override a dataSync timeout on Android 14 stopped the service
+     * through the default implementation — without the marker, without the notification, and
+     * without the honest paused rows the release path relies on.
+     */
+    override fun onTimeout(startId: Int) {
+        onTimeout(startId, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    }
+
     /** The timeout's half of the Wi-Fi hold's pattern: pause what runs, marker first, ask nothing. */
     private suspend fun holdEverythingForTimeout() {
         val active = runCatching { downloadRepository.getDownloadsByStates(WifiHold.HOLDABLE_STATES).first() }
@@ -299,7 +309,11 @@ class DownloadService : Service() {
 
     private suspend fun processDownload(downloadId: String) {
         val stored = downloadRepository.getDownloadById(downloadId) ?: return
-        if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED) return
+        // PAUSED is refused here on purpose: a pause command that lands while this id is still
+        // queued, or a resume that is re-delivered after the row was paused again, must not
+        // resurrect the row. Only the two paths that set QUEUED before enqueueing (the user's
+        // resume, the Wi-Fi hold release) may start a transfer again.
+        if (stored.status == DownloadState.COMPLETED || stored.status == DownloadState.CANCELLED || stored.status == DownloadState.PAUSED) return
         if (WifiOnlyPolicy.shouldHold(wifiOnly, connectivityGate.isOnWifi())) {
             wifiHoldActive = true
             downloadRepository.updateDownloadResult(id = downloadId, status = DownloadState.PAUSED, error = WIFI_HOLD_MARKER)
