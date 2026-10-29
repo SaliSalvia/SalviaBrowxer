@@ -1,3 +1,31 @@
+<div dir="rtl">
+
+# 🌿 سالویا‌براوزر — SalviaBrowxer
+
+[![Android CI](https://github.com/SaliSalvia/SalviaBrowxer/actions/workflows/android_ci.yml/badge.svg)](https://github.com/SaliSalvia/SalviaBrowxer/actions/workflows/android_ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/SaliSalvia/SalviaBrowxer?include_prereleases)](https://github.com/SaliSalvia/SalviaBrowxer/releases/latest)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+
+**مرورگر اندرویدیِ سریع، محترمِ حریم خصوصی و صادق — با دانلودری که کارِ خودش را درست انجام می‌دهد.**
+
+مرورگری برای کسانی که می‌خواهند وقتی صفحه‌ای رسانهٔ قابل‌دانلود دارد، مرورگر با آرامش خبرشان کند و فایل را مطمئن و بی‌دردسر ذخیره کند — بدون ادعا، بدون فریب و بدون سنگینیِ اضافه.
+
+| | |
+|---|---|
+| 🔎 **سینی رسانهٔ دقیق** | ویدئو، صدا یا پلی‌لیستی که صفحهٔ باز واقعاً ارائه می‌دهد، با یک شمارندهٔ آرام در نوار بالا خودش را نشان می‌دهد؛ چیزی که دانلود نمی‌شود، به‌عنوان دانلود عرضه هم نمی‌شود. |
+| ⬇️ **دانلودِ مقاوم** | صف‌های HLS و DASH، چند اتصال موازی، ادامهٔ دانلود پس از قطعی یا بسته‌شدن برنامه، توقف و ادامهٔ آزاد، ترکیب ویدئو+صدا بدون افت کیفیت، و نمایش زندهٔ سرعت و زمان باقی‌مانده. |
+| 🕊️ **حریم خصوصی واقعی** | بدون حساب، بدون تحلیل رفتار، بدون ردیاب؛ مسدودکنندهٔ آگهی اختیاری است و فهرستش داخل خود برنامه زندگی می‌کند. |
+| 🧭 **مرورگر تمام‌عیار** | تا هشت تب زنده با خواب‌گذاری هوشمند، تب‌های خصوصی بدون تاریخ، جست‌وجو در صفحه، پنج موتور جست‌وجو و حالت دسکتاپ. |
+| 🗣️ **صداقت، خطِ قرمز** | رسانهٔ DRMدار و پخش زنده با پیام روشن رد می‌شوند؛ در این برنامه هیچ قولِ نشدنی داده نمی‌شود. |
+| 🌐 **فارسی و انگلیسی، هر دو کامل** | رابط دوزبانه با فونت وزیرمتن، راست‌به‌چپ واقعی و آیکن‌های آینه‌شده. |
+
+**📥 دانلود:** از [صفحهٔ انتشارها](https://github.com/SaliSalvia/SalviaBrowxer/releases/latest) — APK امضاشده و مستقیم روی گوشی نصب می‌شود.
+
+</div>
+
+---
+
+
 # SalviaBrowxer
 
 A fast, private Android browser whose defining feature is a precise media tray: when a page already
