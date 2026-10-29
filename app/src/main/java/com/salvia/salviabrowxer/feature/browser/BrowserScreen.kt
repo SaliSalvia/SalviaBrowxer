@@ -2,7 +2,6 @@ package com.salvia.salviabrowxer.feature.browser
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
@@ -15,7 +14,6 @@ import android.webkit.JsResult
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
-import android.widget.EditText
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,10 +50,13 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tab
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -102,6 +103,7 @@ import com.salvia.salviabrowxer.ui.components.MediaTraySheet
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.TabSwitcher
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
@@ -152,7 +154,7 @@ fun BrowserScreen(
         callback?.onReceiveValue(selected)
     }
     var fullscreenContent by remember { mutableStateOf<BrowserFullscreenContent?>(null) }
-    var activeScriptDialog by remember { mutableStateOf<AlertDialog?>(null) }
+    var scriptDialog by remember { mutableStateOf<ScriptDialog?>(null) }
     var browserScreenActive by remember { mutableStateOf(true) }
     val activity = remember(context) { context.findActivity() }
 
@@ -253,27 +255,19 @@ fun BrowserScreen(
                 val appName = context.getString(R.string.app_name)
                 return if (host == null) appName else "$appName · $host"
             }
-            private fun showScriptDialog(dialog: AlertDialog) {
-                activeScriptDialog?.cancel()
-                activeScriptDialog = dialog
-                dialog.setOnDismissListener {
-                    if (activeScriptDialog === dialog) activeScriptDialog = null
-                }
-                dialog.show()
+            private fun showScriptDialog(dialog: ScriptDialog) {
+                // A page that fires a second dialog while one is open answers the first itself: the
+                // WebView contract allows one outstanding dialog, so the abandoned one is cancelled
+                // rather than stacked behind the new one.
+                scriptDialog?.let { previous -> runCatching { cancelScriptRequest(previous.request) } }
+                scriptDialog = dialog
             }
             override fun onJsAlert(tabId: String, url: String?, message: String?, result: JsResult?): Boolean {
                 if (result == null) return false
+                // An alert on a tab nobody is looking at would wait forever; it is answered, not shown.
                 if (!isVisibleTab(tabId)) { result.confirm(); return true }
-                return runCatching {
-                    val dialog = AlertDialog.Builder(context)
-                        .setTitle(scriptDialogTitle(url))
-                        .setMessage(message.orEmpty())
-                        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
-                        .setOnCancelListener { result.cancel() }
-                        .create()
-                    showScriptDialog(dialog)
-                    true
-                }.getOrElse { result.cancel(); true }
+                showScriptDialog(ScriptDialog(scriptDialogTitle(url), message.orEmpty(), ScriptDialogRequest.Alert(result)))
+                return true
             }
             override fun onJsConfirm(tabId: String, url: String?, message: String?, result: JsResult?): Boolean =
                 showScriptConfirm(tabId, url, message, result)
@@ -282,17 +276,8 @@ fun BrowserScreen(
             private fun showScriptConfirm(tabId: String, url: String?, message: String?, result: JsResult?): Boolean {
                 if (result == null) return false
                 if (!isVisibleTab(tabId)) { result.cancel(); return true }
-                return runCatching {
-                    val dialog = AlertDialog.Builder(context)
-                        .setTitle(scriptDialogTitle(url))
-                        .setMessage(message.orEmpty())
-                        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
-                        .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
-                        .setOnCancelListener { result.cancel() }
-                        .create()
-                    showScriptDialog(dialog)
-                    true
-                }.getOrElse { result.cancel(); true }
+                showScriptDialog(ScriptDialog(scriptDialogTitle(url), message.orEmpty(), ScriptDialogRequest.Confirm(result)))
+                return true
             }
             override fun onJsPrompt(
                 tabId: String,
@@ -303,23 +288,8 @@ fun BrowserScreen(
             ): Boolean {
                 if (result == null) return false
                 if (!isVisibleTab(tabId)) { result.cancel(); return true }
-                return runCatching {
-                    val input = EditText(context).apply {
-                        setText(defaultValue.orEmpty())
-                        setSelection(text.length)
-                        setSingleLine(true)
-                    }
-                    val dialog = AlertDialog.Builder(context)
-                        .setTitle(scriptDialogTitle(url))
-                        .setMessage(message.orEmpty())
-                        .setView(input)
-                        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm(input.text.toString()) }
-                        .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
-                        .setOnCancelListener { result.cancel() }
-                        .create()
-                    showScriptDialog(dialog)
-                    true
-                }.getOrElse { result.cancel(); true }
+                showScriptDialog(ScriptDialog(scriptDialogTitle(url), message.orEmpty(), ScriptDialogRequest.Prompt(result, defaultValue.orEmpty())))
+                return true
             }
         }
     }
@@ -341,6 +311,11 @@ fun BrowserScreen(
             fullscreenContent = null
             runCatching { activeFullscreen.callback.onCustomViewHidden() }
         }
+        fun dismissScriptDialog() {
+            val pending = scriptDialog ?: return
+            scriptDialog = null
+            runCatching { cancelScriptRequest(pending.request) }
+        }
         fun restoreSystemBars() {
             activity?.window?.let { window ->
                 runCatching { WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars()) }
@@ -351,7 +326,7 @@ fun BrowserScreen(
                 Lifecycle.Event.ON_START -> browserScreenActive = true
                 Lifecycle.Event.ON_STOP -> {
                     browserScreenActive = false
-                    runCatching { activeScriptDialog?.cancel() }
+                    dismissScriptDialog()
                     dismissFullscreen()
                     restoreSystemBars()
                 }
@@ -366,7 +341,7 @@ fun BrowserScreen(
             pendingFileChooser = null
             pendingFileChooserTabId = null
             runCatching { pendingChooser?.onReceiveValue(null) }
-            runCatching { activeScriptDialog?.cancel() }
+            dismissScriptDialog()
             dismissFullscreen()
             restoreSystemBars()
         }
@@ -786,6 +761,70 @@ fun BrowserScreen(
                 )
             }
         }
+
+        // The last View-based surface in the app: script dialogs used to be android.app.AlertDialog
+        // panels, system-light and unthemed over a dark browser. They are Compose dialogs now, drawn
+        // by the same theme as every other dialog, and the WebView result they hold is answered on
+        // every path that clears them — a dialog that vanishes without answering hangs the page's
+        // script forever.
+        scriptDialog?.let { dialog ->
+            var promptValue by remember(dialog) {
+                mutableStateOf((dialog.request as? ScriptDialogRequest.Prompt)?.defaultValue.orEmpty())
+            }
+            AlertDialog(
+                onDismissRequest = {
+                    scriptDialog = null
+                    runCatching { cancelScriptRequest(dialog.request) }
+                },
+                title = { Text(dialog.title, style = MaterialTheme.typography.titleMedium, color = PearlWhite) },
+                text = {
+                    Column {
+                        if (dialog.message.isNotBlank()) {
+                            Text(dialog.message, style = MaterialTheme.typography.bodyMedium, color = SilverMid)
+                        }
+                        if (dialog.request is ScriptDialogRequest.Prompt) {
+                            if (dialog.message.isNotBlank()) Spacer(Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = promptValue,
+                                onValueChange = { promptValue = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = PearlWhite,
+                                    unfocusedTextColor = PearlWhite,
+                                    focusedBorderColor = AuroraTeal,
+                                    unfocusedBorderColor = CharcoalBorder,
+                                    cursorColor = AuroraTeal
+                                )
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        scriptDialog = null
+                        runCatching {
+                            when (val request = dialog.request) {
+                                is ScriptDialogRequest.Alert -> request.result.confirm()
+                                is ScriptDialogRequest.Confirm -> request.result.confirm()
+                                is ScriptDialogRequest.Prompt -> request.result.confirm(promptValue)
+                            }
+                        }
+                    }) { Text(stringResource(android.R.string.ok), color = AuroraTeal) }
+                },
+                // An alert only acknowledges; offering a cancel button would promise a choice the
+                // dialog does not have.
+                dismissButton = if (dialog.request is ScriptDialogRequest.Alert) null else {
+                    {
+                        TextButton(onClick = {
+                            scriptDialog = null
+                            runCatching { cancelScriptRequest(dialog.request) }
+                        }) { Text(stringResource(android.R.string.cancel), color = SilverMid) }
+                    }
+                },
+                containerColor = CharcoalElevated
+            )
+        }
     }
 
 }
@@ -795,6 +834,29 @@ private data class BrowserFullscreenContent(
     val view: View,
     val callback: WebChromeClient.CustomViewCallback
 )
+
+/** One unanswered JavaScript dialog, held as state instead of a live View. */
+private data class ScriptDialog(
+    val title: String,
+    val message: String,
+    val request: ScriptDialogRequest
+)
+
+/** The three shapes a page can ask with; each carries the WebView result that must be answered. */
+private sealed interface ScriptDialogRequest {
+    data class Alert(val result: JsResult) : ScriptDialogRequest
+    data class Confirm(val result: JsResult) : ScriptDialogRequest
+    data class Prompt(val result: JsPromptResult, val defaultValue: String) : ScriptDialogRequest
+}
+
+/** Cancels whichever result a dialog holds, so an abandoned question never hangs its script. */
+private fun cancelScriptRequest(request: ScriptDialogRequest) {
+    when (request) {
+        is ScriptDialogRequest.Alert -> request.result.cancel()
+        is ScriptDialogRequest.Confirm -> request.result.cancel()
+        is ScriptDialogRequest.Prompt -> request.result.cancel()
+    }
+}
 
 private fun Context.findActivity(): Activity? {
     var current: Context = this
