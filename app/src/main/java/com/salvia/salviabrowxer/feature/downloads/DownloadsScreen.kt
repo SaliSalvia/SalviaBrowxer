@@ -47,6 +47,8 @@ import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -230,6 +232,9 @@ private fun DownloadList(
     converting: Map<String, Int>,
     viewModel: DownloadsViewModel
 ) {
+    // Only the actions that change a transfer speak: pausing, resuming, cancelling and retrying
+    // are felt in the thumb, while opening and sharing are answered by the system itself.
+    val haptics = LocalHapticFeedback.current
     LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
         items(items, key = { it.id }, contentType = { it.status }) { download ->
             DownloadItem(
@@ -245,10 +250,22 @@ private fun DownloadList(
                         viewModel.openDownload(download.id)
                     }
                 },
-                onPauseClick = { viewModel.pauseDownload(download.id) },
-                onResumeClick = { viewModel.resumeDownload(download.id) },
-                onCancelClick = { viewModel.cancelDownload(download.id) },
-                onRetryClick = { viewModel.retryDownload(download.id) },
+                onPauseClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.pauseDownload(download.id)
+                },
+                onResumeClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.resumeDownload(download.id)
+                },
+                onCancelClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.cancelDownload(download.id)
+                },
+                onRetryClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.retryDownload(download.id)
+                },
                 onDeleteClick = { viewModel.deleteDownload(download.id) },
                 onShareClick = { viewModel.shareDownload(download.id) },
                 onExportClick = { viewModel.exportDownload(download.id) },
