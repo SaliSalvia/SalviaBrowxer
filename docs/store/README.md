@@ -7,9 +7,8 @@ screenshots (no YouTube, Instagram, TikTok or Netflix UI in any image).
 
 Allowed framing:
 
-> SalviaBrowxer is a fast, professional Android browser for everyday use that also saves videos
-> and audio a page already
-> offers you.
+> SalviaBrowxer is a feature-packed Android browser for everyday use with a very capable media
+> detector and downloader for the videos and audio a page already offers you.
 
 Forbidden framing — never ship any of these:
 
@@ -27,14 +26,14 @@ The app has no analytics, no ads and no account. Say that; it is true and it is 
 **Short description (80 characters max):**
 
 ```
-Fast, private browser for everyday use that saves the media a page offers.
+Feature-packed everyday browser with powerful media detection and download.
 ```
 
 **Full description (4000 characters max):**
 
 ```
-SalviaBrowxer is a fast, professional Android browser for everyday use — tabs, an ad blocker you control,
-find in page, bookmarks and history — and precision in what it saves: when a page
+SalviaBrowxer is a feature-packed Android browser for everyday use — tabs, an ad blocker you control,
+find in page, bookmarks and history — plus a very capable media detector and downloader: when a page
 already offers a video or an audio file, the app finds it and saves it, and when a page does not,
 the app says so instead of guessing.
 
@@ -79,14 +78,14 @@ Free, with no ads and no locked features. Source code is published under the GPL
 **توضیح کوتاه:**
 
 ```
-مرورگر سریع و خصوصی برای وبگردی روزمره، با ذخیرهٔ رسانه‌ای که صفحه عرضه می‌کند.
+مرورگر پرامکانات برای وبگردی روزمره، با تشخیص و دانلود مدیای قدرتمند.
 ```
 
 **توضیح کامل:**
 
 ```
-سالویا براوزر یک مرورگر حرفه‌ای و سریع برای وبگردی روزمره است — زبانه‌ها، مسدودکنندهٔ آگهی اختیاری،
-جست‌وجو در صفحه، نشانک‌ها و تاریخچه — و در کنارش دانلودری که تمرکزش روی دقت است: اگر صفحه‌ای ویدیو
+سالویا براوزر یک مرورگر پرامکانات برای وبگردی روزمره است — زبانه‌ها، مسدودکنندهٔ آگهی اختیاری،
+جست‌وجو در صفحه، نشانک‌ها و تاریخچه — و در کنارش، تشخیص و دانلود مدیای بسیار قدرتمند و دقیق: اگر صفحه‌ای ویدیو
 یا صدایی را عرضه کرده باشد، برنامه آن را پیدا و ذخیره می‌کند؛ و اگر عرضه نکرده باشد، به‌جای
 حدس‌زدن، صریح می‌گوید که نمی‌شود.
 
