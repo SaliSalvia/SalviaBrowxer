@@ -6,9 +6,9 @@
 [![GitHub release](https://img.shields.io/github/v/release/SaliSalvia/SalviaBrowxer?include_prereleases)](https://github.com/SaliSalvia/SalviaBrowxer/releases/latest)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
-**مرورگر اندرویدیِ سریع، محترمِ حریم خصوصی و صادق — با دانلودری که کارِ خودش را درست انجام می‌دهد.**
+**مرورگر اندرویدیِ پرامکانات برای وبگردی روزمره — با تشخیص و دانلود مدیای بسیار قدرتمند، حریم خصوصی محترم و صداقت در هر وعده.**
 
-مرورگری برای کسانی که می‌خواهند وقتی صفحه‌ای رسانهٔ قابل‌دانلود دارد، مرورگر با آرامش خبرشان کند و فایل را مطمئن و بی‌دردسر ذخیره کند — بدون ادعا، بدون فریب و بدون سنگینیِ اضافه.
+سالویا‌براوزر یک مرورگر کامل برای وبگردی روزمره است — هشت تب زنده، جست‌وجو در صفحه، پنج موتور جست‌وجو، نشانک‌ها، تاریخچه و مسدودکنندهٔ آگهی اختیاری — و در کنارش، موتوری قدرتمند که رسانهٔ صفحه را پیدا می‌کند: هرگاه صفحه‌ای ویدیو، صدا یا پلی‌لیستی برای دانلود دارد، با آرامش خبرتان می‌کند و فایل را مطمئن و بی‌دردسر ذخیره می‌کند؛ حتی رسانه‌ای که در iframeها یا اسکریپت‌های صفحه پنهان شده است. بدون ادعا، بدون فریب و بدون سنگینیِ اضافه.
 
 | | |
 |---|---|
@@ -28,7 +28,8 @@
 
 # SalviaBrowxer
 
-A fast, private Android browser whose defining feature is a precise media tray: when a page already
+A feature-packed Android browser for everyday use — and, beside it, a very capable media
+detector and downloader: when a page already
 exposes a downloadable file, an open HLS playlist, or a blob the page itself can read, the browser
 says so quietly and saves it reliably.
 
