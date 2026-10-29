@@ -78,13 +78,18 @@ fun DownloadItem(
      */
     onConvertClick: (() -> Unit)? = null,
     /** 0..100 while this row is being converted; null when it is not. */
-    convertProgress: Int? = null
+    convertProgress: Int? = null,
+    /**
+     * Owned by the caller so a Lazy list can animate this row's arrival, move and departure
+     * without the item knowing it lives in a list.
+     */
+    modifier: Modifier = Modifier
 ) {
     val totalBytes = download.totalBytes
     val progress = if (totalBytes != null && totalBytes > 0) (download.downloadedBytes.toFloat() / totalBytes) else 0f
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 5.dp)
             .clip(RoundedCornerShape(16.dp))
