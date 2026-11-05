@@ -1,97 +1,60 @@
 #!/usr/bin/env python3
-"""Generate SalviaBrowxer launcher art.
+"""Generate SalviaBrowxer launcher assets from the transparent official emblem."""
 
-Renders the gold/blue orbital ring app icon and writes it to the mipmap-* densities
-plus a large raster brand mark in drawable-nodpi.
-
-The in-app brand mark is drawn live in Compose (see OrbitalBrandMark.kt), so this
-script only produces launcher art and the raster brand mark.
-"""
-from PIL import Image, ImageDraw, ImageFilter
-import math
+from PIL import Image
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RES = os.path.join(ROOT, "app", "src", "main", "res")
-
-BLACK = (5, 5, 7, 255)
-GOLD = (255, 179, 0)
-GOLD_LIGHT = (255, 213, 79)
-BLUE = (33, 150, 243)
-BLUE_LIGHT = (79, 195, 247)
+LOGO_PATH = os.path.join(RES, "drawable-nodpi", "salvia_official_logo.webp")
+LAUNCHER_BACKGROUND = (8, 14, 25, 255)
+RESAMPLING = getattr(Image, "Resampling", Image)
 
 
-def draw_ring_icon(size=1024):
-    img = Image.new("RGBA", (size, size), BLACK)
-    cx = cy = size / 2
-    r = size * 0.46
-    stroke = int(size * 0.055)
-    glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-
-    rings = [
-        (0.96, 0.55, -24, GOLD, GOLD_LIGHT),
-        (0.86, 0.48, 18, BLUE, BLUE_LIGHT),
-        (0.76, 0.42, 62, GOLD, GOLD_LIGHT),
-    ]
-    for rx_f, ry_f, tilt, base, light in rings:
-        rx, ry = r * rx_f, r * ry_f
-        # Glow pass
-        temp = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        td = ImageDraw.Draw(temp)
-        steps = 240
-        pts = []
-        for i in range(steps + 1):
-            t = 2 * math.pi * i / steps
-            x = cx + rx * math.cos(t)
-            y = cy + ry * math.sin(t)
-            a = math.radians(tilt)
-            xr = cx + (x - cx) * math.cos(a) - (y - cy) * math.sin(a)
-            yr = cy + (x - cx) * math.sin(a) + (y - cy) * math.cos(a)
-            pts.append((xr, yr))
-        td.line(pts, fill=base + (255,), width=int(stroke * 1.6), joint="curve")
-        glow = Image.alpha_composite(glow, temp.filter(ImageFilter.GaussianBlur(size * 0.012)))
-
-        # Crisp ring with specular highlight arc
-        crisp = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        cd = ImageDraw.Draw(crisp)
-        cd.line(pts, fill=base + (255,), width=stroke, joint="curve")
-        # Highlight arc (upper area of the ring)
-        hpts = pts[: steps // 4]
-        cd.line(hpts, fill=light + (255,), width=max(2, stroke // 2), joint="curve")
-        glow = Image.alpha_composite(glow, crisp)
-
-    # Blue nebula core
-    core = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    cd = ImageDraw.Draw(core)
-    cd.ellipse(
-        [cx - r * 0.62, cy - r * 0.62, cx + r * 0.62, cy + r * 0.62],
-        fill=(10, 40, 80, 110),
+def contain(logo, size, fill_fraction):
+    """Scale a square logo into a centered transparent canvas without cropping it."""
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    mark = logo.copy()
+    mark.thumbnail(
+        (int(size * fill_fraction), int(size * fill_fraction)),
+        RESAMPLING.LANCZOS,
     )
-    core = core.filter(ImageFilter.GaussianBlur(size * 0.03))
+    canvas.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
+    return canvas
 
-    img = Image.alpha_composite(img, core)
-    img = Image.alpha_composite(img, glow)
-    # Luminous outer rim
-    rim = ImageDraw.Draw(img)
-    rim.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(255, 255, 255, 36), width=max(2, size // 512))
-    return img
+
+def launcher_icon(logo, size):
+    """Legacy launcher PNGs use a dark tile; adaptive icons use a transparent foreground."""
+    tile = Image.new("RGBA", (size, size), LAUNCHER_BACKGROUND)
+    tile.alpha_composite(contain(logo, size, 0.88))
+    return tile.convert("RGB")
 
 
 def main():
-    # Orbital icon at every launcher density
+    logo = Image.open(LOGO_PATH).convert("RGBA")
     densities = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
-    master = draw_ring_icon(1024)
     for name, px in densities.items():
         folder = os.path.join(RES, f"mipmap-{name}")
         os.makedirs(folder, exist_ok=True)
-        master.resize((px, px), Image.LANCZOS).save(os.path.join(folder, "ic_launcher.png"))
-        master.resize((px, px), Image.LANCZOS).save(os.path.join(folder, "ic_launcher_round.png"))
+        icon = launcher_icon(logo, px)
+        icon.save(os.path.join(folder, "ic_launcher.png"), optimize=True)
+        icon.save(os.path.join(folder, "ic_launcher_round.png"), optimize=True)
 
-    # Large brand mark for in-app use
-    master.resize((512, 512), Image.LANCZOS).save(
-        os.path.join(RES, "drawable-nodpi", "salvia_brand.png")
+    drawable_folder = os.path.join(RES, "drawable-nodpi")
+    os.makedirs(drawable_folder, exist_ok=True)
+    contain(logo, 512, 0.625).save(
+        os.path.join(drawable_folder, "salvia_launcher_foreground.png"),
+        optimize=True,
     )
-    print("Brand assets generated OK")
+    contain(logo, 512, 0.625).save(
+        os.path.join(drawable_folder, "salvia_brand_foreground.png"),
+        optimize=True,
+    )
+    contain(logo, 512, 0.96).save(
+        os.path.join(drawable_folder, "salvia_brand.png"),
+        optimize=True,
+    )
+    print("Official Salvia launcher and brand assets generated.")
 
 
 if __name__ == "__main__":

@@ -216,6 +216,7 @@
 
     <!-- About -->
     <string name="about_title">دربارهٔ SalviaBrowxer</string>
+    <string name="about_signature_art">نگارهٔ امضای سالویا</string>
     <string name="about_version">نگارش %s</string>
     <string name="about_description">%s مرورگری سریع و خصوصی برای اندروید است که رسانه‌ای را که یک صفحه خودش عرضه می‌کند ذخیره می‌کند.</string>
     <string name="about_license">پروانه</string>

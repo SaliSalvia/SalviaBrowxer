@@ -7,6 +7,7 @@ import com.salvia.salviabrowxer.ui.components.PasswordField
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,8 +73,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -89,7 +92,6 @@ import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.service.ConnectionKind
 import com.salvia.salviabrowxer.service.ConnectivityGate
 import com.salvia.salviabrowxer.ui.utils.Constants
-import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.ScreenHeader
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.AuroraTealDeep
@@ -232,7 +234,12 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
                 Spacer(Modifier.height(16.dp))
                 SettingsSectionTitle(Icons.Default.Info, stringResource(R.string.settings_about))
                 Box(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-                    OrbitalBrandMark(size = 72.dp, animate = false)
+                    Image(
+                        painter = painterResource(R.drawable.salvia_creator_artwork),
+                        contentDescription = stringResource(R.string.about_signature_art),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(156.dp)
+                    )
                 }
                 Text(
                     text = stringResource(R.string.brand_tagline),

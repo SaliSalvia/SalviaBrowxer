@@ -60,13 +60,13 @@ import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.feature.browser.AddressSuggestion
 import com.salvia.salviabrowxer.feature.browser.AddressSuggestionSource
+import com.salvia.salviabrowxer.ui.theme.AddressBarBrush
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.NebulaViolet
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
-import com.salvia.salviabrowxer.ui.theme.SurfaceField
 import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 
 /**
@@ -150,7 +150,7 @@ fun BrowserTopBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(17.dp))
-                        .background(SurfaceField)
+                        .background(AddressBarBrush)
                         .border(1.dp, fieldBorder, RoundedCornerShape(17.dp))
                 ) {
                     Row(

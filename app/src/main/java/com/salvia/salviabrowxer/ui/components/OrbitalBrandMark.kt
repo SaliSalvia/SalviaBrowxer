@@ -11,8 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
 
 /**
- * The shared app mark. A small pre-rendered image keeps the splash and in-app logo
- * visually identical without a custom canvas redraw or an animation clock.
+ * Shared transparent app mark used on the splash screen and throughout the app.
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -23,7 +22,7 @@ fun OrbitalBrandMark(
     glowIntensity: Float = 1f
 ) {
     Image(
-        painter = painterResource(R.drawable.salvia_brand),
+        painter = painterResource(R.drawable.salvia_official_logo),
         contentDescription = null,
         contentScale = ContentScale.Fit,
         modifier = modifier.size(size)

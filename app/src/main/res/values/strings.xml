@@ -215,6 +215,7 @@
 
     <!-- About -->
     <string name="about_title">About SalviaBrowxer</string>
+    <string name="about_signature_art">Salvia signature artwork</string>
     <string name="about_version">Version %s</string>
     <string name="about_description">%s is a fast, private Android browser that saves media a page already offers.</string>
     <string name="about_license">License</string>

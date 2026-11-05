@@ -73,7 +73,6 @@ import com.salvia.salviabrowxer.ui.components.DownloadItem
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.AuroraTealFieldFocus
-import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.EmptySurface
@@ -279,7 +278,7 @@ private fun PasteCard(
                         .semantics { contentDescription = fieldLabel },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
-                    cursorBrush = Brush.horizontalGradient(listOf(BlushPink, NebulaVioletLight, AuroraTeal)),
+                    cursorBrush = Brush.horizontalGradient(listOf(AuroraTeal, NebulaVioletLight, AuroraTeal)),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { onSubmit() }),
                     decorationBox = { inner ->

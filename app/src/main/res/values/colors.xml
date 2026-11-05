@@ -1,50 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Near-black surfaces with muted violet depth -->
-    <color name="matte_charcoal">#000000</color>
-    <color name="deep_charcoal">#100B15</color>
-    <color name="charcoal_surface">#1A1420</color>
-    <color name="charcoal_elevated">#261D2E</color>
-    <color name="charcoal_border">#3A2D46</color>
+    <!-- Midnight surfaces -->
+    <color name="matte_charcoal">#080E19</color>
+    <color name="deep_charcoal">#0C1525</color>
+    <color name="charcoal_surface">#131F32</color>
+    <color name="charcoal_elevated">#1C2A40</color>
+    <color name="charcoal_border">#30445F</color>
 
     <!-- Neutral foregrounds -->
-    <color name="pearl_white">#F2F5F7</color>
-    <color name="pearl_warm">#E8EDF0</color>
-    <color name="pearl_pink">#F2E4E9</color>
-    <color name="pearl_teal">#EAE5EF</color>
-    <color name="pearl_lavender">#EAE7F3</color>
-    <color name="pearl_blue">#EAE5EF</color>
-    <color name="silver_light">#D9E1E6</color>
-    <color name="silver_mid">#A8B4BE</color>
-    <color name="silver_deep">#84919D</color>
-    <color name="silver_shine">#F8FAFB</color>
+    <color name="pearl_white">#F4F7FC</color>
+    <color name="pearl_warm">#E9EEF5</color>
+    <color name="pearl_pink">#F1EAF0</color>
+    <color name="pearl_teal">#E1EDF3</color>
+    <color name="pearl_lavender">#E6EAF5</color>
+    <color name="pearl_blue">#E0EAFA</color>
+    <color name="silver_light">#D8E1ED</color>
+    <color name="silver_mid">#A8B6C8</color>
+    <color name="silver_deep">#7F90A7</color>
+    <color name="silver_shine">#FBFCFF</color>
 
-    <!-- Crimson primary -->
-    <color name="aurora_teal">#E7284F</color>
-    <color name="aurora_teal_light">#FF8197</color>
-    <color name="aurora_teal_deep">#BD1737</color>
-    <color name="aurora_container">#471421</color>
+    <!-- Official Salvia sapphire -->
+    <color name="sapphire_blue">#347DCE</color>
+    <color name="sapphire_blue_light">#8DBBFA</color>
+    <color name="sapphire_blue_deep">#1C559B</color>
+    <color name="sapphire_container">#18385F</color>
+    <color name="aurora_teal">@color/sapphire_blue</color>
+    <color name="aurora_teal_light">@color/sapphire_blue_light</color>
+    <color name="aurora_teal_deep">@color/sapphire_blue_deep</color>
+    <color name="aurora_container">@color/sapphire_container</color>
 
-    <!-- Violet secondary -->
-    <color name="nebula_violet">#AC52F2</color>
-    <color name="nebula_violet_light">#D19AFF</color>
-    <color name="nebula_deep">#7529BC</color>
-    <color name="nebula_container">#301642</color>
+    <!-- Metallic gold secondary -->
+    <color name="metallic_gold">#D4A84E</color>
+    <color name="metallic_gold_light">#F0D18A</color>
+    <color name="metallic_gold_deep">#966C20</color>
+    <color name="metallic_gold_container">#40341E</color>
+    <color name="nebula_violet">@color/metallic_gold</color>
+    <color name="nebula_violet_light">@color/metallic_gold_light</color>
+    <color name="nebula_deep">@color/metallic_gold_deep</color>
+    <color name="nebula_container">@color/metallic_gold_container</color>
 
     <!-- Legacy aliases -->
-    <color name="gold">@color/aurora_teal</color>
+    <color name="gold">@color/metallic_gold</color>
     <color name="violet">@color/nebula_violet</color>
-    <color name="electric_indigo">@color/nebula_deep</color>
+    <color name="electric_indigo">@color/sapphire_blue_deep</color>
 
     <!-- Material 3 bindings -->
-    <color name="primary">@color/aurora_teal</color>
-    <color name="primary_container">@color/aurora_container</color>
+    <color name="primary">@color/sapphire_blue</color>
+    <color name="primary_container">@color/sapphire_container</color>
     <color name="on_primary">@color/matte_charcoal</color>
-    <color name="on_primary_container">@color/aurora_teal_light</color>
-    <color name="secondary">@color/nebula_violet</color>
-    <color name="secondary_container">@color/nebula_container</color>
-    <color name="on_secondary">#FFFFFF</color>
-    <color name="on_secondary_container">@color/nebula_violet_light</color>
+    <color name="on_primary_container">@color/sapphire_blue_light</color>
+    <color name="secondary">@color/metallic_gold</color>
+    <color name="secondary_container">@color/metallic_gold_container</color>
+    <color name="on_secondary">#111925</color>
+    <color name="on_secondary_container">@color/metallic_gold_light</color>
     <color name="background">@color/matte_charcoal</color>
     <color name="on_background">@color/pearl_white</color>
     <color name="surface">@color/deep_charcoal</color>
@@ -52,11 +60,11 @@
     <color name="surface_variant">@color/charcoal_surface</color>
     <color name="on_surface_variant">@color/silver_mid</color>
 
-    <color name="error">#FF8197</color>
+    <color name="error">#FF858C</color>
     <color name="on_error">#FFFFFF</color>
-    <color name="media_detected_indicator">@color/aurora_teal</color>
-    <color name="download_button_active">@color/aurora_teal</color>
-    <color name="download_button_inactive">#3A2D46</color>
+    <color name="media_detected_indicator">@color/sapphire_blue</color>
+    <color name="download_button_active">@color/sapphire_blue</color>
+    <color name="download_button_inactive">#30445F</color>
     <color name="floating_button_background">@color/charcoal_elevated</color>
     <color name="floating_button_foreground">@color/pearl_white</color>
 

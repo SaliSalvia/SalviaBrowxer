@@ -20,6 +20,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
@@ -52,6 +56,7 @@ import com.salvia.salviabrowxer.ui.theme.AuroraTeal
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
+import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.utils.MediaKind
@@ -87,53 +92,62 @@ fun MediaTraySheet(
                 .clickable(onClick = onDismiss),
             contentAlignment = Alignment.BottomCenter
         ) {
-            Surface(
-                // Swallows taps so touching the sheet itself never dismisses it.
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
-                shape = RoundedCornerShape(24.dp),
-                color = CharcoalElevated,
-                tonalElevation = 8.dp,
-                shadowElevation = 16.dp,
-                border = BorderStroke(1.dp, CharcoalBorder.copy(alpha = 0.8f))
+            AnimatedVisibility(
+                visible = true,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                enter = slideInVertically(
+                    initialOffsetY = { it / 3 },
+                    animationSpec = tween(durationMillis = 260)
+                ) + fadeIn(animationSpec = tween(durationMillis = 220))
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    // Grabber + title + the real count
-                    Box(modifier = Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(SilverMid.copy(alpha = 0.35f)))
-                    Spacer(Modifier.height(14.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.media_tray_title), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
-                            Text(
-                                text = stringResource(R.string.media_tray_count, candidates.size),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = AuroraTeal
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, stringResource(R.string.action_dismiss), tint = SilverMid)
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
-
-                    if (candidates.isEmpty()) {
-                        Text(stringResource(R.string.media_tray_empty), style = MaterialTheme.typography.bodyMedium, color = SilverMid)
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
-                            contentPadding = PaddingValues(vertical = 2.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            items(candidates.sortedWith(compareByDescending<MediaCandidate> { it.mediaUrl == visibleMediaUrl }
-                                .thenByDescending { it.confidence }), key = { it.id }) { candidate ->
-                                MediaTrayRow(
-                                    candidate = candidate,
-                                    isVisible = candidate.mediaUrl == visibleMediaUrl,
-                                    reason = unsupportedReason(candidate),
-                                    onSelect = { onSelect(candidate) }
+                Surface(
+                    // Swallows taps so touching the sheet itself never dismisses it.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+                    shape = RoundedCornerShape(24.dp),
+                    color = CharcoalElevated,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 16.dp,
+                    border = BorderStroke(1.dp, CharcoalBorder.copy(alpha = 0.8f))
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        // Grabber + title + the real count
+                        Box(modifier = Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(SilverMid.copy(alpha = 0.35f)))
+                        Spacer(Modifier.height(14.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.media_tray_title), style = MaterialTheme.typography.titleLarge, color = PearlWhite)
+                                Text(
+                                    text = stringResource(R.string.media_tray_count, candidates.size),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = NebulaVioletLight
                                 )
+                            }
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.Default.Close, stringResource(R.string.action_dismiss), tint = SilverMid)
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+
+                        if (candidates.isEmpty()) {
+                            Text(stringResource(R.string.media_tray_empty), style = MaterialTheme.typography.bodyMedium, color = SilverMid)
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
+                                contentPadding = PaddingValues(vertical = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(candidates.sortedWith(compareByDescending<MediaCandidate> { it.mediaUrl == visibleMediaUrl }
+                                    .thenByDescending { it.confidence }), key = { it.id }) { candidate ->
+                                    MediaTrayRow(
+                                        candidate = candidate,
+                                        isVisible = candidate.mediaUrl == visibleMediaUrl,
+                                        reason = unsupportedReason(candidate),
+                                        onSelect = { onSelect(candidate) }
+                                    )
+                                }
                             }
                         }
                     }

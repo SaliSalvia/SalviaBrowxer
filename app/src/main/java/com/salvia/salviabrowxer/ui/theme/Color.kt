@@ -4,66 +4,78 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * Salvia's dark canvas: cool graphite instead of pure black, with enough separation between
- * page, chrome and controls to make the interface feel calm without losing contrast.
+ * Layered midnight surfaces give the browser chrome, cards and controls clear separation
+ * without falling back to flat black.
  */
-val MatteCharcoal = Color(0xFF000000)
-val DeepCharcoal = Color(0xFF100B15)
-val CharcoalSurface = Color(0xFF1A1420)
-val CharcoalElevated = Color(0xFF261D2E)
-val CharcoalBorder = Color(0xFF3A2D46)
+val MatteCharcoal = Color(0xFF080E19)
+val DeepCharcoal = Color(0xFF0C1525)
+val CharcoalSurface = Color(0xFF131F32)
+val CharcoalElevated = Color(0xFF1C2A40)
+val CharcoalBorder = Color(0xFF30445F)
 
-// Warm, neutral foregrounds keep long sessions comfortable; muted text remains legible on graphite.
-val PearlWhite = Color(0xFFF2F5F7)
-val PearlWarm = Color(0xFFE8EDF0)
-val PearlIridescentPink = Color(0xFFF2E4E9)
-val PearlIridescentTeal = Color(0xFFEAE5EF)
-val PearlIridescentLavender = Color(0xFFEAE7F3)
-val PearlIridescentBlue = Color(0xFFEAE5EF)
+// Cool white and silver keep long reading sessions calm and legible.
+val PearlWhite = Color(0xFFF4F7FC)
+val PearlWarm = Color(0xFFE9EEF5)
+val PearlIridescentPink = Color(0xFFF1EAF0)
+val PearlIridescentTeal = Color(0xFFE1EDF3)
+val PearlIridescentLavender = Color(0xFFE6EAF5)
+val PearlIridescentBlue = Color(0xFFE0EAFA)
 val OnPearl = MatteCharcoal
 
-val SilverLight = Color(0xFFD9E1E6)
-val SilverMid = Color(0xFFA8B4BE)
-val SilverDeep = Color(0xFF84919D)
-val SilverShine = Color(0xFFF8FAFB)
-val SilverMetal = Color(0xFFAFBAC4)
+val SilverLight = Color(0xFFD8E1ED)
+val SilverMid = Color(0xFFA8B6C8)
+val SilverDeep = Color(0xFF7F90A7)
+val SilverShine = Color(0xFFFBFCFF)
+val SilverMetal = Color(0xFFB8C4D3)
 
-// Crimson is the primary action color; violet is the companion accent for private/media states.
-val AuroraTeal = Color(0xFFE7284F)
-val AuroraTealLight = Color(0xFFFF8197)
-val AuroraTealDeep = Color(0xFFBD1737)
-val AuroraTealContainer = Color(0xFF471421)
-val OnAuroraTeal = MatteCharcoal
+// Sapphire is the primary action color, with white text for accessible button contrast.
+val SapphireBlue = Color(0xFF347DCE)
+val SapphireBlueLight = Color(0xFF8DBBFA)
+val SapphireBlueDeep = Color(0xFF1C559B)
+val SapphireBlueContainer = Color(0xFF18385F)
+val OnSapphireBlue = MatteCharcoal
 
-// Violet stays as a secondary cue for private browsing and secondary media actions.
-val NebulaViolet = Color(0xFFAC52F2)
-val NebulaVioletLight = Color(0xFFD19AFF)
-val NebulaVioletDeep = Color(0xFF7529BC)
-val NebulaVioletContainer = Color(0xFF301642)
-val OnNebulaViolet = Color.White
+// Metallic gold is reserved for secondary emphasis, status details and brand highlights.
+val MetallicGold = Color(0xFFD4A84E)
+val MetallicGoldLight = Color(0xFFF0D18A)
+val MetallicGoldDeep = Color(0xFF966C20)
+val MetallicGoldContainer = Color(0xFF40341E)
+val OnMetallicGold = Color(0xFF111925)
+
+// Existing feature code keeps its stable names while the visual identity changes underneath.
+val AuroraTeal = SapphireBlue
+val AuroraTealLight = SapphireBlueLight
+val AuroraTealDeep = SapphireBlueDeep
+val AuroraTealContainer = SapphireBlueContainer
+val OnAuroraTeal = OnSapphireBlue
+val NebulaViolet = MetallicGold
+val NebulaVioletLight = MetallicGoldLight
+val NebulaVioletDeep = MetallicGoldDeep
+val NebulaVioletContainer = MetallicGoldContainer
+val OnNebulaViolet = OnMetallicGold
 
 // Legacy aliases kept for existing feature code and older resources.
-val Gold = AuroraTeal
+val Gold = MetallicGold
 val Violet = NebulaViolet
-val ElectricIndigo = NebulaVioletDeep
+val ElectricIndigo = SapphireBlueDeep
 
-// Legacy mark aliases now follow the red-and-violet identity.
-val OrbitGold = AuroraTeal
-val OrbitGoldLight = AuroraTealLight
-val OrbitBlue = NebulaViolet
-val OrbitBlueLight = NebulaVioletLight
+// Legacy mark aliases now follow the official sapphire-and-gold identity.
+val OrbitGold = MetallicGold
+val OrbitGoldLight = MetallicGoldLight
+val OrbitBlue = SapphireBlue
+val OrbitBlueLight = SapphireBlueLight
 
-val BlushPink = Color(0xFFF05A78)
-val BlushPinkLight = Color(0xFFFFA3B5)
+val BlushPink = Color(0xFFE36C78)
+val BlushPinkLight = Color(0xFFFFA3AB)
 val BlushPinkDeep = Color(0xFFB5324D)
-val BlushPinkContainer = Color(0xFF451924)
+val BlushPinkContainer = Color(0xFF451F27)
 
-val NebulaMist = Color(0xFF1B1422)
-val NebulaEdge = Color(0xFF3E2B52)
+val NebulaMist = Color(0xFF172236)
+val NebulaEdge = Color(0xFF324865)
 
 // Surface micro-contrast, for fields and nested rows.
-val SurfaceField = Color(0xFF100B15)
-val SurfaceRow = Color(0xFF15101B)
+val SurfaceField = Color(0xFF0D1727)
+val SurfaceRow = Color(0xFF101A2B)
 val SurfaceInk = SilverMid
 
 val Primary = AuroraTeal
@@ -83,19 +95,19 @@ val OnSurface = PearlWhite
 val SurfaceVariant = CharcoalSurface
 val OnSurfaceVariant = SilverMid
 
-val Error = Color(0xFFFF8197)
+val Error = Color(0xFFFF858C)
 val OnError = Color.White
 
 val MediaDetectedIndicator = AuroraTeal
 val DownloadButtonActive = AuroraTeal
-val DownloadButtonInactive = Color(0xFF3A2D46)
+val DownloadButtonInactive = Color(0xFF30445F)
 val FloatingButtonBackground = CharcoalElevated
 val FloatingButtonForeground = PearlWhite
 
 // Brand and surface gradients are deliberately low-contrast: decoration supports hierarchy instead
 // of competing with the page or the action labels.
 val PearlIridescentBrush = Brush.linearGradient(
-    colors = listOf(PearlWhite, PearlIridescentLavender, PearlIridescentTeal, PearlWhite)
+    colors = listOf(PearlWhite, PearlIridescentBlue, PearlIridescentTeal, PearlWhite)
 )
 
 val SilverMetallicBrush = Brush.linearGradient(
@@ -103,11 +115,11 @@ val SilverMetallicBrush = Brush.linearGradient(
 )
 
 val AuroraBrush = Brush.linearGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+    colors = listOf(SapphireBlueLight, SapphireBlue, SapphireBlueDeep)
 )
 
 val NebulaBrush = Brush.linearGradient(
-    colors = listOf(NebulaVioletLight, NebulaViolet, NebulaVioletDeep)
+    colors = listOf(MetallicGoldLight, MetallicGold, MetallicGoldDeep)
 )
 
 val CharcoalPearlBrush = Brush.linearGradient(
@@ -115,11 +127,11 @@ val CharcoalPearlBrush = Brush.linearGradient(
 )
 
 val FabActiveBrush = Brush.radialGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+    colors = listOf(SapphireBlueLight, SapphireBlue, SapphireBlueDeep)
 )
 
 val FabInactiveBrush = Brush.radialGradient(
-    colors = listOf(Color(0xFF3A2D46), Color(0xFF261D2E))
+    colors = listOf(Color(0xFF30445F), CharcoalElevated)
 )
 
 val NebulaSurfaceBrush = Brush.verticalGradient(
@@ -127,7 +139,7 @@ val NebulaSurfaceBrush = Brush.verticalGradient(
 )
 
 val TopBarBrush = Brush.verticalGradient(
-    colors = listOf(Color(0xFF160F1D), DeepCharcoal)
+    colors = listOf(Color(0xFF101C30), DeepCharcoal)
 )
 
 val BottomBarBrush = Brush.verticalGradient(
@@ -141,34 +153,34 @@ val AddressBarBrush = Brush.linearGradient(
 /** A single quiet brand accent for separators and focus states. */
 val PearlEdgeBrush = Brush.horizontalGradient(
     colors = listOf(
-        AuroraTeal.copy(alpha = 0.16f),
-        NebulaViolet.copy(alpha = 0.24f),
-        AuroraTeal.copy(alpha = 0.16f)
+        SapphireBlue.copy(alpha = 0.18f),
+        MetallicGold.copy(alpha = 0.22f),
+        SapphireBlue.copy(alpha = 0.18f)
     )
 )
 
 val NebulaBlushBrush = Brush.linearGradient(
-    colors = listOf(NebulaViolet, BlushPink, NebulaVioletLight)
+    colors = listOf(SapphireBlue, MetallicGold, MetallicGoldLight)
 )
 
 val AccentIndicatorBrush = Brush.horizontalGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+    colors = listOf(MetallicGoldLight, MetallicGold, MetallicGoldDeep)
 )
 
 val DownloadCtaBrush = Brush.linearGradient(
-    colors = listOf(AuroraTeal, AuroraTealDeep)
+    colors = listOf(SapphireBlue, SapphireBlueDeep)
 )
 
 val FabActiveBrushNebula = Brush.radialGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+    colors = listOf(SapphireBlueLight, SapphireBlue, SapphireBlueDeep)
 )
 
 val FabInactiveBrushNebula = Brush.radialGradient(
-    colors = listOf(Color(0xFF3A2D46), CharcoalElevated, DeepCharcoal)
+    colors = listOf(Color(0xFF30445F), CharcoalElevated, DeepCharcoal)
 )
 
 val SplashNebulaBrush = Brush.radialGradient(
-    colors = listOf(Color(0xFF251433), DeepCharcoal, MatteCharcoal),
+    colors = listOf(Color(0xFF192C48), DeepCharcoal, MatteCharcoal),
     radius = 900f
 )
 
