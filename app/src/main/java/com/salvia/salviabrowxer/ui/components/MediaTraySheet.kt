@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -48,7 +49,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.model.MediaCandidate
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
+import com.salvia.salviabrowxer.ui.theme.LogoIridescenceBrush
+import com.salvia.salviabrowxer.ui.theme.PinGold
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
@@ -101,7 +104,7 @@ fun MediaTraySheet(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     // Grabber + title + the real count
-                    Box(modifier = Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(SilverMid.copy(alpha = 0.35f)))
+                    Box(modifier = Modifier.align(Alignment.CenterHorizontally).width(44.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).graphicsLayer { alpha = 0.8f }.background(LogoIridescenceBrush))
                     Spacer(Modifier.height(14.dp))
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -109,7 +112,7 @@ fun MediaTraySheet(
                             Text(
                                 text = stringResource(R.string.media_tray_count, candidates.size),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = AuroraTeal
+                                color = IrisViolet
                             )
                         }
                         IconButton(onClick = onDismiss) {
@@ -171,14 +174,14 @@ private fun MediaTrayRow(candidate: MediaCandidate, isVisible: Boolean, reason: 
             Icon(
                 imageVector = iconFor(kind),
                 contentDescription = null,
-                tint = if (reason == null) AuroraTeal else SilverMid,
+                tint = if (reason == null) IrisViolet else SilverMid,
                 modifier = Modifier.size(20.dp)
             )
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             if (isVisible) {
-                Text(stringResource(R.string.media_on_screen), style = MaterialTheme.typography.labelSmall, color = AuroraTeal)
+                Text(stringResource(R.string.media_on_screen), style = MaterialTheme.typography.labelSmall, color = IrisViolet)
             }
             Text(
                 text = title,
@@ -209,7 +212,7 @@ private fun MediaTrayRow(candidate: MediaCandidate, isVisible: Boolean, reason: 
         if (reason == null) {
             // An affordance, not a second button: the whole row is the 48dp-or-taller target, so
             // TalkBack does not offer the same action twice.
-            Icon(Icons.Default.Download, null, tint = PearlWhite, modifier = Modifier.padding(start = 8.dp).size(20.dp))
+            Icon(Icons.Default.Download, null, tint = PinGold, modifier = Modifier.padding(start = 8.dp).size(20.dp))
         }
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -17,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -37,6 +39,7 @@ import com.salvia.salviabrowxer.feature.history.HistoryScreen
 import com.salvia.salviabrowxer.feature.home.HomeScreen
 import com.salvia.salviabrowxer.feature.player.MediaPlayerScreen
 import com.salvia.salviabrowxer.feature.settings.SettingsScreen
+import com.salvia.salviabrowxer.ui.components.AppSplashOverlay
 import com.salvia.salviabrowxer.ui.theme.SalviaBrowxerTheme
 import com.salvia.salviabrowxer.ui.utils.SharedLinkParser
 import dagger.hilt.android.AndroidEntryPoint
@@ -50,6 +53,13 @@ class MainActivity : ComponentActivity() {
     /** A link the app was launched with, or received by share. Consumed by the browser. */
     private var incomingUrl by mutableStateOf<String?>(null)
 
+    /**
+     * The welcome ceremony belongs to a cold start only: an activity recreation (the per-app
+     * language picker, a process death) restores a session the user was already inside, and
+     * greeting them again would be the app pretending it forgot them.
+     */
+    private var isColdStart by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Before anything else: the splash takes over the cold-start window and hands it to the
         // first real frame. A browser opened many times a day is felt "fast" here first.
@@ -58,6 +68,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         openDownloadsRequested = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
         incomingUrl = sharedUrlFrom(intent)
+        isColdStart = savedInstanceState == null
 
         setContent {
             SalviaBrowxerTheme {
@@ -65,11 +76,20 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    SalviaBrowxerAppContent(
-                        openDownloads = openDownloadsRequested,
-                        incomingUrl = incomingUrl,
-                        onIncomingUrlConsumed = { incomingUrl = null }
-                    )
+                    // The welcome beat plays over the first real frame: the app underneath is
+                    // composed and awake the whole time, the overlay simply owns the sky until
+                    // the mark has breathed in and out again (~1.6 s), then removes itself.
+                    var splashDone by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        SalviaBrowxerAppContent(
+                            openDownloads = openDownloadsRequested,
+                            incomingUrl = incomingUrl,
+                            onIncomingUrlConsumed = { incomingUrl = null }
+                        )
+                        if (isColdStart && !splashDone) {
+                            AppSplashOverlay(onFinished = { splashDone = true })
+                        }
+                    }
                 }
             }
         }
@@ -138,10 +158,11 @@ fun SalviaBrowxerAppContent(
 
     NavHost(
         navController = navController,
-        // The app is a browser first, so the browser is what the user meets on launch: the media
-        // tray and its pill are what turn browsing into downloading, and the paste field stays one
-        // tap away in the overflow menu ("Start screen") for when a link is already in hand.
-        startDestination = ROUTE_BROWSER,
+        // The welcome ceremony hands the user to the home screen: the brand's front door, with the
+        // mark resting in its depth and the link field ready. The browser sits one tap away (and
+        // opens by itself for any incoming or submitted link), so launching on home costs nothing
+        // and gives the app a face instead of a cold page frame.
+        startDestination = ROUTE_HOME,
         enterTransition = {
             slideInHorizontally(animationSpec = tween(220)) { forward * it / 5 } + fadeIn(animationSpec = tween(220))
         },
@@ -162,7 +183,9 @@ fun SalviaBrowxerAppContent(
                 // decided in the browser's view model, so only the URL travels from here.
                 onOpenLink = { url -> deliverToBrowser(navController, KEY_PASTED_LINK, url) },
                 onNavigateToBrowser = { navController.returnToBrowser() },
-                onNavigateToDownloads = { navController.navigate(ROUTE_DOWNLOADS) }
+                onNavigateToDownloads = { navController.navigate(ROUTE_DOWNLOADS) },
+                onNavigateToBookmarks = { navController.navigate(ROUTE_BOOKMARKS) },
+                onNavigateToHistory = { navController.navigate(ROUTE_HISTORY) }
             )
         }
         composable(ROUTE_BROWSER) { entry ->

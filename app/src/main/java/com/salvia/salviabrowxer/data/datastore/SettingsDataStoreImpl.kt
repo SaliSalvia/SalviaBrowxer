@@ -53,7 +53,7 @@ class SettingsDataStoreImpl(private val dataStore: DataStore<Preferences>) : Set
         .map { preferences -> preferences[FLOATING_BUTTON_ALWAYS_VISIBLE] ?: true }
 
     override val floatingButtonSize: Flow<Int> = dataStore.data
-        .map { preferences -> preferences[FLOATING_BUTTON_SIZE] ?: 56 }
+        .map { preferences -> preferences[FLOATING_BUTTON_SIZE] ?: 48 }
 
     override val floatingButtonX: Flow<Float> = dataStore.data
         .map { preferences -> preferences[FLOATING_BUTTON_X] ?: 0f }

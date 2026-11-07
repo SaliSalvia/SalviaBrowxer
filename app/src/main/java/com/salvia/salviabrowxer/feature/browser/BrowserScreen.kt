@@ -18,6 +18,7 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,8 +75,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -102,7 +105,7 @@ import com.salvia.salviabrowxer.ui.components.MediaQualitySelectionSheet
 import com.salvia.salviabrowxer.ui.components.MediaTraySheet
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.TabSwitcher
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.PearlEdgeBrush
@@ -577,25 +580,38 @@ fun BrowserScreen(
 
                 // Show a quiet native start state over the WebView while the first page is loading.
                 if (state.url.isBlank() || (state.url == state.homepage && state.isLoading && state.progress < 25)) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().background(SplashNebulaBrush).padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        OrbitalBrandMark(size = 112.dp, animate = false)
-                        Spacer(Modifier.height(20.dp))
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
-                            color = PearlWhite,
-                            letterSpacing = 3.sp
+                    Box(modifier = Modifier.fillMaxSize().background(SplashNebulaBrush)) {
+                        // The mark in the depth of the empty page, the same whisper as on home:
+                        // even a browser with nothing open is already Salvia's room.
+                        Image(
+                            painter = painterResource(R.drawable.salvia_brand),
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            alpha = 0.07f,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .fillMaxWidth(0.9f)
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.brand_tagline),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SilverMid
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            OrbitalBrandMark(size = 112.dp, animate = false)
+                            Spacer(Modifier.height(20.dp))
+                            Text(
+                                text = stringResource(R.string.app_name),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = PearlWhite,
+                                letterSpacing = 3.sp
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.brand_tagline),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SilverMid
+                            )
+                        }
                     }
                 }
 
@@ -648,7 +664,7 @@ fun BrowserScreen(
                         modifier = Modifier
                             .align(Alignment.Center)
                             .size(26.dp),
-                        color = AuroraTeal,
+                        color = IrisViolet,
                         strokeWidth = 2.dp
                     )
                 }
@@ -659,7 +675,7 @@ fun BrowserScreen(
                     modifier = Modifier.fillMaxWidth().background(CharcoalElevated).padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Security, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Security, contentDescription = null, tint = IrisViolet, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = stringResource(R.string.error_cleartext_blocked),
@@ -668,7 +684,7 @@ fun BrowserScreen(
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(onClick = remember(viewModel) { { viewModel.allowCleartextAndRetry() } }) {
-                        Text(stringResource(R.string.action_allow), color = AuroraTeal)
+                        Text(stringResource(R.string.action_allow), color = IrisViolet)
                     }
                     TextButton(onClick = remember(viewModel) { { viewModel.dismissCleartextBlock() } }) {
                         Text(stringResource(R.string.action_dismiss), color = SilverMid)
@@ -806,9 +822,9 @@ fun BrowserScreen(
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedTextColor = PearlWhite,
                                     unfocusedTextColor = PearlWhite,
-                                    focusedBorderColor = AuroraTeal,
+                                    focusedBorderColor = IrisViolet,
                                     unfocusedBorderColor = CharcoalBorder,
-                                    cursorColor = AuroraTeal
+                                    cursorColor = IrisViolet
                                 )
                             )
                         }
@@ -824,7 +840,7 @@ fun BrowserScreen(
                                 is ScriptDialogRequest.Prompt -> request.result.confirm(promptValue)
                             }
                         }
-                    }) { Text(stringResource(android.R.string.ok), color = AuroraTeal) }
+                    }) { Text(stringResource(android.R.string.ok), color = IrisViolet) }
                 },
                 // An alert only acknowledges; offering a cancel button would promise a choice the
                 // dialog does not have.

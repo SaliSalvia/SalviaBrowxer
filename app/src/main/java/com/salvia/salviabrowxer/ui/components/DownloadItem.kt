@@ -47,8 +47,8 @@ import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.service.WIFI_HOLD_MARKER
 import com.salvia.salviabrowxer.core.database.entities.DownloadEntity
 import com.salvia.salviabrowxer.core.model.DownloadState
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
+import com.salvia.salviabrowxer.ui.theme.AuroraCyanLight
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
@@ -103,7 +103,7 @@ fun DownloadItem(
                 AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(thumbnailUrl).crossfade(true).build(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
             }
             if (download.thumbnail == null) {
-                Icon(imageVector = when (download.status) { DownloadState.COMPLETED -> Icons.Default.CheckCircle; DownloadState.FAILED, DownloadState.CANCELLED -> Icons.Default.Error; else -> Icons.Default.Refresh }, contentDescription = null, tint = when (download.status) { DownloadState.COMPLETED -> AuroraTeal; DownloadState.FAILED, DownloadState.CANCELLED -> Color(0xFFFF5252); else -> SilverMid }, modifier = Modifier.size(24.dp))
+                Icon(imageVector = when (download.status) { DownloadState.COMPLETED -> Icons.Default.CheckCircle; DownloadState.FAILED, DownloadState.CANCELLED -> Icons.Default.Error; else -> Icons.Default.Refresh }, contentDescription = null, tint = when (download.status) { DownloadState.COMPLETED -> IrisViolet; DownloadState.FAILED, DownloadState.CANCELLED -> Color(0xFFFF5252); else -> SilverMid }, modifier = Modifier.size(24.dp))
             }
         }
         Spacer(Modifier.width(12.dp))
@@ -112,7 +112,7 @@ fun DownloadItem(
             Spacer(Modifier.height(4.dp))
             when (download.status) {
                 DownloadState.DOWNLOADING, DownloadState.RESOLVING, DownloadState.PREPARING, DownloadState.PROCESSING -> {
-                    LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)), color = AuroraTeal, trackColor = CharcoalBorder)
+                    LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)), color = IrisViolet, trackColor = CharcoalBorder)
                     Spacer(Modifier.height(4.dp))
                     // Rate and estimate get their own line, above the byte counters, because they are
                     // what someone watching a transfer is actually reading. They come from the
@@ -123,7 +123,7 @@ fun DownloadItem(
                         if (eta != null) "$speed · $eta" else speed
                     }
                     if (speedLabel != null) {
-                        Text(text = speedLabel, style = MaterialTheme.typography.bodySmall, color = AuroraTeal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(text = speedLabel, style = MaterialTheme.typography.bodySmall, color = IrisViolet, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(2.dp))
                     }
                     // An unknown total is stated, not rendered as a question mark.
@@ -144,7 +144,7 @@ fun DownloadItem(
                 DownloadState.COMPLETED -> Text(
                     text = convertProgress?.let { stringResource(R.string.download_convert_progress, it) } ?: stringResource(R.string.download_completed),
                     style = MaterialTheme.typography.bodySmall,
-                    color = AuroraTeal
+                    color = IrisViolet
                 )
                 DownloadState.FAILED, DownloadState.CANCELLED -> Text(text = download.error ?: stringResource(R.string.download_failed), style = MaterialTheme.typography.bodySmall, color = Color(0xFFFF8A80), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -154,22 +154,22 @@ fun DownloadItem(
             DownloadState.DOWNLOADING -> IconButton(onClick = onPauseClick) { Icon(Icons.Default.Pause, stringResource(R.string.download_pause), tint = PearlWhite) }
             DownloadState.PAUSED -> IconButton(onClick = onResumeClick) { Icon(Icons.Default.PlayArrow, stringResource(R.string.download_resume), tint = PearlWhite) }
             DownloadState.QUEUED, DownloadState.RETRYING, DownloadState.RESOLVING, DownloadState.PREPARING, DownloadState.PROCESSING -> IconButton(onClick = onCancelClick) { Icon(Icons.Default.Cancel, stringResource(R.string.download_cancel), tint = SilverMid) }
-            DownloadState.FAILED, DownloadState.CANCELLED -> IconButton(onClick = onRetryClick) { Icon(Icons.Default.Refresh, stringResource(R.string.download_retry), tint = AuroraTeal) }
+            DownloadState.FAILED, DownloadState.CANCELLED -> IconButton(onClick = onRetryClick) { Icon(Icons.Default.Refresh, stringResource(R.string.download_retry), tint = IrisViolet) }
             DownloadState.COMPLETED -> {
                 IconButton(onClick = onOpenClick) { Icon(Icons.AutoMirrored.Filled.OpenInNew, stringResource(R.string.download_open), tint = PearlWhite) }
                 // The conversion is offered per file, never in bulk: it is minutes of CPU and a
                 // generation of quality, and it only exists for containers this app can decode.
                 if (onConvertClick != null && convertProgress == null) {
-                    IconButton(onClick = onConvertClick) { Icon(Icons.Default.Build, stringResource(R.string.download_convert), tint = NebulaVioletLight) }
+                    IconButton(onClick = onConvertClick) { Icon(Icons.Default.Build, stringResource(R.string.download_convert), tint = AuroraCyanLight) }
                 }
                 // Only offered while the file is not in the shared media store yet: on a modern
                 // Android the automatic export already published it, and on an older one this is
                 // the action that asks for the storage permission and does it by hand.
                 if (download.exportedUri == null) {
-                    IconButton(onClick = onExportClick) { Icon(Icons.Default.SaveAlt, stringResource(R.string.download_export), tint = AuroraTeal) }
+                    IconButton(onClick = onExportClick) { Icon(Icons.Default.SaveAlt, stringResource(R.string.download_export), tint = IrisViolet) }
                 }
                 if (download.isLocked) {
-                    onUnlockClick?.let { unlock -> IconButton(onClick = unlock) { Icon(Icons.Default.LockOpen, stringResource(R.string.action_unlock_download), tint = AuroraTeal) } }
+                    onUnlockClick?.let { unlock -> IconButton(onClick = unlock) { Icon(Icons.Default.LockOpen, stringResource(R.string.action_unlock_download), tint = IrisViolet) } }
                 } else {
                     onLockClick?.let { lock -> IconButton(onClick = lock) { Icon(Icons.Default.Lock, stringResource(R.string.action_lock_download), tint = SilverMid) } }
                 }

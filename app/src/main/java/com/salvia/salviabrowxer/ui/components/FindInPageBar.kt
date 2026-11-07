@@ -33,7 +33,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
@@ -83,7 +83,7 @@ fun FindInPageBar(
                 onValueChange = onQueryChange,
                 singleLine = true,
                 textStyle = TextStyle(color = PearlWhite),
-                cursorBrush = SolidColor(AuroraTeal),
+                cursorBrush = SolidColor(IrisViolet),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -98,7 +98,7 @@ fun FindInPageBar(
                 else -> stringResource(R.string.find_match_counter, activeMatch.coerceAtLeast(1), matches)
             },
             style = MaterialTheme.typography.labelMedium,
-            color = if (matches == 0 && query.isNotEmpty()) SilverMid else AuroraTeal,
+            color = if (matches == 0 && query.isNotEmpty()) SilverMid else IrisViolet,
             textAlign = TextAlign.End,
             maxLines = 1
         )

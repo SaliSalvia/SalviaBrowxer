@@ -6,8 +6,10 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,9 +33,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Button
@@ -56,7 +60,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -71,40 +80,49 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.components.DownloadItem
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
-import com.salvia.salviabrowxer.ui.theme.AuroraTealFieldFocus
+import com.salvia.salviabrowxer.ui.theme.AuroraCyan
+import com.salvia.salviabrowxer.ui.theme.AuroraCyanContainer
+import com.salvia.salviabrowxer.ui.theme.AuroraCyanLight
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.EmptySurface
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
+import com.salvia.salviabrowxer.ui.theme.IrisVioletFieldFocus
+import com.salvia.salviabrowxer.ui.theme.LogoIridescenceBrush
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletContainer
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
 import com.salvia.salviabrowxer.ui.theme.PearlFieldHint
+import com.salvia.salviabrowxer.ui.theme.PearlIridescentBrush
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
+import com.salvia.salviabrowxer.ui.theme.PinGold
 import com.salvia.salviabrowxer.ui.theme.SilverDeep
 import com.salvia.salviabrowxer.ui.theme.SilverMid
-import com.salvia.salviabrowxer.ui.theme.SurfaceField
 import com.salvia.salviabrowxer.ui.theme.TopBarBrush
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * The home screen: the product's front door.
+ * The home screen: the product's front door, and since the welcome ceremony ends here, the first
+ * room of the app.
  *
- * A downloader's entry point is the link, so the paste card is the first and loudest thing on the
- * screen and every other element on it is there to answer three questions: what was pasted, what
- * the app will do about it, and whether anything is already downloading. There is exactly one
- * decision behind the primary action: a URL that already names a file (`…/clip.mp4`,
- * `…/master.m3u8`) goes straight to the quality sheet, because there is nothing to discover. Anything
- * else is a page, and this app has no site-specific extractors by design, so the honest thing is to
- * open it and let the media tray find what the page exposes — which is why the button's label changes
- * with the link instead of promising a download that a page cannot produce.
+ * The brand mark rests in the depth of the page — the same artwork as the launcher icon, without
+ * its background, at a whisper of opacity — so the screen reads as Salvia's own space before a
+ * single label is read. Over it: the paste card (a downloader's entry point is the link, so it
+ * stays the loudest thing here), four doors into the rest of the app, and the transfers in flight.
+ *
+ * There is exactly one decision behind the primary action: a URL that already names a file
+ * (`…/clip.mp4`, `…/master.m3u8`) goes straight to the quality sheet, because there is nothing to
+ * discover. Anything else is a page, and this app has no site-specific extractors by design, so
+ * the honest thing is to open it and let the media tray find what the page exposes — which is why
+ * the button's label changes with the link instead of promising a download that a page cannot
+ * produce.
  */
 @Composable
 fun HomeScreen(
     onOpenLink: (url: String) -> Unit,
     onNavigateToBrowser: () -> Unit,
     onNavigateToDownloads: () -> Unit,
+    onNavigateToBookmarks: () -> Unit = {},
+    onNavigateToHistory: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -133,36 +151,57 @@ fun HomeScreen(
         onPauseOrDispose { }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal).safeDrawingPadding().imePadding()) {
-        Column(
+    Box(modifier = Modifier.fillMaxSize().background(MatteCharcoal)) {
+        // The mark in the depth: no background of its own, seven percent of itself, exactly where
+        // the eye rests. Content scrolls over it; it never moves, never competes, never leaves.
+        Image(
+            painter = painterResource(R.drawable.salvia_brand),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            alpha = 0.07f,
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            HomeHeader(onNavigateToBrowser = onNavigateToBrowser)
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                Column(modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp).padding(horizontal = 20.dp)) {
-                    Spacer(Modifier.height(28.dp))
-                    HomeIntro()
-                    Spacer(Modifier.height(22.dp))
-                    PasteCard(
-                        state = state,
-                        fieldLabel = onPasteTitle,
-                        onInputChange = viewModel::onInputChange,
-                        onClear = viewModel::clearInput,
-                        onPaste = viewModel::pasteFromClipboard,
-                        onUseSuggestion = viewModel::useClipboardSuggestion,
-                        onDismissSuggestion = viewModel::dismissClipboardSuggestion,
-                        onSubmit = submit
-                    )
-                    Spacer(Modifier.height(26.dp))
-                    ActiveDownloads(state = state, viewModel = viewModel, onNavigateToDownloads = onNavigateToDownloads)
-                    Spacer(Modifier.height(24.dp))
+                .align(Alignment.Center)
+                .fillMaxWidth(0.92f)
+        )
+
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                HomeHeader(onNavigateToBrowser = onNavigateToBrowser)
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                    Column(modifier = Modifier.fillMaxWidth().widthIn(max = 760.dp).padding(horizontal = 20.dp)) {
+                        Spacer(Modifier.height(28.dp))
+                        HomeIntro()
+                        Spacer(Modifier.height(20.dp))
+                        HomeQuickAccess(
+                            onNavigateToBrowser = onNavigateToBrowser,
+                            onNavigateToBookmarks = onNavigateToBookmarks,
+                            onNavigateToHistory = onNavigateToHistory,
+                            onNavigateToDownloads = onNavigateToDownloads
+                        )
+                        Spacer(Modifier.height(22.dp))
+                        PasteCard(
+                            state = state,
+                            fieldLabel = onPasteTitle,
+                            onInputChange = viewModel::onInputChange,
+                            onClear = viewModel::clearInput,
+                            onPaste = viewModel::pasteFromClipboard,
+                            onUseSuggestion = viewModel::useClipboardSuggestion,
+                            onDismissSuggestion = viewModel::dismissClipboardSuggestion,
+                            onSubmit = submit
+                        )
+                        Spacer(Modifier.height(26.dp))
+                        ActiveDownloads(state = state, viewModel = viewModel, onNavigateToDownloads = onNavigateToDownloads)
+                        Spacer(Modifier.height(24.dp))
+                    }
                 }
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
+            SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
         }
-        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
     }
 }
 
@@ -186,16 +225,18 @@ private fun HomeHeader(onNavigateToBrowser: () -> Unit) {
                 onClick = onNavigateToBrowser,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                Icon(Icons.Default.Public, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Public, contentDescription = null, tint = IrisViolet, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.home_open_browser), style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
+                Text(stringResource(R.string.home_open_browser), style = MaterialTheme.typography.labelMedium, color = IrisViolet)
             }
         }
+        // One hairline of the mark's own light — ribbon, starfield, pins — under the header.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 1.dp, max = 1.dp)
-                .background(CharcoalBorder.copy(alpha = 0.72f))
+                .graphicsLayer { alpha = 0.55f }
+                .background(LogoIridescenceBrush)
         )
     }
 }
@@ -205,14 +246,94 @@ private fun HomeIntro() {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.home_hero_title),
-            style = MaterialTheme.typography.headlineMedium,
-            color = PearlWhite
+            style = MaterialTheme.typography.headlineMedium.copy(brush = PearlIridescentBrush),
+            color = Color.Unspecified
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.home_hero_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = SilverMid
+        )
+    }
+}
+
+/**
+ * Four doors, one row: the rooms of the app a thumb asks for most, each tinted with one voice of
+ * the mark so the row reads as a set without a single word of chrome.
+ */
+@Composable
+private fun HomeQuickAccess(
+    onNavigateToBrowser: () -> Unit,
+    onNavigateToBookmarks: () -> Unit,
+    onNavigateToHistory: () -> Unit,
+    onNavigateToDownloads: () -> Unit
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        HomeTile(
+            icon = Icons.Default.Public,
+            label = stringResource(R.string.home_open_browser),
+            tint = IrisViolet,
+            onClick = onNavigateToBrowser,
+            modifier = Modifier.weight(1f)
+        )
+        HomeTile(
+            icon = Icons.Default.Bookmark,
+            label = stringResource(R.string.bookmarks),
+            tint = AuroraCyan,
+            onClick = onNavigateToBookmarks,
+            modifier = Modifier.weight(1f)
+        )
+        HomeTile(
+            icon = Icons.Default.History,
+            label = stringResource(R.string.history),
+            tint = BlushPink,
+            onClick = onNavigateToHistory,
+            modifier = Modifier.weight(1f)
+        )
+        HomeTile(
+            icon = Icons.Default.Download,
+            label = stringResource(R.string.downloads_title),
+            tint = PinGold,
+            onClick = onNavigateToDownloads,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun HomeTile(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(17.dp))
+                .background(CharcoalSurface)
+                .border(1.dp, CharcoalBorder.copy(alpha = 0.72f), RoundedCornerShape(17.dp))
+                .border(1.dp, tint.copy(alpha = 0.16f), RoundedCornerShape(17.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(7.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = SilverMid,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -230,7 +351,7 @@ private fun PasteCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val borderColor by animateColorAsState(
-        targetValue = if (focused) AuroraTealFieldFocus else CharcoalBorder,
+        targetValue = if (focused) IrisVioletFieldFocus else CharcoalBorder,
         label = "pasteFieldBorder"
     )
 
@@ -238,12 +359,12 @@ private fun PasteCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(CharcoalSurface)
+            .background(CharcoalSurface.copy(alpha = 0.92f))
             .border(1.dp, CharcoalBorder, RoundedCornerShape(22.dp))
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Link, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Link, contentDescription = null, tint = IrisViolet, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.home_paste_title),
@@ -264,7 +385,7 @@ private fun PasteCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(SurfaceField)
+                .background(MatteCharcoal.copy(alpha = 0.55f))
                 .border(1.dp, borderColor, RoundedCornerShape(14.dp))
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -279,7 +400,7 @@ private fun PasteCard(
                         .semantics { contentDescription = fieldLabel },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
-                    cursorBrush = Brush.horizontalGradient(listOf(BlushPink, NebulaVioletLight, AuroraTeal)),
+                    cursorBrush = Brush.horizontalGradient(listOf(BlushPink, AuroraCyanLight, IrisViolet)),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { onSubmit() }),
                     decorationBox = { inner ->
@@ -302,7 +423,7 @@ private fun PasteCard(
                 }
             }
             IconButton(onClick = onPaste, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.ContentPaste, stringResource(R.string.home_paste_from_clipboard), tint = AuroraTeal, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.ContentPaste, stringResource(R.string.home_paste_from_clipboard), tint = IrisViolet, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -317,11 +438,11 @@ private fun PasteCard(
                     .fillMaxWidth()
                     .padding(top = 14.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(NebulaVioletContainer)
+                    .background(AuroraCyanContainer)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.ContentPaste, contentDescription = null, tint = NebulaVioletLight, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.ContentPaste, contentDescription = null, tint = AuroraCyanLight, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -342,7 +463,7 @@ private fun PasteCard(
                     }
                 }
                 TextButton(onClick = onUseSuggestion, contentPadding = PaddingValues(horizontal = 10.dp)) {
-                    Text(stringResource(R.string.home_clipboard_use), style = MaterialTheme.typography.labelMedium, color = NebulaVioletLight)
+                    Text(stringResource(R.string.home_clipboard_use), style = MaterialTheme.typography.labelMedium, color = AuroraCyanLight)
                 }
                 IconButton(onClick = onDismissSuggestion, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.Close, stringResource(R.string.home_clipboard_dismiss), tint = SilverMid, modifier = Modifier.size(16.dp))
@@ -360,7 +481,7 @@ private fun PasteCard(
                 .clip(RoundedCornerShape(15.dp)),
             shape = RoundedCornerShape(15.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = AuroraTeal,
+                containerColor = IrisViolet,
                 contentColor = MatteCharcoal,
                 disabledContainerColor = CharcoalSurface,
                 disabledContentColor = SilverDeep
@@ -388,7 +509,7 @@ private fun ActiveDownloads(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Download, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Download, contentDescription = null, tint = PinGold, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.home_active_title),
@@ -397,11 +518,11 @@ private fun ActiveDownloads(
             )
             if (state.inFlightCount > 0) {
                 Spacer(Modifier.width(8.dp))
-                Text(text = "${state.inFlightCount}", style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
+                Text(text = "${state.inFlightCount}", style = MaterialTheme.typography.labelMedium, color = PinGold)
             }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onNavigateToDownloads, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                Text(stringResource(R.string.home_active_see_all), style = MaterialTheme.typography.labelMedium, color = AuroraTeal)
+                Text(stringResource(R.string.home_active_see_all), style = MaterialTheme.typography.labelMedium, color = IrisViolet)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -442,10 +563,10 @@ private fun CardEmpty(text: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(AuroraTeal.copy(alpha = 0.12f)),
+            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(IrisViolet.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Download, contentDescription = null, tint = AuroraTeal, modifier = Modifier.size(19.dp))
+            Icon(Icons.Default.Download, contentDescription = null, tint = IrisViolet, modifier = Modifier.size(19.dp))
         }
         Spacer(Modifier.width(12.dp))
         Text(

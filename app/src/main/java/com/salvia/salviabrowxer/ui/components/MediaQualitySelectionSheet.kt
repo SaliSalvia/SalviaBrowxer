@@ -60,17 +60,17 @@ import coil.compose.AsyncImage
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.model.MediaFormat
 import com.salvia.salviabrowxer.core.model.MediaInfo
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
-import com.salvia.salviabrowxer.ui.theme.AuroraTealSurface
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
+import com.salvia.salviabrowxer.ui.theme.IrisVioletSurface
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.EmptySurface
 import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
 import com.salvia.salviabrowxer.ui.theme.DownloadCtaBrush
-import com.salvia.salviabrowxer.ui.theme.NebulaViolet
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletContainer
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.AuroraCyan
+import com.salvia.salviabrowxer.ui.theme.AuroraCyanContainer
+import com.salvia.salviabrowxer.ui.theme.AuroraCyanLight
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverDeep
 import com.salvia.salviabrowxer.ui.theme.SilverMid
@@ -175,7 +175,7 @@ fun MediaQualitySelectionSheet(
                             Icon(
                                 imageVector = Icons.Default.Download,
                                 contentDescription = null,
-                                tint = AuroraTeal,
+                                tint = IrisViolet,
                                 modifier = Modifier.size(30.dp)
                             )
                         }
@@ -216,7 +216,7 @@ fun MediaQualitySelectionSheet(
                                 Text(
                                     text = stringResource(R.string.quality_options, formats.size),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = AuroraTeal
+                                    color = IrisViolet
                                 )
                             }
                         }
@@ -232,7 +232,7 @@ fun MediaQualitySelectionSheet(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = PearlWhite,
                             unfocusedTextColor = PearlWhite,
-                            focusedBorderColor = AuroraTeal,
+                            focusedBorderColor = IrisViolet,
                             unfocusedBorderColor = CharcoalBorder,
                             focusedContainerColor = CharcoalSurface,
                             unfocusedContainerColor = CharcoalSurface
@@ -260,7 +260,7 @@ fun MediaQualitySelectionSheet(
                         ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(28.dp),
-                                color = AuroraTeal,
+                                color = IrisViolet,
                                 strokeWidth = 2.dp
                             )
                         }
@@ -334,8 +334,8 @@ private fun RecordPlaybackAction(onRecord: () -> Unit) {
             // A floor, not a fixed height: the label grows with the font scale.
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, AuroraTeal.copy(alpha = 0.6f)),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = AuroraTeal),
+            border = BorderStroke(1.dp, IrisViolet.copy(alpha = 0.6f)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = IrisViolet),
             onClick = onRecord
         ) {
             Icon(
@@ -365,7 +365,7 @@ private fun RecordingInProgress(bytes: Long, onStop: (() -> Unit)?) {
             Icon(
                 imageVector = Icons.Default.FiberManualRecord,
                 contentDescription = null,
-                tint = NebulaVioletLight,
+                tint = AuroraCyanLight,
                 modifier = Modifier.size(14.dp)
             )
             Spacer(Modifier.width(6.dp))
@@ -378,15 +378,15 @@ private fun RecordingInProgress(bytes: Long, onStop: (() -> Unit)?) {
             Text(
                 text = formatFileSize(bytes),
                 style = MaterialTheme.typography.labelMedium,
-                color = AuroraTeal
+                color = IrisViolet
             )
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, NebulaViolet.copy(alpha = 0.7f)),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = NebulaVioletLight),
+            border = BorderStroke(1.dp, AuroraCyan.copy(alpha = 0.7f)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = AuroraCyanLight),
             onClick = { onStop?.invoke() }
         ) {
             Icon(
@@ -418,11 +418,11 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (isSelected) AuroraTealSurface else Color.Transparent
+                if (isSelected) IrisVioletSurface else Color.Transparent
             )
             .border(
                 width = if (isSelected) 1.dp else 0.dp,
-                color = if (isSelected) AuroraTeal.copy(alpha = 0.55f) else Color.Transparent,
+                color = if (isSelected) IrisViolet.copy(alpha = 0.55f) else Color.Transparent,
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(
@@ -440,12 +440,12 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
                 .size(22.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(
-                    if (isSelected) AuroraTeal
+                    if (isSelected) IrisViolet
                     else CharcoalSurface
                 )
                 .border(
                     width = 1.dp,
-                    color = if (isSelected) AuroraTeal
+                    color = if (isSelected) IrisViolet
                     else CharcoalBorder,
                     shape = RoundedCornerShape(6.dp)
                 ),
@@ -505,13 +505,13 @@ fun QualityOptionItem(format: MediaFormat, isSelected: Boolean, onClick: () -> U
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(AuroraTeal.copy(alpha = 0.18f))
+                    .background(IrisViolet.copy(alpha = 0.18f))
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
                     "HLS",
                     style = MaterialTheme.typography.labelSmall,
-                    color = AuroraTeal
+                    color = IrisViolet
                 )
             }
         }

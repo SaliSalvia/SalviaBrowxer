@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The cold-start window stays a pure black sky: the brand mark's appearance is a composed
+         ceremony (fade in, breathe, fade out) that begins with the first real frame, so the system
+         splash icon draws nothing and never previews a static logo the animation is about to earn. -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,0h108v108h-108z" />
+</vector>

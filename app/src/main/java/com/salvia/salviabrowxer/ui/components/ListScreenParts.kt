@@ -35,7 +35,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
@@ -65,7 +65,7 @@ fun ListSearchRow(query: String, hint: String, onQueryChange: (String) -> Unit) 
                 onValueChange = onQueryChange,
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
-                cursorBrush = SolidColor(AuroraTeal),
+                cursorBrush = SolidColor(IrisViolet),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -86,7 +86,7 @@ fun ListEmptyState(text: String, actionLabel: String? = null, onAction: () -> Un
         Text(text, style = MaterialTheme.typography.bodyMedium, color = SilverMid, textAlign = TextAlign.Center)
         if (actionLabel != null) {
             Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onAction) { Text(actionLabel, color = AuroraTeal) }
+            TextButton(onClick = onAction) { Text(actionLabel, color = IrisViolet) }
         }
     }
 }
@@ -110,7 +110,7 @@ fun PasswordField(
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
-        cursorBrush = SolidColor(AuroraTeal),
+        cursorBrush = SolidColor(IrisViolet),
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
