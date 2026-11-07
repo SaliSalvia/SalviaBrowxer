@@ -42,7 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.theme.AccentIndicatorBrush
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.BottomBarBrush
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
@@ -171,12 +171,12 @@ private fun DockRing(
                     .shadow(4.dp, CircleShape)
                     .clip(CircleShape)
                     .background(CharcoalElevated)
-                    .border(1.dp, if (highlighted) AuroraTeal.copy(alpha = 0.65f) else CharcoalBorder, CircleShape)
+                    .border(1.dp, if (highlighted) IrisViolet.copy(alpha = 0.65f) else CharcoalBorder, CircleShape)
                     .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
                     .semantics { if (badge > 0 && badgeState != null) stateDescription = badgeState },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(imageVector = icon, contentDescription = null, tint = if (highlighted) AuroraTeal else PearlWhite, modifier = Modifier.size(21.dp))
+                Icon(imageVector = icon, contentDescription = null, tint = if (highlighted) IrisViolet else PearlWhite, modifier = Modifier.size(21.dp))
                 if (badge > 0) {
                     Box(
                         modifier = Modifier

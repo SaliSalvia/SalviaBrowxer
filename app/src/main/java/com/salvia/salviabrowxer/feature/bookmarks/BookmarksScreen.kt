@@ -38,7 +38,7 @@ import com.salvia.salviabrowxer.core.database.entities.BookmarkEntity
 import com.salvia.salviabrowxer.ui.components.ListEmptyState
 import com.salvia.salviabrowxer.ui.components.ListSearchRow
 import com.salvia.salviabrowxer.ui.components.ScreenHeader
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
@@ -94,7 +94,7 @@ private fun BookmarkRow(bookmark: BookmarkEntity, onOpen: () -> Unit, onDelete: 
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Default.Bookmarks, null, tint = AuroraTeal, modifier = Modifier.size(20.dp))
+        Icon(Icons.Default.Bookmarks, null, tint = IrisViolet, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

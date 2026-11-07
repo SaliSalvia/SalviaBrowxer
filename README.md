@@ -36,6 +36,7 @@
 | | |
 |---|---|
 | 🔎 **سینی رسانهٔ دقیق** | ویدئو، صدا یا پلی‌لیستی که صفحهٔ باز واقعاً ارائه می‌دهد، با یک شمارندهٔ آرام در نوار بالا خودش را نشان می‌دهد؛ چیزی که دانلود نمی‌شود، به‌عنوان دانلود عرضه هم نمی‌شود. |
+| 🌌 **خوشامدگویی و هویّت دیداری** | برنامه با آسمانی کاملاً سیاه و نفسِ آرام لوگو (حدود ۱٫۶ ثانیه) باز می‌شود و به صفحهٔ خانه می‌رسد؛ لوگو بدون پس‌زمینه با شفافیت کم در عمق صفحه نشسته و تمام رابط در رنگ‌های خود لوگو رنگ‌آمیزی شده: بنفش زنبقی، آبی شفق و طلایی پین‌ها، به‌همراه آیکن شناور کوچولوی دانلود در همهٔ صفحات مرور. |
 | ⬇️ **دانلودِ مقاوم** | صف‌های HLS و DASH، چند اتصال موازی، ادامهٔ دانلود پس از قطعی یا بسته‌شدن برنامه، توقف و ادامهٔ آزاد، ترکیب ویدئو+صدا بدون افت کیفیت، و نمایش زندهٔ سرعت و زمان باقی‌مانده. |
 | 🕊️ **حریم خصوصی واقعی** | بدون حساب، بدون تحلیل رفتار، بدون ردیاب؛ مسدودکنندهٔ آگهی اختیاری است و فهرستش داخل خود برنامه زندگی می‌کند. |
 | 🧭 **مرورگر تمام‌عیار** | تا هشت تب زنده با خواب‌گذاری هوشمند، تب‌های خصوصی بدون تاریخ، جست‌وجو در صفحه، پنج موتور جست‌وجو و حالت دسکتاپ. |
@@ -61,9 +62,12 @@ versionName `1.0.0`.
 
 ## What it does today
 
-- **Entry point** — the app is a browser, so it launches on the browser: the address field, the
-  media pill and the page are the first thing on screen. The paste screen ("Start screen") sits one
-  tap away in the overflow menu for when a link is already in hand, and behaves as described here.
+- **Entry point** — a welcome ceremony of about 1.6 s opens the app: a pure black sky, the brand
+  mark breathing in out of it with a faint iridescent halo, one beat of stillness, breathing out
+  again — and then the home screen, with the same mark (without its background) resting at a
+  whisper of opacity in the depth of the page. Home keeps the link field front and centre, four
+  doors into browser, bookmarks, history and downloads, and the transfers in flight; the browser
+  itself is one tap away, and opens by itself for any incoming, shared or submitted link.
   A copied link is picked up when the app comes to the foreground and fills the field — never
   overwriting something already typed, and never offered twice. A URL that names its own container
   (`…/clip.mp4`, `…/master.m3u8`, `…/stream.mpd`) opens its quality sheet straight away; anything
@@ -74,6 +78,10 @@ versionName `1.0.0`.
   actually observed by the page sniffer. Malformed and credential-bearing URLs are not accepted
   by paste classification. The same
   screen lists the transfers in progress with their rate and the time left, and leads to the queue.
+- **Brand identity** — the interface wears the launcher mark's own palette: iris violet, aurora
+  cyan and pin gold over a deep-space black, with the mark itself resting — without its
+  background, at a whisper of opacity — in the depth of the home screen and of a browser with
+  nothing open.
 - **Browsing** — a real multi-tab browser: up to eight live WebViews, one per tab, and beyond that
   the least recently used tab is hibernated and restored by URL. The chrome is split so every
   control keeps a 48 dp touch target on a 360 dp phone: history in the top bar next to the address
@@ -159,8 +167,10 @@ versionName `1.0.0`.
   sightings over a frame's, duration and size, and a demotion for ad-shaped delivery paths —
   with known ad/tracker hosts categorically excluded from the one-tap slot while remaining in the
   tray. It is a *ranking over evidence*, never new evidence: no request is added and nothing the
-  tray would refuse can become "main". The draggable floating download button is **on by default**
-  now: one tap saves that main file (through the exact same door a tray tap uses — a single
+  tray would refuse can become "main". The draggable floating download button — a small orb that
+  rides over every browsed page, InShot-style — is **on by default**: quiet glass while the page
+  has nothing to save, an iridescent pulse with a gold count the moment it does. One tap saves
+  that main file (through the exact same door a tray tap uses — a single
   rendition enqueues immediately, a real choice opens the quality sheet, an unsavable stream gets
   its honest refusal), long-press opens the whole tray, and dragging moves it anywhere. One switch
   in Settings turns it off for good.

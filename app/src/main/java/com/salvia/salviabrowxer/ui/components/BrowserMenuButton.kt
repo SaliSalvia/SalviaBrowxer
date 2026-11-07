@@ -25,7 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
@@ -81,7 +81,7 @@ fun BrowserMenuButton(
                     text = { Text(item.label, style = MaterialTheme.typography.bodyMedium, color = if (item.isEnabled) PearlWhite else SilverMid) },
                     leadingIcon = { Icon(item.icon, null, tint = if (item.isEnabled) SilverMid else SilverMid.copy(alpha = 0.5f), modifier = Modifier.size(20.dp)) },
                     trailingIcon = {
-                        if (item.showsCheck && item.isChecked) Icon(Icons.Default.Check, null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+                        if (item.showsCheck && item.isChecked) Icon(Icons.Default.Check, null, tint = IrisViolet, modifier = Modifier.size(18.dp))
                     },
                     enabled = item.isEnabled,
                     onClick = {

@@ -60,10 +60,10 @@ import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.feature.browser.AddressSuggestion
 import com.salvia.salviabrowxer.feature.browser.AddressSuggestionSource
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
-import com.salvia.salviabrowxer.ui.theme.NebulaViolet
+import com.salvia.salviabrowxer.ui.theme.AuroraCyan
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.SurfaceField
@@ -103,7 +103,7 @@ fun BrowserTopBar(
     var observedTabId by remember { mutableStateOf(currentTabId) }
     val fieldLabel = stringResource(R.string.address_field)
     val fieldBorder by animateColorAsState(
-        targetValue = if (isEditing) AuroraTeal.copy(alpha = 0.82f) else CharcoalBorder,
+        targetValue = if (isEditing) IrisViolet.copy(alpha = 0.82f) else CharcoalBorder,
         label = "addressFieldBorder"
     )
 
@@ -164,7 +164,7 @@ fun BrowserTopBar(
                             Icon(
                                 imageVector = Icons.Default.Security,
                                 contentDescription = null,
-                                tint = AuroraTeal,
+                                tint = IrisViolet,
                                 modifier = Modifier.padding(end = 7.dp).size(15.dp)
                             )
                         }
@@ -190,7 +190,7 @@ fun BrowserTopBar(
                                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = PearlWhite),
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                 keyboardActions = KeyboardActions(onSearch = { submit() }),
-                                cursorBrush = Brush.horizontalGradient(listOf(AuroraTeal, NebulaViolet)),
+                                cursorBrush = Brush.horizontalGradient(listOf(IrisViolet, AuroraCyan)),
                                 decorationBox = { inner ->
                                     if (input.text.isEmpty()) {
                                         Text(
@@ -256,7 +256,7 @@ fun BrowserTopBar(
                                         Icons.Default.History
                                     },
                                     contentDescription = null,
-                                    tint = AuroraTeal,
+                                    tint = IrisViolet,
                                     modifier = Modifier.size(18.dp)
                                 )
                             },
@@ -286,7 +286,7 @@ fun BrowserTopBar(
             LinearProgressIndicator(
                 progress = { (progress.coerceIn(0, 100)) / 100f },
                 modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = AuroraTeal,
+                color = IrisViolet,
                 trackColor = CharcoalSurface
             )
         }
@@ -302,7 +302,7 @@ private fun MediaPill(count: Int, onClick: () -> Unit) {
             .size(48.dp)
             .clip(RoundedCornerShape(15.dp))
             .background(CharcoalSurface)
-            .border(1.dp, AuroraTeal.copy(alpha = 0.5f), RoundedCornerShape(15.dp))
+            .border(1.dp, IrisViolet.copy(alpha = 0.5f), RoundedCornerShape(15.dp))
             .clickable(role = Role.Button, onClickLabel = description, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center
@@ -310,7 +310,7 @@ private fun MediaPill(count: Int, onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Default.Download,
             contentDescription = null,
-            tint = AuroraTeal,
+            tint = IrisViolet,
             modifier = Modifier.size(18.dp)
         )
         Text(
@@ -321,7 +321,7 @@ private fun MediaPill(count: Int, onClick: () -> Unit) {
                 .align(Alignment.TopEnd)
                 .padding(top = 3.dp, end = 4.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(NebulaViolet)
+                .background(AuroraCyan)
                 .padding(horizontal = 3.dp, vertical = 1.dp)
         )
     }

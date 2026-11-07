@@ -4,77 +4,89 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * Salvia's dark canvas: cool graphite instead of pure black, with enough separation between
- * page, chrome and controls to make the interface feel calm without losing contrast.
+ * Salvia's dark canvas, mixed from the brand mark itself: the logo is a chip of deep space wrapped
+ * in iridescent ribbon, so every surface below is a step of that same near-black indigo sky, and
+ * every accent is a colour the ribbon, the starfield or the gold pins already wear. Decoration
+ * stays low-contrast on purpose: it supports hierarchy instead of competing with the page.
  */
 val MatteCharcoal = Color(0xFF000000)
-val DeepCharcoal = Color(0xFF100B15)
-val CharcoalSurface = Color(0xFF1A1420)
-val CharcoalElevated = Color(0xFF261D2E)
-val CharcoalBorder = Color(0xFF3A2D46)
+val DeepCharcoal = Color(0xFF0A0716)
+val CharcoalSurface = Color(0xFF130E24)
+val CharcoalElevated = Color(0xFF1C1533)
+val CharcoalBorder = Color(0xFF362A5E)
 
-// Warm, neutral foregrounds keep long sessions comfortable; muted text remains legible on graphite.
-val PearlWhite = Color(0xFFF2F5F7)
-val PearlWarm = Color(0xFFE8EDF0)
-val PearlIridescentPink = Color(0xFFF2E4E9)
-val PearlIridescentTeal = Color(0xFFEAE5EF)
-val PearlIridescentLavender = Color(0xFFEAE7F3)
-val PearlIridescentBlue = Color(0xFFEAE5EF)
+// Cool pearl foregrounds with the faint iridescent tint the ribbon leaves on light.
+val PearlWhite = Color(0xFFF4F2FF)
+val PearlWarm = Color(0xFFECEAF6)
+val PearlIridescentPink = Color(0xFFF6E7F4)
+val PearlIridescentTeal = Color(0xFFE6EDF6)
+val PearlIridescentLavender = Color(0xFFECE8FA)
+val PearlIridescentBlue = Color(0xFFE4ECF8)
 val OnPearl = MatteCharcoal
 
-val SilverLight = Color(0xFFD9E1E6)
-val SilverMid = Color(0xFFA8B4BE)
-val SilverDeep = Color(0xFF84919D)
-val SilverShine = Color(0xFFF8FAFB)
-val SilverMetal = Color(0xFFAFBAC4)
+val SilverLight = Color(0xFFDDE2F0)
+val SilverMid = Color(0xFFA6ACC4)
+val SilverDeep = Color(0xFF7F86A3)
+val SilverShine = Color(0xFFFBFAFF)
+val SilverMetal = Color(0xFFB4BAD0)
 
-// Crimson is the primary action color; violet is the companion accent for private/media states.
-val AuroraTeal = Color(0xFFE7284F)
-val AuroraTealLight = Color(0xFFFF8197)
-val AuroraTealDeep = Color(0xFFBD1737)
-val AuroraTealContainer = Color(0xFF471421)
-val OnAuroraTeal = MatteCharcoal
+// Iris violet is the primary action color: the hue of the ribbon at its most saturated turn.
+val IrisViolet = Color(0xFF8F6BFF)
+val IrisVioletLight = Color(0xFFC3AEFF)
+val IrisVioletDeep = Color(0xFF5A34D9)
+val IrisVioletContainer = Color(0xFF2A1655)
+val OnIrisViolet = MatteCharcoal
 
-// Violet stays as a secondary cue for private browsing and secondary media actions.
-val NebulaViolet = Color(0xFFAC52F2)
-val NebulaVioletLight = Color(0xFFD19AFF)
-val NebulaVioletDeep = Color(0xFF7529BC)
-val NebulaVioletContainer = Color(0xFF301642)
-val OnNebulaViolet = Color.White
+// Aurora cyan is the companion accent: the blue-white of the starfield inside the chip, kept for
+// private browsing and secondary media cues.
+val AuroraCyan = Color(0xFF4CC4FF)
+val AuroraCyanLight = Color(0xFFA8E6FF)
+val AuroraCyanDeep = Color(0xFF1786C4)
+val AuroraCyanContainer = Color(0xFF0B2C44)
+val OnAuroraCyan = MatteCharcoal
+
+// Pin gold is the third voice of the mark: the connector pins and the signature. Used sparingly,
+// for the moments that mean "saved" or "yours".
+val PinGold = Color(0xFFD9AE54)
+val PinGoldLight = Color(0xFFF2D795)
+val PinGoldDeep = Color(0xFF9A7222)
+val PinGoldContainer = Color(0xFF33260B)
+val OnPinGold = MatteCharcoal
 
 // Legacy aliases kept for existing feature code and older resources.
-val Gold = AuroraTeal
-val Violet = NebulaViolet
-val ElectricIndigo = NebulaVioletDeep
+val Gold = PinGold
+val Violet = IrisViolet
+val ElectricIndigo = IrisVioletDeep
 
-// Legacy mark aliases now follow the red-and-violet identity.
-val OrbitGold = AuroraTeal
-val OrbitGoldLight = AuroraTealLight
-val OrbitBlue = NebulaViolet
-val OrbitBlueLight = NebulaVioletLight
+// Legacy mark aliases now follow the iris-and-cyan identity.
+val OrbitGold = PinGold
+val OrbitGoldLight = PinGoldLight
+val OrbitBlue = AuroraCyan
+val OrbitBlueLight = AuroraCyanLight
 
-val BlushPink = Color(0xFFF05A78)
-val BlushPinkLight = Color(0xFFFFA3B5)
-val BlushPinkDeep = Color(0xFFB5324D)
-val BlushPinkContainer = Color(0xFF451924)
+// The magenta sparkle the starfield scatters between its blue stars.
+val BlushPink = Color(0xFFEF7BF0)
+val BlushPinkLight = Color(0xFFFFB8FB)
+val BlushPinkDeep = Color(0xFFB036B8)
+val BlushPinkContainer = Color(0xFF3C1140)
 
-val NebulaMist = Color(0xFF1B1422)
-val NebulaEdge = Color(0xFF3E2B52)
+val NebulaMist = Color(0xFF171129)
+val NebulaEdge = Color(0xFF43307A)
 
 // Surface micro-contrast, for fields and nested rows.
-val SurfaceField = Color(0xFF100B15)
-val SurfaceRow = Color(0xFF15101B)
+val SurfaceField = Color(0xFF0A0716)
+val SurfaceRow = Color(0xFF100C1E)
 val SurfaceInk = SilverMid
 
-val Primary = AuroraTeal
-val PrimaryContainer = AuroraTealContainer
-val OnPrimary = OnAuroraTeal
-val OnPrimaryContainer = AuroraTealLight
+val Primary = IrisViolet
+val PrimaryContainer = IrisVioletContainer
+val OnPrimary = OnIrisViolet
+val OnPrimaryContainer = IrisVioletLight
 
-val Secondary = NebulaViolet
-val SecondaryContainer = NebulaVioletContainer
-val OnSecondary = OnNebulaViolet
-val OnSecondaryContainer = NebulaVioletLight
+val Secondary = AuroraCyan
+val SecondaryContainer = AuroraCyanContainer
+val OnSecondary = OnAuroraCyan
+val OnSecondaryContainer = AuroraCyanLight
 
 val Background = MatteCharcoal
 val OnBackground = PearlWhite
@@ -83,12 +95,12 @@ val OnSurface = PearlWhite
 val SurfaceVariant = CharcoalSurface
 val OnSurfaceVariant = SilverMid
 
-val Error = Color(0xFFFF8197)
+val Error = Color(0xFFFF8AA1)
 val OnError = Color.White
 
-val MediaDetectedIndicator = AuroraTeal
-val DownloadButtonActive = AuroraTeal
-val DownloadButtonInactive = Color(0xFF3A2D46)
+val MediaDetectedIndicator = IrisViolet
+val DownloadButtonActive = IrisViolet
+val DownloadButtonInactive = Color(0xFF362A5E)
 val FloatingButtonBackground = CharcoalElevated
 val FloatingButtonForeground = PearlWhite
 
@@ -102,12 +114,17 @@ val SilverMetallicBrush = Brush.linearGradient(
     colors = listOf(SilverShine, SilverLight, SilverMetal, SilverLight, SilverShine)
 )
 
-val AuroraBrush = Brush.linearGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+val IrisBrush = Brush.linearGradient(
+    colors = listOf(IrisVioletLight, IrisViolet, IrisVioletDeep)
 )
 
-val NebulaBrush = Brush.linearGradient(
-    colors = listOf(NebulaVioletLight, NebulaViolet, NebulaVioletDeep)
+val AuroraCyanBrush = Brush.linearGradient(
+    colors = listOf(AuroraCyanLight, AuroraCyan, AuroraCyanDeep)
+)
+
+/** The three voices of the mark in one sweep: ribbon, starfield, pins. */
+val LogoIridescenceBrush = Brush.linearGradient(
+    colors = listOf(IrisViolet, AuroraCyan, PinGold)
 )
 
 val CharcoalPearlBrush = Brush.linearGradient(
@@ -115,11 +132,11 @@ val CharcoalPearlBrush = Brush.linearGradient(
 )
 
 val FabActiveBrush = Brush.radialGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+    colors = listOf(IrisVioletLight, IrisViolet, IrisVioletDeep)
 )
 
 val FabInactiveBrush = Brush.radialGradient(
-    colors = listOf(Color(0xFF3A2D46), Color(0xFF261D2E))
+    colors = listOf(CharcoalBorder, CharcoalElevated)
 )
 
 val NebulaSurfaceBrush = Brush.verticalGradient(
@@ -127,7 +144,7 @@ val NebulaSurfaceBrush = Brush.verticalGradient(
 )
 
 val TopBarBrush = Brush.verticalGradient(
-    colors = listOf(Color(0xFF160F1D), DeepCharcoal)
+    colors = listOf(Color(0xFF120C22), DeepCharcoal)
 )
 
 val BottomBarBrush = Brush.verticalGradient(
@@ -138,44 +155,44 @@ val AddressBarBrush = Brush.linearGradient(
     colors = listOf(CharcoalSurface, DeepCharcoal)
 )
 
-/** A single quiet brand accent for separators and focus states. */
+/** A single quiet brand accent for separators and focus states: the ribbon's shimmer, edge on. */
 val PearlEdgeBrush = Brush.horizontalGradient(
     colors = listOf(
-        AuroraTeal.copy(alpha = 0.16f),
-        NebulaViolet.copy(alpha = 0.24f),
-        AuroraTeal.copy(alpha = 0.16f)
+        IrisViolet.copy(alpha = 0.18f),
+        AuroraCyan.copy(alpha = 0.22f),
+        PinGold.copy(alpha = 0.18f)
     )
 )
 
 val NebulaBlushBrush = Brush.linearGradient(
-    colors = listOf(NebulaViolet, BlushPink, NebulaVioletLight)
+    colors = listOf(IrisViolet, BlushPink, AuroraCyanLight)
 )
 
 val AccentIndicatorBrush = Brush.horizontalGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+    colors = listOf(IrisVioletLight, IrisViolet, AuroraCyan)
 )
 
 val DownloadCtaBrush = Brush.linearGradient(
-    colors = listOf(AuroraTeal, AuroraTealDeep)
+    colors = listOf(IrisViolet, IrisVioletDeep)
 )
 
 val FabActiveBrushNebula = Brush.radialGradient(
-    colors = listOf(AuroraTealLight, AuroraTeal, AuroraTealDeep)
+    colors = listOf(IrisVioletLight, IrisViolet, IrisVioletDeep)
 )
 
 val FabInactiveBrushNebula = Brush.radialGradient(
-    colors = listOf(Color(0xFF3A2D46), CharcoalElevated, DeepCharcoal)
+    colors = listOf(CharcoalBorder, CharcoalElevated, DeepCharcoal)
 )
 
 val SplashNebulaBrush = Brush.radialGradient(
-    colors = listOf(Color(0xFF251433), DeepCharcoal, MatteCharcoal),
+    colors = listOf(Color(0xFF1A1038), DeepCharcoal, MatteCharcoal),
     radius = 900f
 )
 
-val AuroraTealFieldFocus = AuroraTeal.copy(alpha = 0.82f)
-val AuroraTealFieldRest = AuroraTeal.copy(alpha = 0.22f)
-val AuroraTealSurface = AuroraTeal.copy(alpha = 0.10f)
-val AuroraTealRing = AuroraTeal.copy(alpha = 0.40f)
-val NebulaVioletSurface = NebulaViolet.copy(alpha = 0.10f)
+val IrisVioletFieldFocus = IrisViolet.copy(alpha = 0.82f)
+val IrisVioletFieldRest = IrisViolet.copy(alpha = 0.22f)
+val IrisVioletSurface = IrisViolet.copy(alpha = 0.10f)
+val IrisVioletRing = IrisViolet.copy(alpha = 0.40f)
+val AuroraCyanSurface = AuroraCyan.copy(alpha = 0.10f)
 val PearlFieldHint = SilverDeep.copy(alpha = 0.95f)
 val EmptySurface = CharcoalSurface.copy(alpha = 0.72f)

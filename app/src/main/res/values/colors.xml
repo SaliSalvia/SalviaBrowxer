@@ -1,50 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Near-black surfaces with muted violet depth -->
+    <!-- Deep-space indigo surfaces, stepped from the pure black the splash opens on -->
     <color name="matte_charcoal">#000000</color>
-    <color name="deep_charcoal">#100B15</color>
-    <color name="charcoal_surface">#1A1420</color>
-    <color name="charcoal_elevated">#261D2E</color>
-    <color name="charcoal_border">#3A2D46</color>
+    <color name="deep_charcoal">#0A0716</color>
+    <color name="charcoal_surface">#130E24</color>
+    <color name="charcoal_elevated">#1C1533</color>
+    <color name="charcoal_border">#362A5E</color>
 
-    <!-- Neutral foregrounds -->
-    <color name="pearl_white">#F2F5F7</color>
-    <color name="pearl_warm">#E8EDF0</color>
-    <color name="pearl_pink">#F2E4E9</color>
-    <color name="pearl_teal">#EAE5EF</color>
-    <color name="pearl_lavender">#EAE7F3</color>
-    <color name="pearl_blue">#EAE5EF</color>
-    <color name="silver_light">#D9E1E6</color>
-    <color name="silver_mid">#A8B4BE</color>
-    <color name="silver_deep">#84919D</color>
-    <color name="silver_shine">#F8FAFB</color>
+    <!-- Neutral foregrounds with the ribbon's cool tint -->
+    <color name="pearl_white">#F4F2FF</color>
+    <color name="pearl_warm">#ECEAF6</color>
+    <color name="pearl_pink">#F6E7F4</color>
+    <color name="pearl_teal">#E6EDF6</color>
+    <color name="pearl_lavender">#ECE8FA</color>
+    <color name="pearl_blue">#E4ECF8</color>
+    <color name="silver_light">#DDE2F0</color>
+    <color name="silver_mid">#A6ACC4</color>
+    <color name="silver_deep">#7F86A3</color>
+    <color name="silver_shine">#FBFAFF</color>
 
-    <!-- Crimson primary -->
-    <color name="aurora_teal">#E7284F</color>
-    <color name="aurora_teal_light">#FF8197</color>
-    <color name="aurora_teal_deep">#BD1737</color>
-    <color name="aurora_container">#471421</color>
+    <!-- Iris violet primary: the ribbon at its most saturated turn -->
+    <color name="iris_violet">#8F6BFF</color>
+    <color name="iris_violet_light">#C3AEFF</color>
+    <color name="iris_violet_deep">#5A34D9</color>
+    <color name="iris_container">#2A1655</color>
 
-    <!-- Violet secondary -->
-    <color name="nebula_violet">#AC52F2</color>
-    <color name="nebula_violet_light">#D19AFF</color>
-    <color name="nebula_deep">#7529BC</color>
-    <color name="nebula_container">#301642</color>
+    <!-- Aurora cyan secondary: the starfield inside the chip -->
+    <color name="aurora_cyan">#4CC4FF</color>
+    <color name="aurora_cyan_light">#A8E6FF</color>
+    <color name="aurora_cyan_deep">#1786C4</color>
+    <color name="aurora_cyan_container">#0B2C44</color>
+
+    <!-- Pin gold tertiary: the connector pins and the signature -->
+    <color name="pin_gold">#D9AE54</color>
+    <color name="pin_gold_light">#F2D795</color>
+    <color name="pin_gold_deep">#9A7222</color>
+    <color name="pin_gold_container">#33260B</color>
 
     <!-- Legacy aliases -->
-    <color name="gold">@color/aurora_teal</color>
-    <color name="violet">@color/nebula_violet</color>
-    <color name="electric_indigo">@color/nebula_deep</color>
+    <color name="gold">@color/pin_gold</color>
+    <color name="violet">@color/iris_violet</color>
+    <color name="electric_indigo">@color/iris_violet_deep</color>
 
     <!-- Material 3 bindings -->
-    <color name="primary">@color/aurora_teal</color>
-    <color name="primary_container">@color/aurora_container</color>
+    <color name="primary">@color/iris_violet</color>
+    <color name="primary_container">@color/iris_container</color>
     <color name="on_primary">@color/matte_charcoal</color>
-    <color name="on_primary_container">@color/aurora_teal_light</color>
-    <color name="secondary">@color/nebula_violet</color>
-    <color name="secondary_container">@color/nebula_container</color>
-    <color name="on_secondary">#FFFFFF</color>
-    <color name="on_secondary_container">@color/nebula_violet_light</color>
+    <color name="on_primary_container">@color/iris_violet_light</color>
+    <color name="secondary">@color/aurora_cyan</color>
+    <color name="secondary_container">@color/aurora_cyan_container</color>
+    <color name="on_secondary">@color/matte_charcoal</color>
+    <color name="on_secondary_container">@color/aurora_cyan_light</color>
     <color name="background">@color/matte_charcoal</color>
     <color name="on_background">@color/pearl_white</color>
     <color name="surface">@color/deep_charcoal</color>
@@ -52,11 +58,11 @@
     <color name="surface_variant">@color/charcoal_surface</color>
     <color name="on_surface_variant">@color/silver_mid</color>
 
-    <color name="error">#FF8197</color>
+    <color name="error">#FF8AA1</color>
     <color name="on_error">#FFFFFF</color>
-    <color name="media_detected_indicator">@color/aurora_teal</color>
-    <color name="download_button_active">@color/aurora_teal</color>
-    <color name="download_button_inactive">#3A2D46</color>
+    <color name="media_detected_indicator">@color/iris_violet</color>
+    <color name="download_button_active">@color/iris_violet</color>
+    <color name="download_button_inactive">#362A5E</color>
     <color name="floating_button_background">@color/charcoal_elevated</color>
     <color name="floating_button_foreground">@color/pearl_white</color>
 

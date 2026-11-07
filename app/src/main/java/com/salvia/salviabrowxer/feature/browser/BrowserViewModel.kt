@@ -126,7 +126,7 @@ data class BrowserUiState(
      */
     val mainMediaUrl: String? = null,
     val fabPosition: FabPosition = FabPosition(),
-    val floatingButtonSize: Int = 56,
+    val floatingButtonSize: Int = 48,
     /** The one-tap main-video button, on by default and one switch away from off. */
     val isFabAlwaysVisible: Boolean = true,
     val qualitySheet: QualitySheetState? = null,
@@ -231,7 +231,7 @@ class BrowserViewModel @Inject constructor(
             val desktop = runCatching { settingsDataStore.isDesktopSite.first() }.getOrNull() ?: false
             val fabX = runCatching { settingsDataStore.floatingButtonX.first() }.getOrNull() ?: 0f
             val fabY = runCatching { settingsDataStore.floatingButtonY.first() }.getOrNull() ?: 0f
-            val fabSize = runCatching { settingsDataStore.floatingButtonSize.first() }.getOrNull() ?: 56
+            val fabSize = runCatching { settingsDataStore.floatingButtonSize.first() }.getOrNull() ?: 48
             val fabAlways = runCatching { settingsDataStore.isFloatingButtonAlwaysVisible.first() }.getOrNull() ?: true
             val cleartextAllowed = runCatching { settingsDataStore.isCleartextAllowed.first() }.getOrNull() ?: false
             _uiState.update { state ->

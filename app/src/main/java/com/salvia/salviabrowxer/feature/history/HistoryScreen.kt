@@ -49,7 +49,7 @@ import com.salvia.salviabrowxer.core.database.entities.HistoryEntity
 import com.salvia.salviabrowxer.ui.components.ListEmptyState
 import com.salvia.salviabrowxer.ui.components.ListSearchRow
 import com.salvia.salviabrowxer.ui.components.ScreenHeader
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
@@ -123,7 +123,7 @@ fun HistoryScreen(
                 TextButton(onClick = {
                     confirmClear = false
                     viewModel.clearAll()
-                }) { Text(stringResource(R.string.action_clear), color = AuroraTeal) }
+                }) { Text(stringResource(R.string.action_clear), color = IrisViolet) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
@@ -147,7 +147,7 @@ private fun HistoryRow(entry: HistoryEntity, onOpen: () -> Unit, onDelete: () ->
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Default.History, null, tint = AuroraTeal, modifier = Modifier.size(20.dp))
+        Icon(Icons.Default.History, null, tint = IrisViolet, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

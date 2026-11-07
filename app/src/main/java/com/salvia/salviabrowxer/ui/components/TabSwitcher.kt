@@ -44,13 +44,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.core.model.Tab
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.NebulaViolet
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.AuroraCyan
+import com.salvia.salviabrowxer.ui.theme.AuroraCyanLight
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 
@@ -134,14 +134,14 @@ fun TabSwitcher(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             TextButton(onClick = onNewTab, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Default.Add, null, tint = AuroraTeal, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Add, null, tint = IrisViolet, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.new_tab), color = AuroraTeal)
+                Text(stringResource(R.string.new_tab), color = IrisViolet)
             }
             TextButton(onClick = onNewPrivateTab, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Default.Lock, null, tint = NebulaVioletLight, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Lock, null, tint = AuroraCyanLight, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.new_private_tab), color = NebulaVioletLight)
+                Text(stringResource(R.string.new_private_tab), color = AuroraCyanLight)
             }
         }
     }
@@ -151,9 +151,9 @@ fun TabSwitcher(
 private fun PrivateSectionHeader() {
     Column(modifier = Modifier.padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Nightlight, null, tint = NebulaVioletLight, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Nightlight, null, tint = AuroraCyanLight, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text(stringResource(R.string.private_browsing), style = MaterialTheme.typography.titleMedium, color = NebulaVioletLight)
+            Text(stringResource(R.string.private_browsing), style = MaterialTheme.typography.titleMedium, color = AuroraCyanLight)
         }
         // The honest scope of a private tab, said where private tabs live. Isolation here is
         // history-and-restore only: the WebView's cookie store is a single process-wide jar, so a
@@ -175,7 +175,7 @@ private fun TabCard(
     onSelect: () -> Unit,
     onClose: () -> Unit
 ) {
-    val accent = if (tab.isPrivate) NebulaViolet else AuroraTeal
+    val accent = if (tab.isPrivate) AuroraCyan else IrisViolet
     val title = tab.title.takeIf { it.isNotBlank() && it != "New Tab" } ?: hostLabel(tab.url).ifBlank { stringResource(R.string.new_tab) }
 
     val openLabel = stringResource(R.string.tab_open)
@@ -200,12 +200,12 @@ private fun TabCard(
                     Text(
                         text = monogram(title),
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (tab.isPrivate) NebulaVioletLight else accent
+                        color = if (tab.isPrivate) AuroraCyanLight else accent
                     )
                 }
                 if (tab.isPrivate) {
                     Spacer(Modifier.width(6.dp))
-                    Icon(Icons.Default.Lock, stringResource(R.string.private_browsing), tint = NebulaVioletLight, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Lock, stringResource(R.string.private_browsing), tint = AuroraCyanLight, modifier = Modifier.size(14.dp))
                 }
             }
             Spacer(Modifier.height(10.dp))

@@ -91,9 +91,9 @@ import com.salvia.salviabrowxer.service.ConnectivityGate
 import com.salvia.salviabrowxer.ui.utils.Constants
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
 import com.salvia.salviabrowxer.ui.components.ScreenHeader
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
-import com.salvia.salviabrowxer.ui.theme.AuroraTealDeep
-import com.salvia.salviabrowxer.ui.theme.AuroraTealLight
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
+import com.salvia.salviabrowxer.ui.theme.IrisVioletDeep
+import com.salvia.salviabrowxer.ui.theme.IrisVioletLight
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
@@ -348,7 +348,7 @@ fun SettingsSectionTitle(icon: ImageVector, title: String) {
         modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = AuroraTeal, modifier = Modifier.size(19.dp))
+        Icon(icon, null, tint = IrisViolet, modifier = Modifier.size(19.dp))
         Spacer(Modifier.width(9.dp))
         Text(title, style = MaterialTheme.typography.titleMedium, color = PearlWhite)
     }
@@ -368,7 +368,7 @@ fun SettingsItem(icon: ImageVector, title: String, subtitle: String? = null, onC
             .padding(vertical = 11.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = AuroraTeal.copy(alpha = 0.92f), modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = IrisViolet.copy(alpha = 0.92f), modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
@@ -392,7 +392,7 @@ fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = nul
             .padding(vertical = 9.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = AuroraTeal.copy(alpha = 0.92f), modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = IrisViolet.copy(alpha = 0.92f), modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyMedium, color = PearlWhite)
@@ -405,8 +405,8 @@ fun SwitchSettingsItem(icon: ImageVector, title: String, subtitle: String? = nul
             onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = PearlWhite,
-                checkedTrackColor = AuroraTealDeep,
-                checkedBorderColor = AuroraTealLight,
+                checkedTrackColor = IrisVioletDeep,
+                checkedBorderColor = IrisVioletLight,
                 uncheckedThumbColor = SilverMid,
                 uncheckedTrackColor = CharcoalSurface,
                 uncheckedBorderColor = CharcoalBorder
@@ -445,7 +445,7 @@ private fun SelectionDialog(
                         RadioButton(
                             selected = option == selected,
                             onClick = null,
-                            colors = RadioButtonDefaults.colors(selectedColor = AuroraTeal, unselectedColor = SilverMid)
+                            colors = RadioButtonDefaults.colors(selectedColor = IrisViolet, unselectedColor = SilverMid)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(option, style = MaterialTheme.typography.bodyLarge, color = PearlWhite)
@@ -454,7 +454,7 @@ private fun SelectionDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = AuroraTeal) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = IrisViolet) }
         },
         containerColor = CharcoalElevated,
         titleContentColor = PearlWhite,
@@ -511,7 +511,7 @@ private fun PasswordDialog(
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(password) }, enabled = canConfirm) {
-                Text(stringResource(R.string.action_ok), color = if (canConfirm) AuroraTeal else SilverMid)
+                Text(stringResource(R.string.action_ok), color = if (canConfirm) IrisViolet else SilverMid)
             }
         },
         dismissButton = {
@@ -543,7 +543,7 @@ private fun TextEditDialog(
                 onValueChange = { text = it },
                 singleLine = true,
                 textStyle = TextStyle(color = PearlWhite),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(AuroraTeal),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(IrisViolet),
                 // The dialog title names the value being edited, so the field carries it too.
                 modifier = Modifier
                     .fillMaxWidth()
@@ -553,7 +553,7 @@ private fun TextEditDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(text) }) { Text(stringResource(R.string.action_ok), color = AuroraTeal) }
+            TextButton(onClick = { onConfirm(text) }) { Text(stringResource(R.string.action_ok), color = IrisViolet) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
@@ -586,15 +586,15 @@ private fun SliderDialog(
                     valueRange = valueRange,
                     steps = steps,
                     colors = SliderDefaults.colors(
-                        thumbColor = AuroraTeal,
-                        activeTrackColor = AuroraTeal,
+                        thumbColor = IrisViolet,
+                        activeTrackColor = IrisViolet,
                         inactiveTrackColor = CharcoalSurface
                     )
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(current) }) { Text(stringResource(R.string.action_ok), color = AuroraTeal) }
+            TextButton(onClick = { onConfirm(current) }) { Text(stringResource(R.string.action_ok), color = IrisViolet) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }
@@ -617,7 +617,7 @@ private fun ConfirmationDialog(
         title = { Text(title, color = PearlWhite) },
         text = { Text(message, color = SilverMid) },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(confirmLabel, color = AuroraTeal) }
+            TextButton(onClick = onConfirm) { Text(confirmLabel, color = IrisViolet) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = SilverMid) }

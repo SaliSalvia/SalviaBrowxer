@@ -59,7 +59,7 @@ data class SettingsUiState(
     val adBlockDisabledSiteCount: Int = 0,
     /** The one-tap main-video button, on by default and one switch away from off. */
     val isFloatingButtonAlwaysVisible: Boolean = true,
-    val floatingButtonSize: Int = 56,
+    val floatingButtonSize: Int = 48,
     /** Whether the locked folder has a password, and whether the verifier sits behind the keystore. */
     val isPasswordFolderSet: Boolean = false,
     val isPasswordFolderSecured: Boolean = true,

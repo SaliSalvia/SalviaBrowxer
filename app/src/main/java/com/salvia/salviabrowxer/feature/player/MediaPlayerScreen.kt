@@ -70,12 +70,12 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.salvia.salviabrowxer.R
 import com.salvia.salviabrowxer.ui.components.OrbitalBrandMark
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.BlushPink
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
-import com.salvia.salviabrowxer.ui.theme.NebulaViolet
-import com.salvia.salviabrowxer.ui.theme.NebulaVioletLight
+import com.salvia.salviabrowxer.ui.theme.AuroraCyan
+import com.salvia.salviabrowxer.ui.theme.AuroraCyanLight
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import kotlinx.coroutines.delay
@@ -265,7 +265,7 @@ fun MediaPlayerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 8.dp)
-                            .background(if (isActive) NebulaViolet.copy(alpha = 0.18f) else Color.Transparent)
+                            .background(if (isActive) AuroraCyan.copy(alpha = 0.18f) else Color.Transparent)
                             .padding(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -322,7 +322,7 @@ fun MediaPlayerScreen(
                             viewModel.clearPlaybackFailure()
                             exoPlayer?.prepare()
                             exoPlayer?.playWhenReady = true
-                        }) { Text(stringResource(R.string.player_retry), color = AuroraTeal) }
+                        }) { Text(stringResource(R.string.player_retry), color = IrisViolet) }
                         TextButton(onClick = { viewModel.deleteDownload(mediaUrl, onDeleted) }) {
                             Text(stringResource(R.string.player_delete_download), color = SilverMid)
                         }
@@ -364,7 +364,7 @@ fun MediaPlayerScreen(
                     },
                     colors = AssistChipDefaults.assistChipColors(
                         containerColor = CharcoalSurface,
-                        labelColor = if (order == PlaybackOrder.SEQUENTIAL) SilverMid else NebulaVioletLight
+                        labelColor = if (order == PlaybackOrder.SEQUENTIAL) SilverMid else AuroraCyanLight
                     )
                 )
             }
@@ -373,8 +373,8 @@ fun MediaPlayerScreen(
                     onClick = { speedIndex = idx },
                     label = { Text("${speed}x", style = MaterialTheme.typography.labelMedium) },
                     colors = AssistChipDefaults.assistChipColors(
-                        containerColor = if (idx == speedIndex) NebulaViolet.copy(alpha = 0.28f) else CharcoalSurface,
-                        labelColor = if (idx == speedIndex) NebulaVioletLight else SilverMid
+                        containerColor = if (idx == speedIndex) AuroraCyan.copy(alpha = 0.28f) else CharcoalSurface,
+                        labelColor = if (idx == speedIndex) AuroraCyanLight else SilverMid
                     )
                 )
             }
@@ -398,7 +398,7 @@ fun MediaPlayerScreen(
                 },
                 valueRange = sliderRange,
                 colors = SliderDefaults.colors(
-                    thumbColor = NebulaVioletLight,
+                    thumbColor = AuroraCyanLight,
                     activeTrackColor = BlushPink,
                     inactiveTrackColor = SilverMid.copy(alpha = 0.22f),
                     activeTickColor = Color.Transparent,
@@ -479,7 +479,7 @@ private fun UnplayableMedia(title: String, message: String, onDelete: () -> Unit
                 )
                 Spacer(Modifier.height(14.dp))
                 TextButton(onClick = onDelete) {
-                    Text(stringResource(R.string.player_delete_download), color = AuroraTeal)
+                    Text(stringResource(R.string.player_delete_download), color = IrisViolet)
                 }
             }
         }

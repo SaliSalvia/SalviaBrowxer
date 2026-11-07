@@ -59,7 +59,7 @@ import com.salvia.salviabrowxer.core.model.DownloadState
 import com.salvia.salviabrowxer.media.downloader.TranscodePlan
 import com.salvia.salviabrowxer.ui.components.DownloadItem
 import com.salvia.salviabrowxer.ui.components.ScreenHeader
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.DeepCharcoal
 import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
@@ -135,13 +135,13 @@ fun DownloadsScreen(
 
             TabRow(
                 selectedTabIndex = selectedTabIndex, containerColor = DeepCharcoal, contentColor = PearlWhite,
-                indicator = { tabPositions -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = AuroraTeal, height = 2.dp) },
+                indicator = { tabPositions -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]), color = IrisViolet, height = 2.dp) },
                 divider = { androidx.compose.material3.HorizontalDivider(color = CharcoalBorder.copy(alpha = 0.6f), thickness = 1.dp) }
             ) {
-                Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_active)} (${state.active.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_queue)} (${state.queued.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_completed)} (${state.completed.size})", style = MaterialTheme.typography.labelMedium) })
-                Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, selectedContentColor = AuroraTeal, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_failed)} (${state.failed.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 0, onClick = { selectedTabIndex = 0 }, selectedContentColor = IrisViolet, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_active)} (${state.active.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 1, onClick = { selectedTabIndex = 1 }, selectedContentColor = IrisViolet, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_queue)} (${state.queued.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 2, onClick = { selectedTabIndex = 2 }, selectedContentColor = IrisViolet, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_completed)} (${state.completed.size})", style = MaterialTheme.typography.labelMedium) })
+                Tab(selected = selectedTabIndex == 3, onClick = { selectedTabIndex = 3 }, selectedContentColor = IrisViolet, unselectedContentColor = SilverMid, text = { Text("${stringResource(R.string.download_failed)} (${state.failed.size})", style = MaterialTheme.typography.labelMedium) })
             }
 
             val items = when (selectedTabIndex) { 0 -> state.active; 1 -> state.queued; 2 -> state.completed; else -> state.failed }
@@ -186,7 +186,7 @@ private fun LockedFolderBar(isUnlocked: Boolean, count: Int, onUnlockClick: () -
         Icon(
             imageVector = if (isUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
             contentDescription = null,
-            tint = if (isUnlocked) AuroraTeal else SilverMid
+            tint = if (isUnlocked) IrisViolet else SilverMid
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -200,7 +200,7 @@ private fun LockedFolderBar(isUnlocked: Boolean, count: Int, onUnlockClick: () -
         TextButton(onClick = if (isUnlocked) onLockClick else onUnlockClick) {
             Text(
                 text = stringResource(if (isUnlocked) R.string.action_lock_folder else R.string.action_unlock_folder),
-                color = AuroraTeal
+                color = IrisViolet
             )
         }
     }
@@ -215,7 +215,7 @@ private fun UnlockFolderDialog(isUnlocking: Boolean, onDismiss: () -> Unit, onCo
         text = { PasswordField(value = password, onValueChange = { password = it }, hint = stringResource(R.string.locked_folder_password_label)) },
         confirmButton = {
             TextButton(onClick = { onConfirm(password) }, enabled = !isUnlocking) {
-                Text(stringResource(R.string.action_unlock_folder), color = AuroraTeal)
+                Text(stringResource(R.string.action_unlock_folder), color = IrisViolet)
             }
         },
         dismissButton = {

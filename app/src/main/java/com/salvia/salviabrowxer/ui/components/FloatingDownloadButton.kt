@@ -54,11 +54,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.salvia.salviabrowxer.R
-import com.salvia.salviabrowxer.ui.theme.AuroraTeal
+import com.salvia.salviabrowxer.ui.theme.IrisViolet
+import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
+import com.salvia.salviabrowxer.ui.theme.PinGold
 import com.salvia.salviabrowxer.ui.theme.CharcoalElevated
 import com.salvia.salviabrowxer.ui.theme.FabActiveBrushNebula
 import com.salvia.salviabrowxer.ui.theme.FabInactiveBrushNebula
-import com.salvia.salviabrowxer.ui.theme.NebulaViolet
+import com.salvia.salviabrowxer.ui.theme.AuroraCyan
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -118,10 +120,11 @@ fun FloatingDownloadButton(
                 elevation = if (isMediaDetected) 14.dp else 6.dp,
                 shape = CircleShape,
                 clip = false,
-                ambientColor = AuroraTeal.copy(alpha = 0.55f),
-                spotColor = AuroraTeal.copy(alpha = 0.75f)
+                ambientColor = IrisViolet.copy(alpha = 0.55f),
+                spotColor = IrisViolet.copy(alpha = 0.75f)
             )
             .clip(CircleShape)
+            .graphicsLayer { alpha = if (isMediaDetected) 1f else 0.9f }
             .background(CharcoalElevated)
             .pointerInput(containerSize) {
                 // A pickup tick, not a per-frame buzz: the drag is confirmed once, at the
@@ -188,14 +191,14 @@ fun FloatingDownloadButton(
             if (isMainReady) {
                 Box(
                     modifier = Modifier.align(Alignment.BottomStart).offset(x = (-3).dp, y = 3.dp).size(14.dp).clip(CircleShape)
-                        .background(AuroraTeal)
+                        .background(AuroraCyan)
                         .shadow(3.dp, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = MatteCharcoal,
                         modifier = Modifier.size(10.dp)
                     )
                 }
@@ -210,11 +213,11 @@ fun FloatingDownloadButton(
             ) {
                 Box(
                     modifier = Modifier.offset(x = 3.dp, y = (-3).dp).size(19.dp).clip(CircleShape)
-                        .background(AuroraTeal)
+                        .background(PinGold)
                         .shadow(4.dp, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = if (mediaCount > 9) "9+" else mediaCount.toString(), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = 0.5.dp))
+                    Text(text = if (mediaCount > 9) "9+" else mediaCount.toString(), color = MatteCharcoal, style = MaterialTheme.typography.labelSmall, modifier = Modifier.offset(y = 0.5.dp))
                 }
             }
         }
@@ -245,7 +248,7 @@ private fun DetectedPulseLayer(brush: Brush) {
         for (i in 0..1) {
             val p = (phase + i * 0.5f) % 1f
             drawCircle(
-                color = AuroraTeal.copy(alpha = (1f - p) * 0.5f),
+                color = IrisViolet.copy(alpha = (1f - p) * 0.5f),
                 radius = r * (0.62f + 0.36f * p),
                 style = Stroke(width = (1f + (1f - p) * 2f).dp.toPx())
             )
@@ -253,7 +256,7 @@ private fun DetectedPulseLayer(brush: Brush) {
         // The comet: a short arc on a rotating sweep gradient, a light that never stops circling.
         rotate(degrees = phase * 360f) {
             drawArc(
-                brush = Brush.sweepGradient(listOf(Color.Transparent, AuroraTeal, NebulaViolet, Color.Transparent)),
+                brush = Brush.sweepGradient(listOf(Color.Transparent, IrisViolet, AuroraCyan, PinGold, Color.Transparent)),
                 startAngle = -90f,
                 sweepAngle = 110f,
                 useCenter = false,
@@ -261,6 +264,6 @@ private fun DetectedPulseLayer(brush: Brush) {
             )
         }
         // The rim stays readable above the ripples.
-        drawCircle(color = AuroraTeal, radius = r, style = Stroke(width = 2.dp.toPx()))
+        drawCircle(color = IrisViolet, radius = r, style = Stroke(width = 2.dp.toPx()))
     }
 }
