@@ -2,7 +2,10 @@ package com.salvia.salviabrowxer
 
 import android.app.Application
 import android.os.Build
+import android.os.Looper
 import android.webkit.WebView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import coil.Coil
 import com.salvia.salviabrowxer.core.session.WebViewCookies
 import coil.ImageLoader
@@ -40,10 +43,21 @@ class SalviaBrowxerApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching { WebView.setDataDirectorySuffix("main") }
         }
-        // The same rule for the cookie store: a download reads it from a background thread, and the
-        // store's first access is what initialises the WebView provider. Warm it up here, on the main
-        // thread, before anything can race it. It reads nothing.
-        WebViewCookies.warmUp()
+        // Bringing the WebView provider up is hundreds of milliseconds of library load, and the
+        // first frame of the welcome ceremony should not pay for it. Where the installed provider
+        // supports it, ask it to come up in the background now; the cookie store — whose first
+        // access is what initialises the provider where that API is missing — is warmed from the
+        // main looper's first idle gap instead of blocking onCreate. A download reads the store
+        // from a background thread, and by then the gap has long passed.
+        runCatching {
+            if (WebViewFeature.isStartupFeatureSupported(this, WebViewFeature.STARTUP_FEATURE_FLAG_PROVIDER_READY)) {
+                WebViewCompat.startService(this, setOf(WebViewFeature.STARTUP_FEATURE_FLAG_PROVIDER_READY))
+            }
+        }
+        Looper.myQueue().addIdleHandler {
+            WebViewCookies.warmUp()
+            false
+        }
         startAdBlockWiring()
     }
 

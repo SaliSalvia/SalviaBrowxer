@@ -172,8 +172,10 @@ val AccentIndicatorBrush = Brush.horizontalGradient(
     colors = listOf(IrisVioletLight, IrisViolet, AuroraCyan)
 )
 
+// Deep enough that pearl-white labels keep a 4.5:1 ride across the whole sweep, vivid enough to
+// still read as the ribbon: the download CTA and the dock's home ring share it.
 val DownloadCtaBrush = Brush.linearGradient(
-    colors = listOf(IrisViolet, IrisVioletDeep)
+    colors = listOf(Color(0xFF7A52F5), IrisVioletDeep, Color(0xFF45219F))
 )
 
 val FabActiveBrushNebula = Brush.radialGradient(
