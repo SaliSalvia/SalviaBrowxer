@@ -56,7 +56,9 @@ class MainActivity : ComponentActivity() {
     /**
      * The welcome ceremony belongs to a cold start only: an activity recreation (the per-app
      * language picker, a process death) restores a session the user was already inside, and
-     * greeting them again would be the app pretending it forgot them.
+     * greeting them again would be the app pretending it forgot them. A launch that already
+     * carries a task — a shared link, a download notification — skips it too: the ceremony is a
+     * hello, not a toll booth.
      */
     private var isColdStart by mutableStateOf(false)
 
@@ -86,7 +88,7 @@ class MainActivity : ComponentActivity() {
                             incomingUrl = incomingUrl,
                             onIncomingUrlConsumed = { incomingUrl = null }
                         )
-                        if (isColdStart && !splashDone) {
+                        if (isColdStart && !splashDone && incomingUrl == null && !openDownloadsRequested) {
                             AppSplashOverlay(onFinished = { splashDone = true })
                         }
                     }

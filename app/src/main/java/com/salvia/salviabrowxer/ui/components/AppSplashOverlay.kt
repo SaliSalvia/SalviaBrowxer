@@ -1,5 +1,6 @@
 package com.salvia.salviabrowxer.ui.components
 
+import android.app.Activity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -13,10 +14,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -44,6 +49,19 @@ fun AppSplashOverlay(onFinished: () -> Unit) {
     val alpha = remember { Animatable(0f) }
     val scale = remember { Animatable(0.94f) }
     val glow = remember { Animatable(0f) }
+
+    // "A completely black screen" means the whole screen: for the length of the ceremony the
+    // system bars step out too, and step back in the moment the overlay leaves, so home meets
+    // the user with its chrome already in place.
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val controller = WindowCompat.getInsetsController(
+            (view.context as Activity).window,
+            view
+        )
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose { controller.show(WindowInsetsCompat.Type.systemBars()) }
+    }
 
     LaunchedEffect(Unit) {
         // Appear: the mark settles from slightly small to its true size on a long ease-out while

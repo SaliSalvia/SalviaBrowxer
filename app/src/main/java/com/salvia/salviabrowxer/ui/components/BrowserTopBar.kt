@@ -64,6 +64,7 @@ import com.salvia.salviabrowxer.ui.theme.IrisViolet
 import com.salvia.salviabrowxer.ui.theme.CharcoalBorder
 import com.salvia.salviabrowxer.ui.theme.CharcoalSurface
 import com.salvia.salviabrowxer.ui.theme.AuroraCyan
+import com.salvia.salviabrowxer.ui.theme.MatteCharcoal
 import com.salvia.salviabrowxer.ui.theme.PearlWhite
 import com.salvia.salviabrowxer.ui.theme.SilverMid
 import com.salvia.salviabrowxer.ui.theme.SurfaceField
@@ -314,9 +315,10 @@ private fun MediaPill(count: Int, onClick: () -> Unit) {
             modifier = Modifier.size(18.dp)
         )
         Text(
+            // Dark numeral on the starfield cyan: white on this blue would fall under 3:1.
             text = if (count > 9) "9+" else count.toString(),
             style = MaterialTheme.typography.labelSmall,
-            color = PearlWhite,
+            color = MatteCharcoal,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 3.dp, end = 4.dp)

@@ -656,7 +656,13 @@ fun BrowserScreen(
                     hostState = snackbarHostState,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                        // Above the floating button, never under it: a message the thumb cannot
+                        // read because the orb covers it is a message that was never shown.
+                        .padding(
+                            start = 12.dp,
+                            end = 12.dp,
+                            bottom = if (state.isFabAlwaysVisible) 84.dp else 12.dp
+                        )
                 )
 
                 if (state.isLoading && state.progress < 10) {

@@ -32,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -163,6 +165,7 @@ private fun DockRing(
     highlighted: Boolean,
     onClick: () -> Unit
 ) {
+    val outward = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(contentAlignment = Alignment.Center) {
             Box(
@@ -181,7 +184,7 @@ private fun DockRing(
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .offset(x = 3.dp, y = (-3).dp)
+                            .offset(x = (3 * outward).dp, y = (-3).dp)
                             .size(17.dp)
                             .clip(CircleShape)
                             .background(AccentIndicatorBrush)
@@ -236,6 +239,7 @@ private fun BottomBarAction(
     badge: Int = 0,
     badgeState: String? = null
 ) {
+    val outward = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
     Box(
         modifier = modifier
             .heightIn(min = 54.dp)
@@ -250,7 +254,7 @@ private fun BottomBarAction(
                 if (badge > 0) {
                     Box(
                         modifier = Modifier
-                            .offset(x = 4.dp, y = (-2).dp)
+                            .offset(x = (4 * outward).dp, y = (-2).dp)
                             .size(17.dp)
                             .clip(RoundedCornerShape(9.dp))
                             .background(AccentIndicatorBrush)

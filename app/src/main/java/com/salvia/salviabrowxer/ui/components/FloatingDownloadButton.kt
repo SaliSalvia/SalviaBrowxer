@@ -47,6 +47,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -82,6 +84,9 @@ fun FloatingDownloadButton(
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val buttonSizePx = with(density) { buttonSize.toPx() }
+    // Badges hang *outward* from the circle: on an RTL layout the corners mirror, so the nudge
+    // that pushes a badge out has to mirror with them or it would push it into the face.
+    val outward = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
 
     var offsetX by remember { mutableFloatStateOf(initialOffset.x) }
     var offsetY by remember { mutableFloatStateOf(initialOffset.y) }
@@ -96,6 +101,7 @@ fun FloatingDownloadButton(
     val pop = remember { Animatable(1f) }
     LaunchedEffect(isMediaDetected) {
         if (isMediaDetected) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             pop.snapTo(0.7f)
             pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
         } else {
@@ -190,7 +196,7 @@ fun FloatingDownloadButton(
             // only when the one-tap promise is actually backed by a selected candidate.
             if (isMainReady) {
                 Box(
-                    modifier = Modifier.align(Alignment.BottomStart).offset(x = (-3).dp, y = 3.dp).size(14.dp).clip(CircleShape)
+                    modifier = Modifier.align(Alignment.BottomStart).offset(x = (-3 * outward).dp, y = 3.dp).size(14.dp).clip(CircleShape)
                         .background(AuroraCyan)
                         .shadow(3.dp, CircleShape),
                     contentAlignment = Alignment.Center
@@ -212,7 +218,7 @@ fun FloatingDownloadButton(
                 modifier = Modifier.align(Alignment.TopEnd)
             ) {
                 Box(
-                    modifier = Modifier.offset(x = 3.dp, y = (-3).dp).size(19.dp).clip(CircleShape)
+                    modifier = Modifier.offset(x = (3 * outward).dp, y = (-3).dp).size(19.dp).clip(CircleShape)
                         .background(PinGold)
                         .shadow(4.dp, CircleShape),
                     contentAlignment = Alignment.Center
