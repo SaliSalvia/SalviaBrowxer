@@ -1,36 +1,54 @@
 name: Android CI
 
+# A new push to the same branch supersedes its own in-flight build; cancelling it keeps
+# the queue of ~10-minute jobs moving without ever cancelling a different branch's run.
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Secrets can't be read in step-if expressions; expose presence as a plain flag.
+      HAS_SIGNING: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Set up Gradle and restore dependency cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+          cache-provider: basic
 
-      - name: Install Android SDK packages
+      - name: Verify Android SDK packages
         run: |
-          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          # ubuntu-latest ships a preinstalled Android SDK with licenses accepted.
+          # (android-actions/setup-android@v3 downloads cmdline-tools 16.0 whose
+          #  license step is currently broken, so we use the preinstalled tooling.)
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          # API 36 (Android 16) is required for new Play submissions since 31 Aug 2026.
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
           java -version
 
       - name: Verify Gradle wrapper
@@ -46,32 +64,223 @@ jobs:
         run: chmod +x gradlew
 
       - name: Print Gradle version
-        run: ./gradlew --version --no-daemon
+        run: gradle --version --no-daemon
+
+      - name: Test embedded media sniffer against synthetic feed
+        run: node --test scripts/test-media-sniffer.cjs
+
+      - name: Run required unit tests from clean outputs
+        run: |
+          set -o pipefail
+          # Tee'd like the build steps: when this task is the one that fails, the log it wrote is
+          # the only place the compiler and the test report say what went wrong.
+          # --continue: Gradle otherwise cancels the remaining tasks at the first failure, so an
+          # early module hides every later one and each push reveals a single error at a time.
+          gradle clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --continue --stacktrace --no-daemon 2>&1 | tee gradle-test.log
+
+      - name: Lint the app (fails the job on a real lint error)
+        run: |
+          set -o pipefail
+          # --continue is deliberately NOT used here: lint is a gate, and a gate that continues past
+          # its failure is not a gate. Existing warnings are handled with the baseline file next to
+          # app/build.gradle.kts (with a comment explaining each), never with a global
+          # abortOnError=false - which would also hide the errors this step exists to catch.
+          gradle :app:lintDebug --stacktrace --no-daemon 2>&1 | tee gradle-lint.log
+
+      - name: Summarise lint findings
+        # Runs even when the gate failed: the annotations and the uploaded report are how the
+        # failure is read without exporting a runner log.
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          report = Path("app/build/reports/lint-results-debug.xml")
+          lines, errors, warnings = [], 0, 0
+          if report.exists():
+              tree = ET.parse(report)
+              for issue in tree.iter("issue"):
+                  severity = (issue.get("severity") or "Warning").lower()
+                  location = issue.find("location")
+                  where = location.get("file") if location is not None else "?"
+                  line = location.get("line") if location is not None else "?"
+                  message = " ".join((issue.get("message") or "").split())
+                  entry = f"{where}:{line}: [{issue.get('id')}] {message}"
+                  lines.append(f"[{severity}] {entry}")
+                  if severity == "error":
+                      errors += 1
+                  elif severity == "warning":
+                      warnings += 1
+          summary = "\n".join(sorted(set(lines))) or "no lint issues reported"
+          Path("lint-issues.txt").write_text(summary + "\n")
+          print(f"lint issues: {errors} error(s), {warnings} warning(s)")
+          print(summary[:20000])
+          for entry in sorted(set(lines))[:200]:
+              # Errors become ::error so the PR check turns red even when log export is unavailable;
+              # warnings stay warnings and are the input for the baseline.
+              level = "error" if entry.startswith("[error]") else "warning"
+              safe = entry.replace("%", "%25").replace("\r", "").replace("\n", " ")
+              print(f"::{level} title=Lint::{safe}")
+          PY
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-report
+          path: |
+            app/build/reports/lint-results-debug.*
+            lint-issues.txt
+          if-no-files-found: ignore
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          if-no-files-found: ignore
 
       - name: Build Debug APK
         run: |
           set -o pipefail
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
+          gradle :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
+
+      - name: Diagnose signing secrets (prints no secret values)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          echo "keystore secret length : ${#SIGNING_KEYSTORE_BASE64} chars"
+          echo "configured alias       : ${SIGNING_KEY_ALIAS:-<empty>}"
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | tr -d ' \t\r' | base64 -d > /tmp/ks.bin || echo "base64 -d FAILED (payload is not valid base64)"
+          echo "decoded size           : $(stat -c%s /tmp/ks.bin 2>/dev/null || echo 0) bytes"
+          echo "decoded magic bytes    : $(head -c 8 /tmp/ks.bin | xxd -p 2>/dev/null)"
+          file /tmp/ks.bin || true
+          echo "--- keytool -list (store password) ---"
+          keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" 2>&1 | head -20 || true
+          echo "--- keystore entries ---"
+          keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" -v 2>&1 \
+            | grep -Ei 'Alias name|Entry type|Owner:|error|Exception' | head -20 || true
+          echo "NOTE: a keystore must be the base64 of the BINARY .jks/.p12 file itself,
+          not of an already-base64 text file, and not of a .cer/.pem certificate."
+
+      - name: Build Release APK (R8 + shrink; signed only when owner secrets exist)
+        # Always runs: even unsigned it exercises the R8/proguard path, so a
+        # release-only breakage shows up on ordinary pushes instead of on the
+        # owner's first signed build.
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
+
+      - name: Build Release AAB (Play bundle; signed only when owner secrets exist)
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          gradle :app:bundleRelease --stacktrace --no-daemon 2>&1 | tee gradle-bundle.log
+
+      - name: Verify AAB output
+        if: success()
+        run: |
+          ls -l app/build/outputs/bundle/release/
+          test -f app/build/outputs/bundle/release/app-release.aab || { echo "app-release.aab was not produced"; exit 1; }
+
+      - name: Upload AAB artifact
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: salviabrowxer-release-aab
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Publish Gradle failure
         if: failure()
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          log = Path("gradle-build.log")
-          text = log.read_text(errors="replace") if log.exists() else "gradle-build.log missing"
-          errors = [ln for ln in text.splitlines() if ln.startswith("e:") or "Unresolved reference" in ln or "error: " in ln]
-          fail = text[text.rfind("FAILURE:"):] if "FAILURE:" in text else ""
-          chunk = "\n".join(errors[-80:] + ["", fail[:2000]])
+          import glob
+          import re
+          import xml.etree.ElementTree as ET
+
+          # Every Gradle invocation on this job tees its output, and whichever one failed is the one
+          # that has something to say. Previously only the build logs were read, so a failure in the
+          # test task produced an empty comment — which is worse than no comment.
+          logs = [Path(name) for name in ("gradle-test.log", "gradle-lint.log", "gradle-build.log", "gradle-release.log", "gradle-bundle.log")]
+          lines = []
+          for log in logs:
+              if not log.exists():
+                  continue
+              for raw in log.read_text(errors="replace").splitlines():
+                  stripped = raw.strip()
+                  if stripped.startswith("e: ") or "Unresolved reference" in stripped or re.search(r"\berror: ", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+                  elif stripped.startswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+
+          # An assertion failure never reaches the "e:" filter above: the message lives in the JUnit
+          # XML, and that message is exactly what a human needs.
+          for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
+              try:
+                  tree = ET.parse(xml_path)
+              except (ET.ParseError, OSError):
+                  continue
+              for case in tree.iter("testcase"):
+                  for bad in list(case.findall("failure")) + list(case.findall("error")):
+                      where = f"{case.get('classname')}.{case.get('name')}"
+                      message = " ".join((bad.get("message") or bad.text or "").split())
+                      lines.append(f"[junit] {where}: {message[:600]}")
+
+          # Keep the order, drop the repeats, and keep the tail: the first error is the cause.
+          seen, unique = set(), []
+          for line in lines:
+              if line not in seen:
+                  seen.add(line)
+                  unique.append(line)
+          # A lint error never reaches the "e: " filter above: AGP prints it as
+          # "path:line: Error: message [IssueId]", and the summary step wrote the parsed list of
+          # issues to lint-issues.txt.
+          lint_issues = Path("lint-issues.txt")
+          if lint_issues.exists():
+              for raw in lint_issues.read_text(errors="replace").splitlines():
+                  if raw.startswith("[error]"):
+                      lines.append(f"[lint] {raw}")
+
+          # A compile failure can list a hundred errors; the cap is the comment limit, not taste.
+          chunk = "\n".join(unique[-400:])[:40000] or "No Gradle log and no JUnit failure was found on the runner."
           Path("gradle-failure.txt").write_text(chunk)
           print("----- GRADLE FAILURE -----")
           print(chunk)
-          for line in chunk.splitlines()[:80]:
+          for line in chunk.splitlines():
               safe = line.replace("%", "%25").replace("\r", "")
               print(f"::error title=Gradle::{safe}")
           PY
           if [ -n "${{ github.event.pull_request.number }}" ]; then
-            gh pr comment "${{ github.event.pull_request.number }}" --body "$(printf 'Gradle assembleDebug failed:\n\n```\n%s\n```\n' "$(cat gradle-failure.txt)")" || true
+            {
+              echo 'This run failed. Compiler errors and test failures:'
+              echo
+              echo '```'
+              cat gradle-failure.txt
+              echo '```'
+            } > failure-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file failure-comment.md || true
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,11 +291,31 @@ jobs:
           ls -l app/build/outputs/apk/debug/
           test -f app/build/outputs/apk/debug/app-debug.apk || { echo "app-debug.apk was not produced"; exit 1; }
 
-      - name: Upload APK
+      - name: Upload APK artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: salviabrowxer-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Verify release APK output
+        if: success()
+        run: |
+          ls -l app/build/outputs/apk/release/
+          # Signed builds produce app-release.apk, unsigned ones app-release-unsigned.apk.
+          ls app/build/outputs/apk/release/*.apk > /dev/null || { echo "release APK was not produced"; exit 1; }
+          if [ "$HAS_SIGNING" = "true" ]; then
+            "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs \
+              app/build/outputs/apk/release/app-release.apk | head -20
+          fi
+
+      - name: Upload Release APK artifact
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: salviabrowxer-${{ env.HAS_SIGNING == 'true' && 'signed-release-apk' || 'unsigned-release-apk' }}
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

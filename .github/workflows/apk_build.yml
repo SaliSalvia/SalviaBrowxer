@@ -1,0 +1,194 @@
+name: APK Build
+
+# Dedicated pipeline that builds the Android app and extracts the final APK
+# as a downloadable workflow artifact on every push to main (and on demand).
+# The Android CI workflow stays as-is; this one focuses purely on APK output.
+
+# A new push to the same branch supersedes its own in-flight build; cancelling it keeps
+# the queue of ~10-minute jobs moving without ever cancelling a different branch's run.
+concurrency:
+  group: apk-build-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/android_ci.yml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  apk:
+    name: Build and extract APK
+    runs-on: ubuntu-latest
+    env:
+      # Secrets can't be read in step-if expressions; expose presence as a flag.
+      HAS_SIGNING: ${{ secrets.SIGNING_KEYSTORE_BASE64 != '' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle and restore dependency cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+          cache-provider: basic
+
+      - name: Verify Android SDK packages
+        run: |
+          # ubuntu-latest ships a preinstalled Android SDK with licenses accepted.
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          # API 36 (Android 16) is required for new Play submissions since 31 Aug 2026.
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          java -version
+
+      - name: Verify Gradle wrapper
+        run: |
+          set -o pipefail
+          test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
+          test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-wrapper.properties is missing"; exit 1; }
+          unzip -t gradle/wrapper/gradle-wrapper.jar > /dev/null
+          grep -q '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Debug APK
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee gradle-debug.log
+
+      - name: Build Release APK (R8 + shrink; signed when owner secrets exist)
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
+
+      # Without this the workflow's failure output is only reachable from the runner's log export,
+      # which is not always readable from a sandbox. Annotations and a PR comment are.
+      - name: Report Gradle failure
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          logs = [Path(name) for name in ("gradle-debug.log", "gradle-release.log")]
+          lines = []
+          for log in logs:
+              if not log.exists():
+                  continue
+              for raw in log.read_text(errors="replace").splitlines():
+                  stripped = raw.strip()
+                  if stripped.startswith("e: ") or "Unresolved reference" in stripped or re.search(r"\berror: ", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+                  elif stripped.startswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
+                      lines.append(f"[{log.name}] {stripped}")
+          seen, unique = set(), []
+          for line in lines:
+              if line not in seen:
+                  seen.add(line)
+                  unique.append(line)
+          chunk = "\n".join(unique[-120:])[:20000] or "No Gradle log was found on the runner."
+          Path("gradle-failure.txt").write_text(chunk)
+          print("----- GRADLE FAILURE -----")
+          print(chunk)
+          for line in chunk.splitlines():
+              safe = line.replace("%", "%25").replace("\r", "")
+              print(f"::error title=Gradle::{safe}")
+          PY
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            {
+              echo 'APK build failed. Compiler errors:'
+              echo
+              echo '```'
+              cat gradle-failure.txt
+              echo '```'
+            } > failure-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file failure-comment.md || true
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract APK and verify signature
+        if: success()
+        run: |
+          set -o pipefail
+          mkdir -p extracted-apk
+          echo "---- Build outputs ----"
+          ls -l app/build/outputs/apk/debug/ app/build/outputs/apk/release/
+
+          test -f app/build/outputs/apk/debug/app-debug.apk || { echo "debug APK missing"; exit 1; }
+          cp app/build/outputs/apk/debug/app-debug.apk extracted-apk/app-debug.apk
+
+          RELEASE_APK=$(ls app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
+          test -n "$RELEASE_APK" || { echo "release APK missing"; exit 1; }
+          cp "$RELEASE_APK" extracted-apk/
+
+          # Signed builds produce app-release.apk; unsigned ones app-release-unsigned.apk.
+          if [ "$HAS_SIGNING" = "true" ]; then
+            test -f extracted-apk/app-release.apk || { echo "expected signed app-release.apk"; exit 1; }
+            "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs extracted-apk/app-release.apk | tee extracted-apk/signing-info.txt
+          else
+            echo "Signing secrets absent — release APK is unsigned." | tee extracted-apk/signing-info.txt
+          fi
+
+          echo "---- Extracted APKs ----"
+          ls -l extracted-apk/
+
+      - name: Upload extracted APK artifact
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: salviabrowxer-apk
+          path: extracted-apk/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release APK artifact (signed when secrets exist)
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: salviabrowxer-${{ env.HAS_SIGNING == 'true' && 'signed-release-apk' || 'unsigned-release-apk' }}
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Job summary
+        if: success()
+        run: |
+          {
+            echo "## APK build summary"
+            echo ""
+            echo "| Output | File | Size |"
+            echo "|---|---|---|"
+            for f in extracted-apk/*.apk; do
+              echo "| $(basename "$f") | \`$f\` | $(du -h "$f" | cut -f1) |"
+            done
+            echo ""
+            echo "Signing info:"
+            echo '```'
+            cat extracted-apk/signing-info.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

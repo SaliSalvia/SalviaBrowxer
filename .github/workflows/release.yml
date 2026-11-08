@@ -1,0 +1,150 @@
+name: Release
+
+# Publishes a signed APK as a GitHub Release.
+# Triggers: a push of a v* tag, or a push to main that touches the RELEASE file.
+# The tag is derived from versionName in app/build.gradle.kts.
+#
+# The release step itself uses the `gh` CLI rather than a release action: the action-based step
+# failed twice on 2026-10-15 with no readable error from inside the action, while `gh` prints the
+# API's own message into the step log where it can actually be read. The tag is also created
+# explicitly, at the exact commit that was built, before the release exists — so the APK in a
+# release always matches the source of the release, and tag creation can never race the upload.
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'RELEASE'
+
+permissions:
+  contents: write
+
+concurrency:
+  # One release pipeline per ref; a superseded push cancels its own in-flight run.
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build signed APK and create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Determine version tag
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          echo "TAG=v${VERSION_NAME}" >> "$GITHUB_ENV"
+          echo "Releasing ${{ env.TAG }}"
+
+      - name: Refuse an unsigned release before building it
+        # Without the signing secrets the Gradle config silently falls back to an unsigned APK,
+        # and the run dies only inside "Verify APK signature" after a full release build, with an
+        # error that never names the real cause. Naming it here, in the first minute of the run,
+        # is the difference between a one-line fix and an afternoon of guessing.
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+        run: |
+          missing=0
+          for v in SIGNING_KEYSTORE_BASE64 SIGNING_KEYSTORE_PASSWORD SIGNING_KEY_ALIAS; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not configured in repository secrets; the release would come out unsigned. Add it under Settings -> Secrets and variables -> Actions."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "All signing secrets are present."
+
+      - name: Skip if this tag is already released
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; bump versionName to publish a new one."
+            exit 1
+          fi
+          echo "No existing release for $TAG, proceeding."
+
+      - name: Refuse to move an existing tag
+        # A tag-triggered run exists precisely because the tag does; only branch runs must check.
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A published version is a promise about which source built it: the tag is never
+          # force-moved onto a newer commit. If it exists at all, publishing needs a new
+          # versionName — the same rule the release-exists check applies one level up.
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Bump versionName (and versionCode) to publish a new version."
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle and restore dependency cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+          cache-provider: basic
+
+      - name: Install Android SDK 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Build signed release APK
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          gradle :app:assembleRelease --stacktrace --no-daemon
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK_PATH"
+
+      - name: Tag the exact commit that was built
+        # On a tag-triggered run the tag already exists — this step is for branch-triggered runs,
+        # where creating it here means the release's APK always matches the release's source.
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git tag -a "${TAG}" -m "SalviaBrowxer ${TAG}"
+          git push origin "${TAG}"
+
+      - name: Create GitHub Release with APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if out=$(gh release create "${TAG}" "${APK_PATH}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "SalviaBrowxer ${TAG}" \
+            --generate-notes \
+            --latest 2>&1); then
+            echo "Published ${TAG} with $(basename "$APK_PATH")"
+            echo "$out"
+          else
+            # The full gh message as an annotation: the run's own log host is not always
+            # reachable for reading later, but annotations always are.
+            echo "::error::gh release create failed: $out"
+            exit 1
+          fi
