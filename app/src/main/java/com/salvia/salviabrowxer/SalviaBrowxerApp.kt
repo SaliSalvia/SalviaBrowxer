@@ -4,11 +4,9 @@ import android.app.Application
 import android.os.Build
 import android.os.Looper
 import android.webkit.WebView
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
 import coil.Coil
-import com.salvia.salviabrowxer.core.session.WebViewCookies
 import coil.ImageLoader
+import com.salvia.salviabrowxer.core.session.WebViewCookies
 import com.salvia.salviabrowxer.data.datastore.SettingsDataStore
 import com.salvia.salviabrowxer.data.diagnostics.DiagnosticsLog
 import com.salvia.salviabrowxer.ui.utils.AdBlockState
@@ -43,19 +41,12 @@ class SalviaBrowxerApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching { WebView.setDataDirectorySuffix("main") }
         }
-        // Bringing the WebView provider up is hundreds of milliseconds of library load, and the
-        // first frame of the welcome ceremony should not pay for it. Where the installed provider
-        // supports it, ask it to come up in the background now; the cookie store — whose first
-        // access is what initialises the provider where that API is missing — is warmed from the
-        // main looper's first idle gap instead of blocking onCreate. A download reads the store
-        // from a background thread, and by then the gap has long passed.
-        runCatching {
-            if (WebViewFeature.isStartupFeatureSupported(this, WebViewFeature.STARTUP_FEATURE_FLAG_PROVIDER_READY)) {
-                WebViewCompat.startService(this, setOf(WebViewFeature.STARTUP_FEATURE_FLAG_PROVIDER_READY))
-            }
-        }
+        // Do not initialize the WebView provider synchronously from Application.onCreate. The
+        // current AndroidX WebKit dependency does not expose the asynchronous startup API, so keep
+        // cookie-store warm-up in the main looper's first idle gap rather than calling an unsupported
+        // API or delaying the first frame. WebView itself remains lazily initialized on first use.
         Looper.myQueue().addIdleHandler {
-            WebViewCookies.warmUp()
+            runCatching { WebViewCookies.warmUp() }
             false
         }
         startAdBlockWiring()
