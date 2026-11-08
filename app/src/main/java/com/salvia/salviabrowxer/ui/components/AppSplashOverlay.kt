@@ -46,7 +46,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun AppSplashOverlay(onFinished: () -> Unit) {
-    val alpha = remember { Animatable(0f) }
+    val logoAlpha = remember { Animatable(0f) }
     val scale = remember { Animatable(0.94f) }
     val glow = remember { Animatable(0f) }
 
@@ -68,13 +68,13 @@ fun AppSplashOverlay(onFinished: () -> Unit) {
         // its opacity climbs, so it feels placed by hand rather than switched on.
         launch { scale.animateTo(1f, tween(760, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f))) }
         launch { glow.animateTo(1f, tween(760, easing = FastOutSlowInEasing)) }
-        alpha.animateTo(1f, tween(760, easing = FastOutSlowInEasing))
+        logoAlpha.animateTo(1f, tween(760, easing = FastOutSlowInEasing))
         // One breath of stillness at full presence.
         delay(220)
         // Disappear: a touch of growth as it dissolves, the way a light reads when it walks away.
         launch { scale.animateTo(1.05f, tween(620, easing = FastOutLinearInEasing)) }
         launch { glow.animateTo(0f, tween(620, easing = FastOutLinearInEasing)) }
-        alpha.animateTo(0f, tween(620, easing = FastOutLinearInEasing))
+        logoAlpha.animateTo(0f, tween(620, easing = FastOutLinearInEasing))
         onFinished()
     }
 
@@ -89,7 +89,7 @@ fun AppSplashOverlay(onFinished: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .aspectRatio(1f)
-                .graphicsLayer { alpha = glow.value * 0.75f }
+                .graphicsLayer { this.alpha = glow.value * 0.75f }
                 .background(SplashHaloBrush, CircleShape)
         )
         Image(
@@ -99,7 +99,7 @@ fun AppSplashOverlay(onFinished: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth(0.62f)
                 .graphicsLayer {
-                    alpha = alpha.value
+                    this.alpha = logoAlpha.value
                     scaleX = scale.value
                     scaleY = scale.value
                 }
