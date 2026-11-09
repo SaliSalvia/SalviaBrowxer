@@ -234,6 +234,20 @@ jobs:
                       lines.append(f"[{log.name}] {stripped}")
                   elif stripped.startswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
                       lines.append(f"[{log.name}] {stripped}")
+                  elif (
+                      stripped.startswith("* What went wrong:")
+                      or stripped.startswith("Caused by:")
+                      or "Could not resolve" in stripped
+                      or "was not found" in stripped
+                      or "not supported" in stripped
+                      or "requires" in stripped
+                  ):
+                      lines.append(f"[{log.name}] {stripped}")
+              # A configuration failure says everything outside the filters above;
+              # so when a log produced nothing matched, its tail is the report.
+              if not any(line.startswith(f"[{log.name}]") for line in lines):
+                  tail = [l.strip() for l in log.read_text(errors="replace").splitlines() if l.strip()]
+                  lines.extend(f"[{log.name}:tail] {t[:400]}" for t in tail[-40:])
 
           # An assertion failure never reaches the "e:" filter above: the message lives in the JUnit
           # XML, and that message is exactly what a human needs.
