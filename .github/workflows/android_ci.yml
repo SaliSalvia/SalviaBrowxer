@@ -33,9 +33,12 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle and restore dependency cache
+        # Cache only. The wrapper is the single, verified source of truth for the Gradle version:
+        # gradle-version: wrapper does not repin the runner's own `gradle` command (the image
+        # ships Gradle 9.x, which AGP 8.x cannot even start on), so every build step below
+        # invokes ./gradlew directly.
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: wrapper
           cache-provider: basic
 
       - name: Verify Android SDK packages
@@ -55,7 +58,8 @@ jobs:
         run: |
           set -o pipefail
           test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
-          test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-wrapper.properties is missing"; exit 1; }
+          test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-
+wrapper.properties is missing"; exit 1; }
           unzip -t gradle/wrapper/gradle-wrapper.jar > /dev/null
           unzip -l gradle/wrapper/gradle-wrapper.jar | grep -q 'org/gradle/wrapper/GradleWrapperMain.class'
           grep -q '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties
@@ -64,7 +68,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Print Gradle version
-        run: gradle --version --no-daemon
+        run: ./gradlew --version --no-daemon
 
       - name: Test embedded media sniffer against synthetic feed
         run: node --test scripts/test-media-sniffer.cjs
@@ -76,7 +80,7 @@ jobs:
           # the only place the compiler and the test report say what went wrong.
           # --continue: Gradle otherwise cancels the remaining tasks at the first failure, so an
           # early module hides every later one and each push reveals a single error at a time.
-          gradle clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --continue --stacktrace --no-daemon 2>&1 | tee gradle-test.log
+          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --continue --stacktrace --no-daemon 2>&1 | tee gradle-test.log
 
       - name: Lint the app (fails the job on a real lint error)
         run: |
@@ -85,11 +89,12 @@ jobs:
           # its failure is not a gate. Existing warnings are handled with the baseline file next to
           # app/build.gradle.kts (with a comment explaining each), never with a global
           # abortOnError=false - which would also hide the errors this step exists to catch.
-          gradle :app:lintDebug --stacktrace --no-daemon 2>&1 | tee gradle-lint.log
+          ./gradlew :app:lintDebug --stacktrace --no-daemon 2>&1 | tee gradle-lint.log
 
       - name: Summarise lint findings
         # Runs even when the gate failed: the annotations and the uploaded report are how the
-        # failure is read without exporting a runner log.
+       
+ # failure is read without exporting a runner log.
         if: always()
         run: |
           python3 - <<'PY'
@@ -132,7 +137,8 @@ jobs:
           name: lint-report
           path: |
             app/build/reports/lint-results-debug.*
-            lint-issues.txt
+   
+         lint-issues.txt
           if-no-files-found: ignore
 
       - name: Upload unit test reports
@@ -148,7 +154,7 @@ jobs:
       - name: Build Debug APK
         run: |
           set -o pipefail
-          gradle :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
 
       - name: Diagnose signing secrets (prints no secret values)
         if: env.HAS_SIGNING == 'true'
@@ -171,7 +177,8 @@ jobs:
           keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" -v 2>&1 \
             | grep -Ei 'Alias name|Entry type|Owner:|error|Exception' | head -20 || true
           echo "NOTE: a keystore must be the base64 of the BINARY .jks/.p12 file itself,
-          not of an already-base64 text file, and not of a .cer/.pem certificate."
+          not of an already-base64 text file, an
+d not of a .cer/.pem certificate."
 
       - name: Build Release APK (R8 + shrink; signed only when owner secrets exist)
         # Always runs: even unsigned it exercises the R8/proguard path, so a
@@ -184,7 +191,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
+          ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
 
       - name: Build Release AAB (Play bundle; signed only when owner secrets exist)
         env:
@@ -194,7 +201,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          gradle :app:bundleRelease --stacktrace --no-daemon 2>&1 | tee gradle-bundle.log
+          ./gradlew :app:bundleRelease --stacktrace --no-daemon 2>&1 | tee gradle-bundle.log
 
       - name: Verify AAB output
         if: success()
@@ -218,7 +225,8 @@ jobs:
           from pathlib import Path
           import glob
           import re
-          import xml.etree.ElementTree as ET
+          import xml.etree.ElementTree as 
+ET
 
           # Every Gradle invocation on this job tees its output, and whichever one failed is the one
           # that has something to say. Previously only the build logs were read, so a failure in the
@@ -250,7 +258,8 @@ jobs:
                   lines.extend(f"[{log.name}:tail] {t[:400]}" for t in tail[-40:])
 
           # An assertion failure never reaches the "e:" filter above: the message lives in the JUnit
-          # XML, and that message is exactly what a human needs.
+          # XML, and t
+hat message is exactly what a human needs.
           for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
               try:
                   tree = ET.parse(xml_path)
@@ -288,7 +297,8 @@ jobs:
           PY
           if [ -n "${{ github.event.pull_request.number }}" ]; then
             {
-              echo 'This run failed. Compiler errors and test failures:'
+            
+  echo 'This run failed. Compiler errors and test failures:'
               echo
               echo '```'
               cat gradle-failure.txt

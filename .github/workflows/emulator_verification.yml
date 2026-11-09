@@ -49,9 +49,12 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle and restore dependency cache
+        # Cache only. The wrapper is the single, verified source of truth for the Gradle version:
+        # gradle-version: wrapper does not repin the runner's own `gradle` command (the image
+        # ships Gradle 9.x, which AGP 8.x cannot even start on), so every build step below
+        # invokes ./gradlew directly.
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: wrapper
           cache-provider: basic
 
       - name: Enable KVM for the emulator
@@ -63,7 +66,8 @@ jobs:
 
       - name: Verify Android SDK packages
         run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          SD
+KMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
@@ -88,12 +92,13 @@ jobs:
             # The gradle output goes to a file the failure step reports from - a run that dies before the
             # first test has no JUnit XML to read.
             echo "=== STAGE: connected-tests ==="
-            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1 || { adb logcat -d -t 3000 | grep -iE "VideoTranscoder|ACodec|CCodec|MediaCodec|MediaExtractor|MediaMuxer|OMX" > logcat-instrumented.log; cat gradle-instrumented.log; exit 1; }
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1 || { adb logcat -d -t 3000 | grep -iE "VideoTranscoder|ACodec|CCodec|MediaCodec|MediaExtractor|MediaMuxer|OMX" > logcat-instrumented.log; cat gradle-instrumented.log; exit 1; }
             echo "=== STAGE: assemble-debug ==="
-            gradle :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1 || { cat gradle-instrumented.log; exit 1; }
+            ./gradlew :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1 || { cat gradle-instrumented.log; exit 1; }
             echo "=== STAGE: install ==="
             adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
-            echo "=== STAGE: launch ==="
+            echo "=== S
+TAGE: launch ==="
             adb shell am start -n com.salvia.salviabrowxer/.MainActivity
             sleep 8
             echo "--- app process ---"
@@ -133,7 +138,8 @@ jobs:
           total = sum(suite[1] for suite in suites)
           failed = sum(suite[2] + suite[3] for suite in suites)
           skipped = sum(suite[4] for suite in suites)
-          for name, tests, failures, errors, skipped_count in suites:
+          for name,
+ tests, failures, errors, skipped_count in suites:
               print(f"::notice title=Instrumented results::{name}: {tests} tests, {failures} failures, {errors} errors, {skipped_count} skipped")
           print(f"::notice title=Instrumented totals::{total} tests, {failed} failed, {skipped} skipped")
           PY
@@ -170,7 +176,8 @@ jobs:
                       or stripped.startswith("* What went wrong:")
                       or stripped.startswith("Caused by:")
                       or "Failed to process:" in stripped
-                      or (stripped.startswith("> Task ") and stripped.endswith("FAILED"))
+                      or (stripped.startswit
+h("> Task ") and stripped.endswith("FAILED"))
                   ):
                       lines.append(f"[{stage}] {stripped[:400]}")
                       if stripped.startswith("* What went wrong:") or "Failed to process:" in stripped:
@@ -204,7 +211,8 @@ jobs:
           for line in chunk.splitlines():
               print(f"::error title=Instrumented::{line.replace('%', '%25')}")
           PY
-          if [ -n "${{ github.event.pull_request.number }}" ]; then
+          
+if [ -n "${{ github.event.pull_request.number }}" ]; then
             {
               echo 'Instrumented (emulator) run failed. Test failures:'
               echo

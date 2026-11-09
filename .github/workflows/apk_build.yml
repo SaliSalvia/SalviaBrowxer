@@ -43,9 +43,12 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Gradle and restore dependency cache
+        # Cache only. The wrapper is the single, verified source of truth for the Gradle version:
+        # gradle-version: wrapper does not repin the runner's own `gradle` command (the image
+        # ships Gradle 9.x, which AGP 8.x cannot even start on), so every build step below
+        # invokes ./gradlew directly.
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: wrapper
           cache-provider: basic
 
       - name: Verify Android SDK packages
@@ -62,7 +65,8 @@ jobs:
       - name: Verify Gradle wrapper
         run: |
           set -o pipefail
-          test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
+          test -f gr
+adle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
           test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-wrapper.properties is missing"; exit 1; }
           unzip -t gradle/wrapper/gradle-wrapper.jar > /dev/null
           grep -q '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties
@@ -73,7 +77,7 @@ jobs:
       - name: Build Debug APK
         run: |
           set -o pipefail
-          gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee gradle-debug.log
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee gradle-debug.log
 
       - name: Build Release APK (R8 + shrink; signed when owner secrets exist)
         env:
@@ -83,7 +87,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
+          ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
 
       # Without this the workflow's failure output is only reachable from the runner's log export,
       # which is not always readable from a sandbox. Annotations and a PR comment are.
@@ -103,9 +107,9 @@ jobs:
                   stripped = raw.strip()
                   if stripped.startswith("e: ") or "Unresolved reference" in stripped or re.search(r"\berror: ", stripped):
                       lines.append(f"[{log.name}] {stripped}")
-                  elif stripped.startswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
+                  elif stripped.s
+tartswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
                       lines.append(f"[{log.name}] {stripped}")
-          seen, unique = set(), []
                   elif (
                       stripped.startswith("* What went wrong:")
                       or stripped.startswith("Caused by:")
@@ -143,7 +147,8 @@ jobs:
             } > failure-comment.md
             gh pr comment "${{ github.event.pull_request.number }}" --body-file failure-comment.md || true
           fi
-        env:
+   
+     env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract APK and verify signature
@@ -193,7 +198,8 @@ jobs:
       - name: Job summary
         if: success()
         run: |
-          {
+ 
+         {
             echo "## APK build summary"
             echo ""
             echo "| Output | File | Size |"
