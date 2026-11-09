@@ -24,13 +24,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Set up Gradle and restore dependency cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+          cache-provider: basic
 
       - name: Verify Android SDK packages
         run: |
@@ -58,7 +64,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Print Gradle version
-        run: ./gradlew --version --no-daemon
+        run: gradle --version --no-daemon
 
       - name: Test embedded media sniffer against synthetic feed
         run: node --test scripts/test-media-sniffer.cjs
@@ -70,7 +76,7 @@ jobs:
           # the only place the compiler and the test report say what went wrong.
           # --continue: Gradle otherwise cancels the remaining tasks at the first failure, so an
           # early module hides every later one and each push reveals a single error at a time.
-          ./gradlew clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --continue --stacktrace --no-daemon 2>&1 | tee gradle-test.log
+          gradle clean :app:testDebugUnitTest :core:model:testDebugUnitTest :media:resolver:testDebugUnitTest :media:detector:testDebugUnitTest :media:downloader:testDebugUnitTest --continue --stacktrace --no-daemon 2>&1 | tee gradle-test.log
 
       - name: Lint the app (fails the job on a real lint error)
         run: |
@@ -79,7 +85,7 @@ jobs:
           # its failure is not a gate. Existing warnings are handled with the baseline file next to
           # app/build.gradle.kts (with a comment explaining each), never with a global
           # abortOnError=false - which would also hide the errors this step exists to catch.
-          ./gradlew :app:lintDebug --stacktrace --no-daemon 2>&1 | tee gradle-lint.log
+          gradle :app:lintDebug --stacktrace --no-daemon 2>&1 | tee gradle-lint.log
 
       - name: Summarise lint findings
         # Runs even when the gate failed: the annotations and the uploaded report are how the
@@ -121,7 +127,7 @@ jobs:
 
       - name: Upload lint report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lint-report
           path: |
@@ -131,7 +137,7 @@ jobs:
 
       - name: Upload unit test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-reports
           path: |
@@ -142,7 +148,7 @@ jobs:
       - name: Build Debug APK
         run: |
           set -o pipefail
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
+          gradle :app:assembleDebug --stacktrace --no-daemon --warning-mode all 2>&1 | tee gradle-build.log
 
       - name: Diagnose signing secrets (prints no secret values)
         if: env.HAS_SIGNING == 'true'
@@ -178,7 +184,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
+          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
 
       - name: Build Release AAB (Play bundle; signed only when owner secrets exist)
         env:
@@ -188,7 +194,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          ./gradlew :app:bundleRelease --stacktrace --no-daemon 2>&1 | tee gradle-bundle.log
+          gradle :app:bundleRelease --stacktrace --no-daemon 2>&1 | tee gradle-bundle.log
 
       - name: Verify AAB output
         if: success()
@@ -198,7 +204,7 @@ jobs:
 
       - name: Upload AAB artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: salviabrowxer-release-aab
           path: app/build/outputs/bundle/release/app-release.aab
@@ -287,7 +293,7 @@ jobs:
 
       - name: Upload APK artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: salviabrowxer-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
@@ -307,10 +313,9 @@ jobs:
 
       - name: Upload Release APK artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: salviabrowxer-${{ env.HAS_SIGNING == 'true' && 'signed-release-apk' || 'unsigned-release-apk' }}
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
-

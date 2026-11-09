@@ -34,13 +34,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Set up Gradle and restore dependency cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+          cache-provider: basic
 
       - name: Verify Android SDK packages
         run: |
@@ -67,7 +73,7 @@ jobs:
       - name: Build Debug APK
         run: |
           set -o pipefail
-          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee gradle-debug.log
+          gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee gradle-debug.log
 
       - name: Build Release APK (R8 + shrink; signed when owner secrets exist)
         env:
@@ -77,7 +83,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          ./gradlew :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
+          gradle :app:assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-release.log
 
       # Without this the workflow's failure output is only reachable from the runner's log export,
       # which is not always readable from a sandbox. Annotations and a PR comment are.
@@ -153,7 +159,7 @@ jobs:
 
       - name: Upload extracted APK artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: salviabrowxer-apk
           path: extracted-apk/
@@ -162,7 +168,7 @@ jobs:
 
       - name: Upload release APK artifact (signed when secrets exist)
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: salviabrowxer-${{ env.HAS_SIGNING == 'true' && 'signed-release-apk' || 'unsigned-release-apk' }}
           path: app/build/outputs/apk/release/*.apk

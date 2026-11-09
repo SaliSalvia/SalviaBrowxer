@@ -152,7 +152,8 @@ capability or a watt of detection power:
   download button is on by default: one tap saves the main file through the tray's own
   `downloadOrOffer` door, long-press opens the tray, drag repositions, one switch turns it off.
 
-Deliberately *not* done in this pass, because this environment cannot build and a red build would
-cost more than the change is worth: kapt→KSP, the version catalog, dependency upgrades,
-BiometricPrompt (needs a `FragmentActivity` migration) and the `BrowserViewModel` decomposition.
-They stay on this list for the first pass after a green build.
+**Status correction (2026-11):** the kapt→KSP migration for Room/Hilt is already present in
+`build.gradle.kts` and `app/build.gradle.kts`; it is not an outstanding task. The remaining
+maintenance work is the version catalog, carefully staged dependency upgrades, BiometricPrompt
+(which needs a `FragmentActivity` migration) and the `BrowserViewModel` decomposition. None of these
+should be bundled with a media-engine change; each requires its own green CI pass and relevant tests.

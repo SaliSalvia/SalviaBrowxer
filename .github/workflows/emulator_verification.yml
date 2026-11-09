@@ -40,13 +40,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Set up Gradle and restore dependency cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: wrapper
+          cache-provider: basic
 
       - name: Enable KVM for the emulator
         run: |
@@ -65,7 +71,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run instrumented tests and a launch smoke check
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 34
           arch: x86_64
@@ -82,9 +88,9 @@ jobs:
             # The gradle output goes to a file the failure step reports from - a run that dies before the
             # first test has no JUnit XML to read.
             echo "=== STAGE: connected-tests ==="
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1 || { adb logcat -d -t 3000 | grep -iE "VideoTranscoder|ACodec|CCodec|MediaCodec|MediaExtractor|MediaMuxer|OMX" > logcat-instrumented.log; cat gradle-instrumented.log; exit 1; }
+            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon > gradle-instrumented.log 2>&1 || { adb logcat -d -t 3000 | grep -iE "VideoTranscoder|ACodec|CCodec|MediaCodec|MediaExtractor|MediaMuxer|OMX" > logcat-instrumented.log; cat gradle-instrumented.log; exit 1; }
             echo "=== STAGE: assemble-debug ==="
-            ./gradlew :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1 || { cat gradle-instrumented.log; exit 1; }
+            gradle :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1 || { cat gradle-instrumented.log; exit 1; }
             echo "=== STAGE: install ==="
             adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
             echo "=== STAGE: launch ==="
@@ -213,7 +219,7 @@ jobs:
 
       - name: Upload instrumented test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: instrumented-test-reports
           path: |

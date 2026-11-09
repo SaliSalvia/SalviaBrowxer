@@ -8,7 +8,7 @@ per the roadmap policy: **no bump until the real-device matrix passes.**
 - **Detection and admission.** Four layers (response sniffing in `shouldInterceptRequest`, MSE/blob
   observation behind a user action, DOM evidence, direct resolver) with admission rules that refuse
   fragments, manifests, range reads, live and encrypted-by-default streams. `node --test
-  scripts/test-media-sniffer.cjs`: 27/27 against the embedded page script.
+  scripts/test-media-sniffer.cjs`: 30/30 against the embedded page script (verified in the 2026-11 hardening pass).
 - **Download queue.** `DownloadWorkQueue` (parallel parts, `SlotLimiter`, retry ≤ 3 resuming from
   staged `.part<N>` files, idempotent start, queued items survive `stop`), Wi-Fi hold with
   `WIFI_HOLD_MARKER` released when Wi-Fi returns. `DownloadWorkQueueTest` and the extracted service

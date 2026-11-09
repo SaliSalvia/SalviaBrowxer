@@ -68,6 +68,30 @@ class PasswordVaultTest {
     }
 
     @Test
+    fun `an untrusted verifier cannot request unbounded PBKDF2 work`() {
+        val valid = PasswordVault.create(password)!!
+        val excessiveIterations = valid.replace(":${PasswordVault.ITERATIONS}:", ":999999999:")
+
+        assertFalse(PasswordVault.isVerifier(excessiveIterations))
+        assertFalse(PasswordVault.verify(password, excessiveIterations))
+        assertNull(PasswordVault.create(password, iterations = Int.MAX_VALUE))
+        assertNull(PasswordVault.create(password, iterations = 0))
+    }
+
+    @Test
+    fun `a verifier must contain the exact salt and derived key lengths`() {
+        val parts = PasswordVault.create(password)!!.split(':')
+        val shortSalt = listOf(parts[0], parts[1], "AA==", parts[3]).joinToString(":")
+        val shortKey = listOf(parts[0], parts[1], parts[2], "AA==").joinToString(":")
+
+        assertFalse(PasswordVault.isVerifier(shortSalt))
+        assertFalse(PasswordVault.verify(password, shortSalt))
+        assertFalse(PasswordVault.isVerifier(shortKey))
+        assertFalse(PasswordVault.verify(password, shortKey))
+        assertFalse(PasswordVault.isVerifier("x".repeat(257)))
+    }
+
+    @Test
     fun `a password that is too short is refused before it is stored`() {
         assertFalse(PasswordVault.isAcceptable("abcde"))
         assertNull(PasswordVault.create("abcde"))

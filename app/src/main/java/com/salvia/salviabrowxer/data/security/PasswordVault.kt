@@ -40,13 +40,22 @@ object PasswordVault {
     const val ITERATIONS: Int = 120_000
 
     private const val ALGORITHM = "PBKDF2WithHmacSHA1"
-    private const val SALT_BYTES = 16
     private const val KEY_BITS = 256
+    private const val SALT_BYTES = 16
+    private const val VERIFIER_BYTES = KEY_BITS / 8
+    private const val MAX_ITERATIONS = 600_000
+    private const val MAX_VERIFIER_CHARS = 256
     private const val PREFIX = "pbkdf2-sha1"
+
+    private data class ParsedVerifier(
+        val iterations: Int,
+        val salt: ByteArray,
+        val expected: ByteArray
+    )
 
     /** A fresh verifier for a new or changed password. Null when the password is too short. */
     fun create(password: String, iterations: Int = ITERATIONS): String? {
-        if (!isAcceptable(password)) return null
+        if (!isAcceptable(password) || iterations !in 1..MAX_ITERATIONS) return null
         val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
         val key = derive(password, salt, iterations)
         return listOf(
@@ -64,22 +73,28 @@ object PasswordVault {
      * folder, not open it. The comparison itself is constant-time.
      */
     fun verify(password: String, encoded: String?): Boolean {
-        val parts = encoded?.trim()?.split(':') ?: return false
-        if (parts.size != 4 || parts[0] != PREFIX) return false
-        val iterations = parts[1].toIntOrNull()?.takeIf { it > 0 } ?: return false
-        val salt = decode(parts[2]) ?: return false
-        val expected = decode(parts[3]) ?: return false
-        if (salt.isEmpty() || expected.isEmpty()) return false
-        val actual = derive(password, salt, iterations)
-        return MessageDigest.isEqual(expected, actual)
+        val verifier = parseVerifier(encoded) ?: return false
+        val actual = derive(password, verifier.salt, verifier.iterations)
+        return MessageDigest.isEqual(verifier.expected, actual)
     }
 
-    /** Whether the stored value is a verifier this object wrote, rather than anything else. */
-    fun isVerifier(value: String?): Boolean {
-        val parts = value?.trim()?.split(':') ?: return false
-        // Primitive arrays carry no `isNullOrEmpty`; each half has to be unwrapped on its own.
-        return parts.size == 4 && parts[0] == PREFIX && (parts[1].toIntOrNull() ?: 0) > 0 &&
-            decode(parts[2])?.isNotEmpty() == true && decode(parts[3])?.isNotEmpty() == true
+    /** Whether the stored value is a bounded verifier this object can safely process. */
+    fun isVerifier(value: String?): Boolean = parseVerifier(value) != null
+
+    /**
+     * Parse before running PBKDF2. The verifier is stored locally, but it is still untrusted input:
+     * a corrupted/restored preferences value must not request billions of iterations or allocate
+     * arbitrarily large salt/hash arrays on the main thread.
+     */
+    private fun parseVerifier(value: String?): ParsedVerifier? {
+        val encoded = value?.trim()?.takeIf { it.isNotEmpty() && it.length <= MAX_VERIFIER_CHARS }
+            ?: return null
+        val parts = encoded.split(':')
+        if (parts.size != 4 || parts[0] != PREFIX) return null
+        val iterations = parts[1].toIntOrNull()?.takeIf { it in 1..MAX_ITERATIONS } ?: return null
+        val salt = decode(parts[2])?.takeIf { it.size == SALT_BYTES } ?: return null
+        val expected = decode(parts[3])?.takeIf { it.size == VERIFIER_BYTES } ?: return null
+        return ParsedVerifier(iterations, salt, expected)
     }
 
     fun isAcceptable(password: String): Boolean = password.trim().length >= MIN_PASSWORD_CHARS
