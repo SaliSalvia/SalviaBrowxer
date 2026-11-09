@@ -66,8 +66,7 @@ jobs:
 
       - name: Verify Android SDK packages
         run: |
-          SD
-KMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
@@ -97,8 +96,7 @@ KMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
             ./gradlew :app:assembleDebug --stacktrace --no-daemon >> gradle-instrumented.log 2>&1 || { cat gradle-instrumented.log; exit 1; }
             echo "=== STAGE: install ==="
             adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
-            echo "=== S
-TAGE: launch ==="
+            echo "=== STAGE: launch ==="
             adb shell am start -n com.salvia.salviabrowxer/.MainActivity
             sleep 8
             echo "--- app process ---"
@@ -138,8 +136,7 @@ TAGE: launch ==="
           total = sum(suite[1] for suite in suites)
           failed = sum(suite[2] + suite[3] for suite in suites)
           skipped = sum(suite[4] for suite in suites)
-          for name,
- tests, failures, errors, skipped_count in suites:
+          for name, tests, failures, errors, skipped_count in suites:
               print(f"::notice title=Instrumented results::{name}: {tests} tests, {failures} failures, {errors} errors, {skipped_count} skipped")
           print(f"::notice title=Instrumented totals::{total} tests, {failed} failed, {skipped} skipped")
           PY
@@ -176,8 +173,7 @@ TAGE: launch ==="
                       or stripped.startswith("* What went wrong:")
                       or stripped.startswith("Caused by:")
                       or "Failed to process:" in stripped
-                      or (stripped.startswit
-h("> Task ") and stripped.endswith("FAILED"))
+                      or (stripped.startswith("> Task ") and stripped.endswith("FAILED"))
                   ):
                       lines.append(f"[{stage}] {stripped[:400]}")
                       if stripped.startswith("* What went wrong:") or "Failed to process:" in stripped:
@@ -211,8 +207,7 @@ h("> Task ") and stripped.endswith("FAILED"))
           for line in chunk.splitlines():
               print(f"::error title=Instrumented::{line.replace('%', '%25')}")
           PY
-          
-if [ -n "${{ github.event.pull_request.number }}" ]; then
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
             {
               echo 'Instrumented (emulator) run failed. Test failures:'
               echo

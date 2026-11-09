@@ -58,8 +58,7 @@ jobs:
         run: |
           set -o pipefail
           test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
-          test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-
-wrapper.properties is missing"; exit 1; }
+          test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-wrapper.properties is missing"; exit 1; }
           unzip -t gradle/wrapper/gradle-wrapper.jar > /dev/null
           unzip -l gradle/wrapper/gradle-wrapper.jar | grep -q 'org/gradle/wrapper/GradleWrapperMain.class'
           grep -q '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties
@@ -93,8 +92,7 @@ wrapper.properties is missing"; exit 1; }
 
       - name: Summarise lint findings
         # Runs even when the gate failed: the annotations and the uploaded report are how the
-       
- # failure is read without exporting a runner log.
+        # failure is read without exporting a runner log.
         if: always()
         run: |
           python3 - <<'PY'
@@ -137,8 +135,7 @@ wrapper.properties is missing"; exit 1; }
           name: lint-report
           path: |
             app/build/reports/lint-results-debug.*
-   
-         lint-issues.txt
+            lint-issues.txt
           if-no-files-found: ignore
 
       - name: Upload unit test reports
@@ -177,8 +174,7 @@ wrapper.properties is missing"; exit 1; }
           keytool -list -keystore /tmp/ks.bin -storepass "$SIGNING_KEYSTORE_PASSWORD" -v 2>&1 \
             | grep -Ei 'Alias name|Entry type|Owner:|error|Exception' | head -20 || true
           echo "NOTE: a keystore must be the base64 of the BINARY .jks/.p12 file itself,
-          not of an already-base64 text file, an
-d not of a .cer/.pem certificate."
+          not of an already-base64 text file, and not of a .cer/.pem certificate."
 
       - name: Build Release APK (R8 + shrink; signed only when owner secrets exist)
         # Always runs: even unsigned it exercises the R8/proguard path, so a
@@ -225,8 +221,7 @@ d not of a .cer/.pem certificate."
           from pathlib import Path
           import glob
           import re
-          import xml.etree.ElementTree as 
-ET
+          import xml.etree.ElementTree as ET
 
           # Every Gradle invocation on this job tees its output, and whichever one failed is the one
           # that has something to say. Previously only the build logs were read, so a failure in the
@@ -258,8 +253,7 @@ ET
                   lines.extend(f"[{log.name}:tail] {t[:400]}" for t in tail[-40:])
 
           # An assertion failure never reaches the "e:" filter above: the message lives in the JUnit
-          # XML, and t
-hat message is exactly what a human needs.
+          # XML, and that message is exactly what a human needs.
           for xml_path in sorted(glob.glob("**/build/test-results/**/*.xml", recursive=True)):
               try:
                   tree = ET.parse(xml_path)
@@ -297,8 +291,7 @@ hat message is exactly what a human needs.
           PY
           if [ -n "${{ github.event.pull_request.number }}" ]; then
             {
-            
-  echo 'This run failed. Compiler errors and test failures:'
+              echo 'This run failed. Compiler errors and test failures:'
               echo
               echo '```'
               cat gradle-failure.txt

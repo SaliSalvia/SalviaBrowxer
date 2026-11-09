@@ -65,8 +65,7 @@ jobs:
       - name: Verify Gradle wrapper
         run: |
           set -o pipefail
-          test -f gr
-adle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
+          test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is missing"; exit 1; }
           test -f gradle/wrapper/gradle-wrapper.properties || { echo "gradle/wrapper/gradle-wrapper.properties is missing"; exit 1; }
           unzip -t gradle/wrapper/gradle-wrapper.jar > /dev/null
           grep -q '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties
@@ -107,8 +106,7 @@ adle/wrapper/gradle-wrapper.jar || { echo "gradle/wrapper/gradle-wrapper.jar is 
                   stripped = raw.strip()
                   if stripped.startswith("e: ") or "Unresolved reference" in stripped or re.search(r"\berror: ", stripped):
                       lines.append(f"[{log.name}] {stripped}")
-                  elif stripped.s
-tartswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
+                  elif stripped.startswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
                       lines.append(f"[{log.name}] {stripped}")
                   elif (
                       stripped.startswith("* What went wrong:")
@@ -147,8 +145,7 @@ tartswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
             } > failure-comment.md
             gh pr comment "${{ github.event.pull_request.number }}" --body-file failure-comment.md || true
           fi
-   
-     env:
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract APK and verify signature
@@ -198,8 +195,7 @@ tartswith("FAILURE:") or re.match(r"^> Task .* FAILED$", stripped):
       - name: Job summary
         if: success()
         run: |
- 
-         {
+          {
             echo "## APK build summary"
             echo ""
             echo "| Output | File | Size |"

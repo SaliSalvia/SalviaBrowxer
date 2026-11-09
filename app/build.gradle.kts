@@ -40,8 +40,7 @@ android {
                 storeFile = tmpKeystore
                 storePassword = signingKeystorePassword
                 keyAlias = signingKeyAlias
-                keyPassword = signingKeyPassword ?: s
-igningKeystorePassword
+                keyPassword = signingKeyPassword ?: signingKeystorePassword
             }
         }
     }
@@ -107,8 +106,7 @@ igningKeystorePassword
     lint {
         abortOnError = true
         // Full release lint runs in CI only if explicitly requested; keeping it off
-        // here keeps assembleRelease lean
- (R8 + dexing are already the heavy steps).
+        // here keeps assembleRelease lean (R8 + dexing are already the heavy steps).
         checkReleaseBuilds = false
         // Findings that were reviewed and accepted live in this baseline, each with a comment
         // explaining why - never a blanket `abortOnError = false`, which would also silence the real
@@ -148,8 +146,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
-    implementati
-on("androidx.webkit:webkit:1.10.0")
+    implementation("androidx.webkit:webkit:1.10.0")
 
     implementation("androidx.room:room-runtime:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
@@ -184,8 +181,7 @@ on("androidx.webkit:webkit:1.10.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
     testImplementation("io.mockk:mockk:1.13.9")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    androidTestImplemen
-tation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     // The encrypted-HLS on-device test drives the real downloader against a local HTTP server.
     androidTestImplementation(project(":media:downloader"))
