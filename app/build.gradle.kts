@@ -123,6 +123,16 @@ kotlin {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
+// Hilt 2.58 is the newest line whose Gradle plugin still supports AGP 8 (Hilt 2.59+ requires AGP 9),
+// but the kotlin-metadata-jvm it resolves on the processor path only reads Kotlin metadata <= 2.3.0,
+// while Kotlin 2.4.21 emits 2.4.0. The Hilt Gradle plugin runs the Dagger processor on the javac path
+// via the hiltAnnotationProcessor<Variant> configurations it creates, so force the metadata reader
+// there up to the toolchain's Kotlin version. Drop this pin when the repo moves to AGP 9 + Hilt 2.59+.
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-metadata-jvm:2.4.21")
+    }
+}
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:database"))
