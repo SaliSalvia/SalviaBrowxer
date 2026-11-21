@@ -23,26 +23,55 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Robolectric runs the unit tests against Android SDK 36, whose sandbox
       # requires a Java 21 runtime. Gradle and AGP 9 also run fine on 21.
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: '21'
 
+      # `android-actions/setup-android` is still a Node 20 action and kept
+      # failing on the SDK setup step, so the preinstalled SDK of the runner
+      # image is wired up directly. Its cmdline-tools are not on PATH by
+      # default, which is why sdkmanager is located and exported here.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK" ]; then
+            echo "::error::Android SDK not found at $SDK"
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER_DIR=""
+          for dir in "$SDK/cmdline-tools/latest/bin" "$SDK"/cmdline-tools/*/bin "$SDK/tools/bin"; do
+            if [ -x "$dir/sdkmanager" ]; then
+              SDKMANAGER_DIR="$dir"
+              break
+            fi
+          done
+          if [ -z "$SDKMANAGER_DIR" ]; then
+            echo "::error::sdkmanager not found under $SDK"
+            find "$SDK" -maxdepth 3 -name sdkmanager -print || true
+            exit 1
+          fi
+          echo "Using sdkmanager from $SDKMANAGER_DIR"
+          echo "$SDKMANAGER_DIR" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          "$SDKMANAGER_DIR/sdkmanager" --version
 
       - name: Install required Android SDK packages
         run: |
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager --install "platform-tools" "platforms;android-36.1" "build-tools;36.1.0"
+          sdkmanager --list_installed
 
       - name: Set up Gradle 9.3.1
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.3.1'
 
@@ -75,7 +104,10 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
+          # Fail with a readable message if the secret is not a usable keystore.
+          keytool -list -keystore my-upload-key.jks -storepass "$STORE_PASSWORD" -alias upload > /dev/null
           gradle :app:assembleRelease --no-daemon --console=plain
           cp app/build/outputs/apk/release/app-release.apk dist/SalviaBrowxser-release.apk
           ls -lh dist
@@ -92,7 +124,7 @@ jobs:
         # Always publish whatever APKs were built, so a failing later step does
         # not throw away an installable build.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: SalviaBrowxser-APK
           path: dist/*.apk
