@@ -23,14 +23,20 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.AppLanguage
 import com.example.data.local.ThemePreference
 import com.example.ui.ActiveSheet
+import com.example.ui.i18n.LocalAppStrings
+import com.example.ui.i18n.stringsFor
 import com.example.ui.BrowserViewModel
 import com.example.ui.components.BookmarksSheet
 import com.example.ui.components.BrowserBottomBar
@@ -120,10 +126,17 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
         viewModel.goBack()
     }
 
-    NavaBrowserTheme(
-        darkTheme = isDarkTheme,
-        isIncognito = activeTab.isIncognito,
+    val appStrings = remember(settings.appLanguage) { stringsFor(settings.appLanguage) }
+    val layoutDirection = if (settings.appLanguage == AppLanguage.PERSIAN) LayoutDirection.Rtl else LayoutDirection.Ltr
+
+    CompositionLocalProvider(
+        LocalAppStrings provides appStrings,
+        LocalLayoutDirection provides layoutDirection,
     ) {
+        NavaBrowserTheme(
+            darkTheme = isDarkTheme,
+            isIncognito = activeTab.isIncognito,
+        ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val renderCosmicScaffold = activeTab.isStartPage
             val scaffoldContent: @Composable () -> Unit = {
@@ -314,6 +327,7 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                     onToggleDoNotTrack = { viewModel.setDoNotTrackEnabled(it) },
                     onSelectSearchEngine = { viewModel.setSearchEngine(it) },
                     onSelectTheme = { viewModel.setThemePreference(it) },
+                    onSelectLanguage = { viewModel.setAppLanguage(it) },
                     onAddAdRule = { pat, wl -> viewModel.addCustomAdRule(pat, wl) },
                     onDeleteAdRule = { viewModel.deleteAdRule(it) },
                     onClearAllBrowsingData = { viewModel.clearAllBrowsingData() },
@@ -324,5 +338,6 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                 }
             }
         }
+    }
     }
 }

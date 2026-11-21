@@ -3,11 +3,14 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AdBlockRuleEntity
+import com.example.data.local.AppLanguage
+import com.example.data.local.BrowserSettings
 import com.example.engine.AdBlockerEngine
 import com.example.engine.BlockCategory
 import com.example.engine.ExtensionEngine
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.WebViewConfigurator
+import com.example.ui.i18n.stringsFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -233,5 +236,34 @@ class BrowserEnginesTest {
             phase = "document_end",
         )
         assertTrue(script.contains("nava_ext_css_"))
+    }
+
+    @Test
+    fun `default language is english with persian support and updated adblocker branding`() {
+        val defaultSettings = BrowserSettings()
+        assertEquals(AppLanguage.ENGLISH, defaultSettings.appLanguage)
+
+        val en = stringsFor(AppLanguage.ENGLISH)
+        val fa = stringsFor(AppLanguage.PERSIAN)
+
+        assertEquals("AdBlocker", en.adBlockerBadge)
+        assertEquals("AdBlocker", en.adBlockerLabel)
+        assertEquals("ضد تبلیغ", fa.adBlockerBadge)
+        assertEquals("ضد تبلیغ", fa.adBlockerLabel)
+
+        val enDump = listOf(
+            en.adBlockerBadge, en.adBlockerLabel, en.siteAdBlockerTitle,
+            en.settingAdBlockTitle, en.searchEngineHintFormat, en.incognitoTabButton,
+        ).joinToString(" ")
+        val faDump = listOf(
+            fa.adBlockerBadge, fa.adBlockerLabel, fa.siteAdBlockerTitle,
+            fa.settingAdBlockTitle, fa.searchEngineHintFormat, fa.incognitoTabButton,
+        ).joinToString(" ")
+
+        assertFalse(enDump.contains("Aloha", ignoreCase = true))
+        assertFalse(faDump.contains("Aloha", ignoreCase = true))
+        assertFalse(enDump.contains("Salar Farzaneh", ignoreCase = true))
+        assertFalse(faDump.contains("Salar Farzaneh", ignoreCase = true))
+        assertFalse(faDump.contains("دسترسی سریع"))
     }
 }

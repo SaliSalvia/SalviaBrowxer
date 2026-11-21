@@ -13,17 +13,22 @@ import kotlinx.coroutines.flow.map
 
 private val Context.browserDataStore: DataStore<Preferences> by preferencesDataStore(name = "nava_browser_prefs")
 
+enum class AppLanguage(val code: String, val nativeLabel: String) {
+    ENGLISH("en", "English"),
+    PERSIAN("fa", "فارسی"),
+}
+
 enum class SearchEngine(val displayName: String, val searchUrlTemplate: String) {
     GOOGLE("Google", "https://www.google.com/search?q=%s"),
-    DUCKDUCKGO("DuckDuckGo (خصوصی)", "https://duckduckgo.com/?q=%s"),
-    STARTPAGE("Startpage (امن)", "https://www.startpage.com/sp/search?query=%s"),
+    DUCKDUCKGO("DuckDuckGo (Private)", "https://duckduckgo.com/?q=%s"),
+    STARTPAGE("Startpage (Secure)", "https://www.startpage.com/sp/search?query=%s"),
     BING("Bing", "https://www.bing.com/search?q=%s"),
 }
 
 enum class ThemePreference(val label: String) {
-    DARK("تیره ابسیدین"),
-    LIGHT("روشن"),
-    SYSTEM("مطابق سیستم"),
+    DARK("Cosmic Dark"),
+    LIGHT("Light"),
+    SYSTEM("Follow System"),
 }
 
 data class BrowserSettings(
@@ -35,6 +40,7 @@ data class BrowserSettings(
     val doNotTrackEnabled: Boolean = true,
     val searchEngine: SearchEngine = SearchEngine.GOOGLE,
     val themePreference: ThemePreference = ThemePreference.DARK,
+    val appLanguage: AppLanguage = AppLanguage.ENGLISH,
     val totalAdsBlockedLifetime: Long = 0L,
     val totalTrackersBlockedLifetime: Long = 0L,
 )
@@ -50,6 +56,7 @@ class PreferencesRepository(private val context: Context) {
         val DO_NOT_TRACK = booleanPreferencesKey("do_not_track")
         val SEARCH_ENGINE = stringPreferencesKey("search_engine")
         val THEME = stringPreferencesKey("theme_preference")
+        val APP_LANGUAGE = stringPreferencesKey("app_language")
         val LIFETIME_ADS = longPreferencesKey("lifetime_ads_blocked")
         val LIFETIME_TRACKERS = longPreferencesKey("lifetime_trackers_blocked")
     }
@@ -61,6 +68,9 @@ class PreferencesRepository(private val context: Context) {
         val theme = prefs[Keys.THEME]?.let { name ->
             ThemePreference.entries.firstOrNull { it.name == name }
         } ?: ThemePreference.DARK
+        val language = prefs[Keys.APP_LANGUAGE]?.let { name ->
+            AppLanguage.entries.firstOrNull { it.name == name }
+        } ?: AppLanguage.ENGLISH
 
         BrowserSettings(
             adBlockEnabled = prefs[Keys.AD_BLOCK] ?: true,
@@ -71,6 +81,7 @@ class PreferencesRepository(private val context: Context) {
             doNotTrackEnabled = prefs[Keys.DO_NOT_TRACK] ?: true,
             searchEngine = engine,
             themePreference = theme,
+            appLanguage = language,
             totalAdsBlockedLifetime = prefs[Keys.LIFETIME_ADS] ?: 0L,
             totalTrackersBlockedLifetime = prefs[Keys.LIFETIME_TRACKERS] ?: 0L,
         )
@@ -106,6 +117,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setThemePreference(theme: ThemePreference) {
         context.browserDataStore.edit { it[Keys.THEME] = theme.name }
+    }
+
+    suspend fun setAppLanguage(language: AppLanguage) {
+        context.browserDataStore.edit { it[Keys.APP_LANGUAGE] = language.name }
     }
 
     suspend fun incrementBlockedStats(adsDelta: Long, trackersDelta: Long) {

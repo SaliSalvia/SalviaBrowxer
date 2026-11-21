@@ -4,7 +4,7 @@ import java.util.UUID
 
 data class MediaQualityOption(
     val id: String = UUID.randomUUID().toString(),
-    val label: String,        // e.g. "1080p Full HD", "720p HD", "480p", "صدا (M4A)"
+    val label: String,        // e.g. "1080p Full HD", "720p HD", "480p", "Audio Only (M4A)"
     val resolutionHeight: Int, // 1080, 720, 480, 360, 0 for audio
     val url: String,
     val audioUrl: String = "", // Optional separate audio stream URL (HLS/DASH) for muxing into MP4
@@ -67,7 +67,7 @@ data class DomInspectionSnapshot(
 
 data class BrowserTab(
     val id: String = UUID.randomUUID().toString(),
-    val title: String = "تب جدید",
+    val title: String = "New Tab",
     val url: String = "",
     val isStartPage: Boolean = true,
     val isIncognito: Boolean = false,
@@ -93,10 +93,10 @@ data class BrowserTab(
 }
 
 enum class DevToolsTab(val label: String) {
-    CONSOLE("کنسول JS"),
-    NETWORK("شبکه"),
-    DOM("سورس و DOM"),
-    STORAGE("کوکی و حافظه"),
+    CONSOLE("Console"),
+    NETWORK("Network"),
+    DOM("DOM & HTML"),
+    STORAGE("Storage"),
 }
 
 enum class ActiveSheet {

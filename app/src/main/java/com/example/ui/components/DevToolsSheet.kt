@@ -63,6 +63,7 @@ import com.example.ui.BrowserTab
 import com.example.ui.ConsoleLogEntry
 import com.example.ui.DevToolsTab
 import com.example.ui.NetworkRequestEntry
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.AmberWarn
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldShield
@@ -83,6 +84,7 @@ fun DevToolsSheet(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
 
     CosmicSpaceBackdrop(isIncognito = tab.isIncognito) {
         Column(
@@ -104,9 +106,9 @@ fun DevToolsSheet(
                 ) {
                     Icon(Icons.Default.DeveloperMode, contentDescription = null, tint = ElectricCyan)
                     Column {
-                        Text("ابزارهای توسعه‌دهنده (DevTools)", style = MaterialTheme.typography.titleMedium)
+                        Text(s.devToolsTitle, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = tab.url.ifBlank { "صفحه شروع" },
+                            text = tab.url.ifBlank { s.startPageSubUrl },
                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -118,7 +120,7 @@ fun DevToolsSheet(
                     onClick = onDismiss,
                     modifier = Modifier.testTag("close_devtools_button"),
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "بستن DevTools")
+                    Icon(Icons.Default.Close, contentDescription = s.closeDevToolsDesc)
                 }
             }
 
@@ -130,7 +132,7 @@ fun DevToolsSheet(
                     Tab(
                         selected = selectedTab == devTab,
                         onClick = { onSelectDevToolsTab(devTab) },
-                        text = { Text(devTab.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        text = { Text(s.devToolsTabLabel(devTab), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     )
                 }
             }
@@ -172,6 +174,7 @@ private fun ConsolePane(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalAppStrings.current
     var jsInput by remember { mutableStateOf("") }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -183,12 +186,12 @@ private fun ConsolePane(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "لاگ‌های کنسول (${logs.size})",
+                text = String.format(s.consoleLogsHeaderFormat, logs.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             IconButton(onClick = onClear) {
-                Icon(Icons.Default.DeleteOutline, contentDescription = "پاکسازی کنسول")
+                Icon(Icons.Default.DeleteOutline, contentDescription = s.clearConsoleDesc)
             }
         }
         HorizontalDivider()
@@ -202,7 +205,7 @@ private fun ConsolePane(
                 if (logs.isEmpty()) {
                     item {
                         Text(
-                            text = "// No console output yet. Run JavaScript below (e.g. document.title)",
+                            text = s.consoleEmptyHint,
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFontFamily),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -285,7 +288,7 @@ private fun ConsolePane(
                     },
                     modifier = Modifier.testTag("devtools_js_run_button"),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "اجرای کد جاوااسکریپت", tint = ElectricCyan)
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = s.runJsDesc, tint = ElectricCyan)
                 }
             }
         }
@@ -298,6 +301,7 @@ private fun NetworkPane(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalAppStrings.current
     var filter by remember { mutableStateOf("ALL") }
     val filtered = remember(requests, filter) {
         when (filter) {
@@ -322,13 +326,13 @@ private fun NetworkPane(
                     .weight(1f)
                     .horizontalScroll(rememberScrollState()),
             ) {
-                FilterChip(selected = filter == "ALL", onClick = { filter = "ALL" }, label = { Text("همه (${requests.size})") })
-                FilterChip(selected = filter == "BLOCKED", onClick = { filter = "BLOCKED" }, label = { Text("مسدودشده") })
-                FilterChip(selected = filter == "MEDIA", onClick = { filter = "MEDIA" }, label = { Text("مدیا") })
-                FilterChip(selected = filter == "XHR", onClick = { filter = "XHR" }, label = { Text("XHR/API") })
+                FilterChip(selected = filter == "ALL", onClick = { filter = "ALL" }, label = { Text(String.format(s.filterAllFormat, requests.size)) })
+                FilterChip(selected = filter == "BLOCKED", onClick = { filter = "BLOCKED" }, label = { Text(s.filterBlocked) })
+                FilterChip(selected = filter == "MEDIA", onClick = { filter = "MEDIA" }, label = { Text(s.filterMedia) })
+                FilterChip(selected = filter == "XHR", onClick = { filter = "XHR" }, label = { Text(s.filterXhr) })
             }
             IconButton(onClick = onClear) {
-                Icon(Icons.Default.DeleteOutline, contentDescription = "پاکسازی شبکه")
+                Icon(Icons.Default.DeleteOutline, contentDescription = s.clearNetworkDesc)
             }
         }
         HorizontalDivider()
@@ -413,6 +417,7 @@ private fun DomPane(
     onCopy: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalAppStrings.current
     val clipboard = LocalClipboardManager.current
     val snap = tab.domSnapshot
 
@@ -424,18 +429,18 @@ private fun DomPane(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("HTML DOM و متا تگ‌ها", style = MaterialTheme.typography.labelMedium)
+            Text(s.domHeaderTitle, style = MaterialTheme.typography.labelMedium)
             Row {
                 IconButton(
                     onClick = {
                         clipboard.setText(AnnotatedString(snap.htmlSource))
-                        onCopy("کد سورس HTML کپی شد")
+                        onCopy(s.copiedHtmlToast)
                     },
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "کپی سورس HTML")
+                    Icon(Icons.Default.ContentCopy, contentDescription = s.copyHtmlSourceDesc)
                 }
                 IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "به‌روزرسانی DOM")
+                    Icon(Icons.Default.Refresh, contentDescription = s.refreshDomDesc)
                 }
             }
         }
@@ -482,7 +487,7 @@ private fun DomPane(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = snap.htmlSource.ifBlank { "یک صفحه وب را بارگذاری کنید و دکمه Refresh را بزنید." },
+                        text = snap.htmlSource.ifBlank { s.domEmptyHint },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFontFamily),
                         color = Color(0xFFCBD5E1),
                         modifier = Modifier.padding(12.dp),
@@ -500,6 +505,7 @@ private fun StoragePane(
     onCopy: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalAppStrings.current
     val clipboard = LocalClipboardManager.current
     val snap = tab.domSnapshot
 
@@ -511,9 +517,9 @@ private fun StoragePane(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("کوکی‌ها، LocalStorage و User-Agent", style = MaterialTheme.typography.labelMedium)
+            Text(s.storageHeaderTitle, style = MaterialTheme.typography.labelMedium)
             IconButton(onClick = onRefresh) {
-                Icon(Icons.Default.Refresh, contentDescription = "به‌روزرسانی حافظه")
+                Icon(Icons.Default.Refresh, contentDescription = s.refreshStorageDesc)
             }
         }
         HorizontalDivider()
@@ -528,23 +534,23 @@ private fun StoragePane(
             ) {
                 StorageBlock("Viewport & DPR", snap.viewport.ifBlank { "N/A" }, onCopy = {
                     clipboard.setText(AnnotatedString(snap.viewport))
-                    onCopy("کپی شد")
+                    onCopy(s.copiedGenericToast)
                 })
                 StorageBlock("User-Agent", snap.userAgent.ifBlank { "Default Chrome Mobile" }, onCopy = {
                     clipboard.setText(AnnotatedString(snap.userAgent))
-                    onCopy("User-Agent کپی شد")
+                    onCopy(s.copiedUaToast)
                 })
-                StorageBlock("Cookies", snap.cookies.ifBlank { "(هیچ کوکی فعالی ثبت نشده)" }, onCopy = {
+                StorageBlock("Cookies", snap.cookies.ifBlank { s.noActiveCookies }, onCopy = {
                     clipboard.setText(AnnotatedString(snap.cookies))
-                    onCopy("کوکی‌ها کپی شدند")
+                    onCopy(s.copiedCookiesToast)
                 })
                 StorageBlock("localStorage", snap.localStorageJson, onCopy = {
                     clipboard.setText(AnnotatedString(snap.localStorageJson))
-                    onCopy("localStorage کپی شد")
+                    onCopy(s.copiedLocalStorageToast)
                 })
                 StorageBlock("sessionStorage", snap.sessionStorageJson, onCopy = {
                     clipboard.setText(AnnotatedString(snap.sessionStorageJson))
-                    onCopy("sessionStorage کپی شد")
+                    onCopy(s.copiedSessionStorageToast)
                 })
             }
         }
@@ -557,6 +563,7 @@ private fun StorageBlock(
     value: String,
     onCopy: () -> Unit,
 ) {
+    val s = LocalAppStrings.current
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -577,7 +584,7 @@ private fun StorageBlock(
                     color = ElectricCyan,
                 )
                 IconButton(onClick = onCopy) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "کپی $title", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = String.format(s.copyFieldFormat, title), modifier = Modifier.size(18.dp))
                 }
             }
             Text(

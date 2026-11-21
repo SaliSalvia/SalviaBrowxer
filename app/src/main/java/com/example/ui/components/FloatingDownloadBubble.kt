@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChromeSilver
 import com.example.ui.theme.CosmicViolet
 import com.example.ui.theme.ElectricCyan
@@ -74,6 +75,7 @@ fun FloatingDownloadBubble(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalAppStrings.current
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -199,7 +201,7 @@ fun FloatingDownloadBubble(
         ) {
             Icon(
                 imageVector = Icons.Default.Download,
-                contentDescription = "حباب شناور تشخیص و دانلود مدیا",
+                contentDescription = s.downloadBubbleDesc,
                 tint = if (hasMedia) StarlightWhite else ChromeSilver.copy(alpha = 0.8f),
                 modifier = Modifier.size(26.dp),
             )

@@ -23,7 +23,7 @@ class BrowserRepository(private val db: BrowserDatabase) {
 
     fun isBookmarked(url: String): Flow<Boolean> = bookmarkDao.isBookmarked(url)
 
-    suspend fun addBookmark(title: String, url: String, category: String = "نشانک‌ها", pinned: Boolean = false) {
+    suspend fun addBookmark(title: String, url: String, category: String = "Bookmarks", pinned: Boolean = false) {
         bookmarkDao.insert(
             BookmarkEntity(
                 title = title.ifBlank { url },

@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">SalviaBrowxser</string>
+    <string name="omnibox_placeholder">جستجو یا وارد کردن آدرس وب…</string>
+    <string name="incognito_banner">حالت ناشناس فعال است</string>
+    <string name="error_invalid_url">آدرس وب نامعتبر است</string>
+    <string name="media_detected_title">مدیای قابل دانلود شناسایی شد</string>
+    <string name="no_media_detected">ویدیوی اصلی در این صفحه شناسایی نشد</string>
+    <string name="adblock_shield_active">ضد تبلیغ</string>
+</resources>

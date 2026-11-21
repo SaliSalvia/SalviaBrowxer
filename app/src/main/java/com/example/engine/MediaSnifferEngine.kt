@@ -89,7 +89,7 @@ class MediaSnifferEngine {
                     isMainVideo = true,
                     qualities = listOf(
                         MediaQualityOption(
-                            label = "کیفیت خودکار (HLS → MP4)",
+                            label = "Auto Quality (HLS -> MP4)",
                             resolutionHeight = 720,
                             url = mediaUrl,
                             format = "HLS",
@@ -143,13 +143,13 @@ class MediaSnifferEngine {
         val format = inferFormat(mediaUrl, contentType)
         val guessedHeight = inferHeightFromUrl(mediaUrl)
         val qualityLabel = when {
-            isAudio -> "صدا ($format)"
+            isAudio -> "Audio ($format)"
             guessedHeight >= 2160 -> "4K Ultra HD ($format)"
             guessedHeight >= 1080 -> "1080p Full HD ($format)"
             guessedHeight >= 720 -> "720p HD ($format)"
             guessedHeight >= 480 -> "480p SD ($format)"
             guessedHeight > 0 -> "${guessedHeight}p ($format)"
-            else -> "کیفیت اصلی ($format)"
+            else -> "Original ($format)"
         }
 
         DetectedMedia(
@@ -214,7 +214,7 @@ class MediaSnifferEngine {
                     }
                     val res = sObj.optInt("height", height)
                     val sLabel = sObj.optString("label", "").ifBlank {
-                        if (res > 0) "${res}p" else "کیفیت اصلی"
+                        if (res > 0) "${res}p" else "Original"
                     }
                     val isHls = sUrl.lowercase().contains(".m3u8")
                     val isDash = sUrl.lowercase().contains(".mpd")
@@ -247,11 +247,11 @@ class MediaSnifferEngine {
                 }
                 val h = if (height > 0) height else inferHeightFromUrl(src)
                 val qLabel = when {
-                    isAudio -> "صدا ($fmt)"
+                    isAudio -> "Audio ($fmt)"
                     h >= 1080 -> "1080p Full HD ($fmt)"
                     h >= 720 -> "720p HD ($fmt)"
                     h > 0 -> "${h}p ($fmt)"
-                    else -> "کیفیت اصلی ($fmt)"
+                    else -> "Original ($fmt)"
                 }
                 qualityList.add(
                     MediaQualityOption(
@@ -424,7 +424,7 @@ class MediaSnifferEngine {
             if (!firstAudio.isNullOrBlank()) {
                 sorted.add(
                     MediaQualityOption(
-                        label = "صدا فقط (M4A)",
+                        label = "Audio Only (M4A)",
                         resolutionHeight = 0,
                         url = firstAudio,
                         format = "M4A",
@@ -552,7 +552,7 @@ class MediaSnifferEngine {
             if (bestAudioUrl.isNotBlank()) {
                 results.add(
                     MediaQualityOption(
-                        label = "صدا فقط (M4A)",
+                        label = "Audio Only (M4A)",
                         resolutionHeight = 0,
                         url = bestAudioUrl,
                         format = "M4A",
@@ -623,7 +623,7 @@ class MediaSnifferEngine {
         val cleaned = pageTitle.trim()
         if (cleaned.isNotBlank() && cleaned != "about:blank") return cleaned.take(72)
         val segment = runCatching { Uri.parse(fallbackUrl).lastPathSegment }.getOrNull().orEmpty()
-        return segment.ifBlank { "ویدیوی صفحه" }.take(60)
+        return segment.ifBlank { "Page Video" }.take(60)
     }
 
     /**

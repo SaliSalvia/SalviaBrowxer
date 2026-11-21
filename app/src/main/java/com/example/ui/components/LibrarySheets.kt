@@ -74,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.AdBlockRuleEntity
+import com.example.data.local.AppLanguage
 import com.example.data.local.BookmarkEntity
 import com.example.data.local.BrowserSettings
 import com.example.data.local.DownloadEntity
@@ -81,6 +82,7 @@ import com.example.data.local.HistoryEntity
 import com.example.data.local.SearchEngine
 import com.example.data.local.ThemePreference
 import com.example.ui.BrowserTab
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldShield
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -97,23 +99,24 @@ fun DownloadsSheet(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     val context = LocalContext.current
 
     FullSheetScaffold(
-        title = "مدیریت دانلودها (${downloads.size})",
+        title = String.format(s.downloadsTitleFormat, downloads.size),
         icon = Icons.Default.Download,
         onDismiss = onDismiss,
         trailingAction = {
             if (downloads.isNotEmpty()) {
-                TextButton(onClick = onClearFinished) { Text("پاکسازی") }
+                TextButton(onClick = onClearFinished) { Text(s.clearAction) }
             }
         },
     ) {
         if (downloads.isEmpty()) {
             EmptyStateBox(
                 icon = Icons.Default.Download,
-                title = "لیست دانلودها خالی است",
-                subtitle = "فایل‌ها و ویدیوهای دانلود شده با جزئیات سرعت، توقف و ادامه اینجا نمایش داده می‌شوند.",
+                title = s.downloadsEmptyTitle,
+                subtitle = s.downloadsEmptySubtitle,
             )
         } else {
             LazyColumn(
@@ -144,11 +147,11 @@ fun DownloadsSheet(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     val speedStr = if (dl.status == "DOWNLOADING" && dl.speedBytesPerSec > 0) {
-                                        " • ${formatBytes(dl.speedBytesPerSec)}/s"
+                                        " • ${formatBytes(dl.speedBytesPerSec, s.unknownSize)}/s"
                                     } else ""
                                     Text(
-                                        text = "${dl.qualityLabel} • ${formatBytes(dl.downloadedBytes)}" +
-                                            (if (dl.totalBytes > 0) " / ${formatBytes(dl.totalBytes)}" else "") +
+                                        text = "${dl.qualityLabel} • ${formatBytes(dl.downloadedBytes, s.unknownSize)}" +
+                                            (if (dl.totalBytes > 0) " / ${formatBytes(dl.totalBytes, s.unknownSize)}" else "") +
                                             speedStr,
                                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -159,19 +162,19 @@ fun DownloadsSheet(
                                     "DOWNLOADING", "QUEUED" -> Row {
                                         if (dl.supportsResume) {
                                             IconButton(onClick = { onPause(dl) }) {
-                                                Icon(Icons.Default.Pause, contentDescription = "توقف موقت", tint = ElectricCyan)
+                                                Icon(Icons.Default.Pause, contentDescription = s.pauseDesc, tint = ElectricCyan)
                                             }
                                         }
                                         IconButton(onClick = { onCancel(dl) }) {
-                                            Icon(Icons.Default.Cancel, contentDescription = "لغو دانلود", tint = RoseDanger)
+                                            Icon(Icons.Default.Cancel, contentDescription = s.cancelDownloadDesc, tint = RoseDanger)
                                         }
                                     }
                                     "PAUSED" -> Row {
                                         IconButton(onClick = { onResume(dl) }) {
-                                            Icon(Icons.Default.PlayArrow, contentDescription = "ادامه دانلود", tint = EmeraldShield)
+                                            Icon(Icons.Default.PlayArrow, contentDescription = s.resumeDesc, tint = EmeraldShield)
                                         }
                                         IconButton(onClick = { onCancel(dl) }) {
-                                            Icon(Icons.Default.Cancel, contentDescription = "لغو دانلود", tint = RoseDanger)
+                                            Icon(Icons.Default.Cancel, contentDescription = s.cancelDownloadDesc, tint = RoseDanger)
                                         }
                                     }
                                     "COMPLETED" -> {
@@ -188,20 +191,20 @@ fun DownloadsSheet(
                                                         }
                                                     },
                                                 ) {
-                                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "باز کردن فایل", tint = EmeraldShield)
+                                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = s.openFileDesc, tint = EmeraldShield)
                                                 }
                                             }
                                             IconButton(onClick = { onDelete(dl) }) {
-                                                Icon(Icons.Default.Delete, contentDescription = "حذف")
+                                                Icon(Icons.Default.Delete, contentDescription = s.deleteButton)
                                             }
                                         }
                                     }
                                     else -> Row {
                                         IconButton(onClick = { onResume(dl) }) {
-                                            Icon(Icons.Default.Refresh, contentDescription = "تلاش مجدد", tint = ElectricCyan)
+                                            Icon(Icons.Default.Refresh, contentDescription = s.retryDesc, tint = ElectricCyan)
                                         }
                                         IconButton(onClick = { onDelete(dl) }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "حذف")
+                                            Icon(Icons.Default.Delete, contentDescription = s.deleteButton)
                                         }
                                     }
                                 }
@@ -224,7 +227,7 @@ fun DownloadsSheet(
                                     )
                                 }
                                 if (dl.status == "PAUSED") {
-                                    Text("متوقف شده — آماده ادامه از ادامه حجم دریافت‌شده", style = MaterialTheme.typography.labelSmall, color = ElectricCyan)
+                                    Text(s.pausedResumeHint, style = MaterialTheme.typography.labelSmall, color = ElectricCyan)
                                 }
                             } else {
                                 val statusColor = when (dl.status) {
@@ -233,9 +236,9 @@ fun DownloadsSheet(
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                                 val statusText = when (dl.status) {
-                                    "COMPLETED" -> "تکمیل شده • ذخیره در Downloads/SalviaBrowxser"
-                                    "FAILED" -> "خطا در دانلود"
-                                    else -> "لغو شده"
+                                    "COMPLETED" -> s.downloadCompletedText
+                                    "FAILED" -> s.downloadFailedText
+                                    else -> s.downloadCancelledText
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Icon(
@@ -264,15 +267,16 @@ fun BookmarksSheet(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     var showAddDialog by remember { mutableStateOf(false) }
 
     FullSheetScaffold(
-        title = "نشانک‌ها (${bookmarks.size})",
+        title = String.format(s.bookmarksTitleFormat, bookmarks.size),
         icon = Icons.Default.Bookmark,
         onDismiss = onDismiss,
         trailingAction = {
             IconButton(onClick = { showAddDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "افزودن نشانک")
+                Icon(Icons.Default.Add, contentDescription = s.addBookmarkDesc)
             }
         },
     ) {
@@ -307,7 +311,7 @@ fun BookmarksSheet(
                             )
                         }
                         IconButton(onClick = { onDeleteBookmark(bm.id) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "حذف نشانک")
+                            Icon(Icons.Default.Delete, contentDescription = s.removeBookmarkDesc)
                         }
                     }
                 }
@@ -321,13 +325,13 @@ fun BookmarksSheet(
         var pinned by remember { mutableStateOf(true) }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("افزودن نشانک جدید") },
+            title = { Text(s.newBookmarkDialogTitle) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("عنوان") }, singleLine = true)
-                    OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("آدرس وب") }, singleLine = true)
+                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text(s.bookmarkTitleLabel) }, singleLine = true)
+                    OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text(s.bookmarkUrlLabel) }, singleLine = true)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        Text("سنجاق در صفحه شروع")
+                        Text(s.pinStartPageLabel)
                         Switch(checked = pinned, onCheckedChange = { pinned = it })
                     }
                 }
@@ -339,10 +343,10 @@ fun BookmarksSheet(
                         showAddDialog = false
                     },
                     enabled = url.isNotBlank(),
-                ) { Text("ذخیره") }
+                ) { Text(s.saveButton) }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("انصراف") }
+                TextButton(onClick = { showAddDialog = false }) { Text(s.cancelButton) }
             },
         )
     }
@@ -357,14 +361,15 @@ fun HistorySheet(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     FullSheetScaffold(
-        title = "تاریخچه مرور (${history.size})",
+        title = String.format(s.historyTitleFormat, history.size),
         icon = Icons.Default.History,
         onDismiss = onDismiss,
         trailingAction = {
             if (history.isNotEmpty()) {
                 IconButton(onClick = onClearAll) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = "پاکسازی کل تاریخچه", tint = RoseDanger)
+                    Icon(Icons.Default.DeleteSweep, contentDescription = s.clearHistoryDesc, tint = RoseDanger)
                 }
             }
         },
@@ -372,8 +377,8 @@ fun HistorySheet(
         if (history.isEmpty()) {
             EmptyStateBox(
                 icon = Icons.Default.History,
-                title = "تاریخچه‌ای ثبت نشده است",
-                subtitle = "بازدیدهای حالت ناشناس هرگز در تاریخچه ذخیره نمی‌شوند.",
+                title = s.historyEmptyTitle,
+                subtitle = s.historyEmptySubtitle,
             )
         } else {
             LazyColumn(
@@ -406,7 +411,7 @@ fun HistorySheet(
                                 )
                             }
                             IconButton(onClick = { onDeleteItem(item.id) }) {
-                                Icon(Icons.Default.Close, contentDescription = "حذف")
+                                Icon(Icons.Default.Close, contentDescription = s.deleteButton)
                             }
                         }
                     }
@@ -427,6 +432,7 @@ fun SiteInfoSheet(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     val host = remember(tab.url) { runCatching { Uri.parse(tab.url).host.orEmpty() }.getOrDefault("") }
     val shieldActiveForSite = adBlockEnabled && !isSiteWhitelisted
 
@@ -445,9 +451,16 @@ fun SiteInfoSheet(
                     tint = if (tab.isSecureHttps || tab.isStartPage) EmeraldShield else MaterialTheme.colorScheme.tertiary,
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(tab.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        text = if (tab.isStartPage) "محیط امن SalviaBrowxser" else if (tab.isSecureHttps) "اتصال رمزنگاری‌شده HTTPS معتبر" else "اتصال غیررمزنگاری HTTP",
+                        text = if (tab.isStartPage) {
+                            if (tab.isIncognito) s.incognitoStartTitle else s.startPageTitle
+                        } else tab.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = if (tab.isStartPage) s.secureEnvLabel else if (tab.isSecureHttps) s.httpsValidLabel else s.httpUnencryptedLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = if (tab.isSecureHttps || tab.isStartPage) EmeraldShield else MaterialTheme.colorScheme.tertiary,
                     )
@@ -465,19 +478,19 @@ fun SiteInfoSheet(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(tab.blockedAdsCount.toString(), style = MaterialTheme.typography.titleLarge, color = EmeraldShield)
-                        Text("تبلیغ مسدود", style = MaterialTheme.typography.labelSmall)
+                        Text(s.statAdsBlocked, style = MaterialTheme.typography.labelSmall)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(tab.blockedTrackersCount.toString(), style = MaterialTheme.typography.titleLarge, color = ElectricCyan)
-                        Text("ردیاب مسدود", style = MaterialTheme.typography.labelSmall)
+                        Text(s.statTrackersBlocked, style = MaterialTheme.typography.labelSmall)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = if (shieldActiveForSite) "فعال" else if (isSiteWhitelisted) "متوقف" else "خاموش",
+                            text = if (shieldActiveForSite) s.statusActive else if (isSiteWhitelisted) s.statusPaused else s.statusOff,
                             style = MaterialTheme.typography.titleMedium,
                             color = if (shieldActiveForSite) EmeraldShield else MaterialTheme.colorScheme.tertiary,
                         )
-                        Text("سپر Aloha", style = MaterialTheme.typography.labelSmall)
+                        Text(s.adBlockerLabel, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -497,11 +510,11 @@ fun SiteInfoSheet(
                     ) {
                         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
-                                text = "سپر ضدتبلیغ Aloha در این سایت",
+                                text = s.siteAdBlockerTitle,
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                             )
                             Text(
-                                text = if (isSiteWhitelisted) "سپر برای $host متوقف شده (Whitelist)" else "مسدودسازی تبلیغ، پاپ‌آپ و ماینر روی $host",
+                                text = if (isSiteWhitelisted) String.format(s.siteAdBlockerPausedFormat, host) else String.format(s.siteAdBlockerActiveFormat, host),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -530,7 +543,7 @@ fun SiteInfoSheet(
                     .height(48.dp)
                     .testTag("site_toggle_desktop_button"),
             ) {
-                Text(if (tab.isDesktopMode) "تغییر به نمای موبایل" else "تغییر به نمای دسکتاپ")
+                Text(if (tab.isDesktopMode) s.switchToMobileView else s.switchToDesktopView)
             }
         }
     }
@@ -548,17 +561,19 @@ fun SettingsSheet(
     onToggleDoNotTrack: (Boolean) -> Unit,
     onSelectSearchEngine: (SearchEngine) -> Unit,
     onSelectTheme: (ThemePreference) -> Unit,
+    onSelectLanguage: (AppLanguage) -> Unit,
     onAddAdRule: (String, Boolean) -> Unit,
     onDeleteAdRule: (Long) -> Unit,
     onClearAllBrowsingData: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     var newRuleText by remember { mutableStateOf("") }
     var newRuleIsWhitelist by remember { mutableStateOf(false) }
 
     FullSheetScaffold(
-        title = "تنظیمات و حریم خصوصی",
+        title = s.settingsTitle,
         icon = Icons.Default.Settings,
         onDismiss = onDismiss,
     ) {
@@ -569,16 +584,50 @@ fun SettingsSheet(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            SectionTitle("سپر حریم خصوصی و مسدودسازی")
-            SettingsSwitchRow("مسدودکننده تبلیغات پیشرفته (AdBlock)", "حذف بنرها، پاپ‌آپ‌ها و تگ‌های تبلیغاتی", settings.adBlockEnabled, onToggleAdBlock)
-            SettingsSwitchRow("مسدودسازی ردیاب‌ها (Trackers)", "جلوگیری از اسکریپت‌های آمارگیر و ردیاب بین‌سایتی", settings.trackerBlockEnabled, onToggleTrackerBlock)
-            SettingsSwitchRow("ارتقای خودکار به HTTPS", "تبدیل خودکار آدرس‌های ناامن HTTP به HTTPS", settings.httpsUpgradeEnabled, onToggleHttpsUpgrade)
-            SettingsSwitchRow("مسدودسازی کوکی شخص ثالث در حالت ناشناس", "افزایش ایزولاسیون تب‌های ناشناس", settings.blockThirdPartyCookiesIncognito, onToggleIncognito3pCookies)
-            SettingsSwitchRow("ارسال درخواست عدم ردیابی (Do Not Track)", "اعلام عدم تمایل به ردیابی به وب‌سایت‌ها", settings.doNotTrackEnabled, onToggleDoNotTrack)
-            SettingsSwitchRow("اجرای جاوااسکریپت (JavaScript)", "برای ورود به جیمیل و وب‌سایت‌های مدرن ضروری است", settings.javaScriptEnabled, onToggleJavaScript)
+            SectionTitle(s.settingsLanguageSection)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                AppLanguage.entries.forEach { lang ->
+                    val selected = settings.appLanguage == lang
+                    if (selected) {
+                        Button(
+                            onClick = { onSelectLanguage(lang) },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("language_option_${lang.code}"),
+                        ) {
+                            Text(lang.nativeLabel, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { onSelectLanguage(lang) },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("language_option_${lang.code}"),
+                        ) {
+                            Text(lang.nativeLabel)
+                        }
+                    }
+                }
+            }
 
             HorizontalDivider()
-            SectionTitle("موتور جستجوی پیش‌فرض")
+            SectionTitle(s.settingsPrivacySection)
+            SettingsSwitchRow(s.settingAdBlockTitle, s.settingAdBlockSub, settings.adBlockEnabled, onToggleAdBlock)
+            SettingsSwitchRow(s.settingTrackerTitle, s.settingTrackerSub, settings.trackerBlockEnabled, onToggleTrackerBlock)
+            SettingsSwitchRow(s.settingHttpsTitle, s.settingHttpsSub, settings.httpsUpgradeEnabled, onToggleHttpsUpgrade)
+            SettingsSwitchRow(s.settingIncognitoCookieTitle, s.settingIncognitoCookieSub, settings.blockThirdPartyCookiesIncognito, onToggleIncognito3pCookies)
+            SettingsSwitchRow(s.settingDntTitle, s.settingDntSub, settings.doNotTrackEnabled, onToggleDoNotTrack)
+            SettingsSwitchRow(s.settingJsTitle, s.settingJsSub, settings.javaScriptEnabled, onToggleJavaScript)
+
+            HorizontalDivider()
+            SectionTitle(s.settingsSearchEngineSection)
             SearchEngine.entries.forEach { engine ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -589,12 +638,12 @@ fun SettingsSheet(
                         .padding(vertical = 4.dp),
                 ) {
                     RadioButton(selected = settings.searchEngine == engine, onClick = { onSelectSearchEngine(engine) })
-                    Text(engine.displayName, style = MaterialTheme.typography.bodyMedium)
+                    Text(s.searchEngineLabel(engine), style = MaterialTheme.typography.bodyMedium)
                 }
             }
 
             HorizontalDivider()
-            SectionTitle("ظاهر مرورگر")
+            SectionTitle(s.settingsThemeSection)
             ThemePreference.entries.forEach { theme ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -605,17 +654,17 @@ fun SettingsSheet(
                         .padding(vertical = 4.dp),
                 ) {
                     RadioButton(selected = settings.themePreference == theme, onClick = { onSelectTheme(theme) })
-                    Text(theme.label, style = MaterialTheme.typography.bodyMedium)
+                    Text(s.themeLabel(theme), style = MaterialTheme.typography.bodyMedium)
                 }
             }
 
             HorizontalDivider()
-            SectionTitle("قوانین سفارشی AdBlock (پشتیبانی از EasyList)")
+            SectionTitle(s.settingsCustomRulesSection)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = newRuleText,
                     onValueChange = { newRuleText = it },
-                    label = { Text("مثلاً ||ads.site^ یا ##.banner") },
+                    label = { Text(s.customRuleHint) },
                     singleLine = true,
                     modifier = Modifier.weight(1f).testTag("custom_adrule_input"),
                 )
@@ -627,11 +676,11 @@ fun SettingsSheet(
                     enabled = newRuleText.isNotBlank(),
                     modifier = Modifier.height(48.dp).testTag("add_adrule_button"),
                 ) {
-                    Text("افزودن")
+                    Text(s.addButton)
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text("حالت استثنا (Whitelist به جای مسدودسازی)", style = MaterialTheme.typography.bodySmall)
+                Text(s.whitelistModeLabel, style = MaterialTheme.typography.bodySmall)
                 Switch(checked = newRuleIsWhitelist, onCheckedChange = { newRuleIsWhitelist = it })
             }
             customAdRules.forEach { rule ->
@@ -649,7 +698,7 @@ fun SettingsSheet(
                         style = MaterialTheme.typography.labelMedium.copy(fontFamily = JetBrainsMonoFontFamily),
                     )
                     IconButton(onClick = { onDeleteAdRule(rule.id) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "حذف قانون")
+                        Icon(Icons.Default.Delete, contentDescription = s.deleteRuleDesc)
                     }
                 }
             }
@@ -666,7 +715,7 @@ fun SettingsSheet(
             ) {
                 Icon(Icons.Default.DeleteSweep, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("پاکسازی کامل تاریخچه، کوکی‌ها و کش")
+                Text(s.clearAllDataButton)
             }
         }
     }
@@ -680,6 +729,7 @@ private fun FullSheetScaffold(
     trailingAction: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    val s = LocalAppStrings.current
     CosmicSpaceBackdrop {
         Column(
             modifier = Modifier
@@ -702,7 +752,7 @@ private fun FullSheetScaffold(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     trailingAction()
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "بستن")
+                        Icon(Icons.Default.Close, contentDescription = s.closeDesc)
                     }
                 }
             }

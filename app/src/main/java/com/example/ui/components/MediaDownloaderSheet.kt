@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.ui.DetectedMedia
 import com.example.ui.MediaQualityOption
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldShield
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -73,6 +74,7 @@ fun MediaDownloaderSheet(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
@@ -106,17 +108,17 @@ fun MediaDownloaderSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
-                            contentDescription = "موتور تشخیص و دانلود مدیا",
+                            contentDescription = s.mediaDetectorTitle,
                             tint = Color(0xFF031C18),
                         )
                     }
                     Column {
                         Text(
-                            text = "تشخیص هوشمند ویدیو و مدیا",
+                            text = s.mediaDetectorTitle,
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "فیلتر خودکار کلیپ‌های تبلیغاتی پیش از ویدیو • اولویت با ویدیو اصلی",
+                            text = s.mediaDetectorSubtitle,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -127,10 +129,10 @@ fun MediaDownloaderSheet(
                         onClick = onRescanMedia,
                         modifier = Modifier.testTag("rescan_media_header_button"),
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "اسکن مجدد مدیا", tint = ElectricCyan)
+                        Icon(Icons.Default.Refresh, contentDescription = s.rescanMediaDesc, tint = ElectricCyan)
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "بستن")
+                        Icon(Icons.Default.Close, contentDescription = s.closeDesc)
                     }
                 }
             }
@@ -155,11 +157,11 @@ fun MediaDownloaderSheet(
                             modifier = Modifier.size(44.dp),
                         )
                         Text(
-                            text = "هنوز ویدیوی اصلی در این صفحه شناسایی نشده است",
+                            text = s.noMediaTitle,
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Text(
-                            text = "پخش ویدیو را در صفحه شروع کنید؛ حباب دانلود به محض تشخیص استریم (MP4 / HLS / DASH) روشن می‌شود و کلیپ‌های تبلیغاتی کوتاه نادیده گرفته می‌شوند.",
+                            text = s.noMediaBody,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -171,7 +173,7 @@ fun MediaDownloaderSheet(
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("اسکن عمیق مجدد صفحه")
+                            Text(s.deepRescanButton)
                         }
                     }
                 }
@@ -202,6 +204,7 @@ private fun DetectedMediaCard(
     media: DetectedMedia,
     onDownload: (String, MediaQualityOption) -> Unit,
 ) {
+    val s = LocalAppStrings.current
     var selectedQuality by remember(media.id, media.qualities) {
         mutableStateOf(media.qualities.firstOrNull())
     }
@@ -237,12 +240,12 @@ private fun DetectedMediaCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Star,
-                        contentDescription = "ویدیو اصلی",
+                        contentDescription = s.mainVideoBadge,
                         tint = EmeraldShield,
                         modifier = Modifier.size(15.dp),
                     )
                     Text(
-                        text = "ویدیو اصلی صفحه",
+                        text = s.mainVideoBadge,
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = EmeraldShield,
                     )
@@ -288,7 +291,7 @@ private fun DetectedMediaCard(
                     val metaParts = buildList {
                         if (media.durationSeconds > 0) add(formatDuration(media.durationSeconds))
                         if (media.height > 0) add("${media.width}x${media.height}")
-                        add("${media.qualities.size} کیفیت")
+                        add(String.format(s.qualitiesCountFormat, media.qualities.size))
                     }
                     Text(
                         text = metaParts.joinToString(" • "),
@@ -310,7 +313,7 @@ private fun DetectedMediaCard(
                     modifier = Modifier.size(18.dp),
                 )
                 Text(
-                    text = "انتخاب کیفیت دانلود:",
+                    text = s.selectQualityLabel,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -342,7 +345,7 @@ private fun DetectedMediaCard(
                         if (isSelected) {
                             Icon(
                                 imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "انتخاب‌شده",
+                                contentDescription = s.selectedDesc,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -355,7 +358,7 @@ private fun DetectedMediaCard(
                                 color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                             )
                             val sizeLabel = if (quality.sizeBytes > 0) {
-                                formatBytes(quality.sizeBytes)
+                                formatBytes(quality.sizeBytes, s.unknownSize)
                             } else if (quality.bandwidthBps > 0) {
                                 "${quality.bandwidthBps / 1000} kbps"
                             } else {
@@ -374,7 +377,7 @@ private fun DetectedMediaCard(
             OutlinedTextField(
                 value = customFileName,
                 onValueChange = { customFileName = it },
-                label = { Text("نام فایل خروجی") },
+                label = { Text(s.outputFileNameLabel) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -400,7 +403,7 @@ private fun DetectedMediaCard(
                 Icon(Icons.Default.Download, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "دانلود با کیفیت ${selectedQuality?.label.orEmpty()}",
+                    text = String.format(s.downloadWithQualityFormat, selectedQuality?.label.orEmpty()),
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -420,8 +423,8 @@ private fun formatDuration(seconds: Double): String {
     }
 }
 
-fun formatBytes(bytes: Long): String {
-    if (bytes <= 0L) return "نامشخص"
+fun formatBytes(bytes: Long, unknownLabel: String = "Unknown"): String {
+    if (bytes <= 0L) return unknownLabel
     val kb = bytes / 1024.0
     val mb = kb / 1024.0
     val gb = mb / 1024.0

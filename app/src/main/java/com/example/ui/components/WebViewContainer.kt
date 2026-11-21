@@ -65,6 +65,7 @@ import com.example.engine.AdBlockerEngine
 import com.example.engine.WebViewConfigurator
 import com.example.ui.BrowserTab
 import com.example.ui.BrowserViewModel
+import com.example.ui.i18n.LocalAppStrings
 
 private data class PendingSslWarning(
     val url: String,
@@ -78,13 +79,14 @@ fun WebViewContainer(
     viewModel: BrowserViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalAppStrings.current
     val context = LocalContext.current
     var pendingFileCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
     var sslWarning by remember { mutableStateOf<PendingSslWarning?>(null) }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
-    var popupTitle by remember { mutableStateOf("ورود امن / پنجره بازشو") }
+    var popupTitle by remember { mutableStateOf(s.sslPopupDefaultTitle) }
 
     val dismissPopup: () -> Unit = {
         popupWebView?.let { popup ->
@@ -223,7 +225,7 @@ fun WebViewContainer(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Lock,
-                                    contentDescription = "ورود امن",
+                                    contentDescription = s.secureSignInDesc,
                                     tint = MaterialTheme.colorScheme.secondary,
                                 )
                                 Text(
@@ -237,7 +239,7 @@ fun WebViewContainer(
                                 onClick = dismissPopup,
                                 modifier = Modifier.testTag("close_popup_button"),
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "بستن پنجره")
+                                Icon(Icons.Default.Close, contentDescription = s.closeWindowDesc)
                             }
                         }
                         AndroidView(
@@ -275,14 +277,14 @@ fun WebViewContainer(
                 icon = {
                     Icon(
                         imageVector = Icons.Default.Warning,
-                        contentDescription = "هشدار امنیتی گواهی SSL",
+                        contentDescription = s.sslDialogIconDesc,
                         tint = MaterialTheme.colorScheme.error,
                     )
                 },
-                title = { Text("هشدار گواهی امنیتی SSL") },
+                title = { Text(s.sslDialogTitle) },
                 text = {
                     Text(
-                        "گواهی امنیتی وب‌سایت زیر معتبر نیست یا منقضی شده است:\n${warning.url}\n\nآیا از ادامه دادن مطمئن هستید؟",
+                        String.format(s.sslDialogBodyFormat, warning.url),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 },
@@ -294,7 +296,7 @@ fun WebViewContainer(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     ) {
-                        Text("ادامه با ریسک")
+                        Text(s.sslProceedButton)
                     }
                 },
                 dismissButton = {
@@ -304,7 +306,7 @@ fun WebViewContainer(
                             sslWarning = null
                         },
                     ) {
-                        Text("بازگشت به امنیت")
+                        Text(s.sslBackToSafetyButton)
                     }
                 },
             )

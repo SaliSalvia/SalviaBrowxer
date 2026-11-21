@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.ui.BrowserTab
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChromeSilver
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldShield
@@ -85,6 +86,7 @@ fun TabSwitcherScreen(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     val activeTab = tabs.firstOrNull { it.id == activeTabId }
     var showIncognitoOnly by remember(activeTab?.isIncognito) {
         mutableStateOf(activeTab?.isIncognito == true)
@@ -111,7 +113,7 @@ fun TabSwitcherScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = "مدیریت تب‌ها (${tabs.size})",
+                    text = String.format(s.tabManagerTitleFormat, tabs.size),
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = if (isDark) StarlightWhite else MaterialTheme.colorScheme.onBackground,
                 )
@@ -119,7 +121,7 @@ fun TabSwitcherScreen(
                     onClick = onDismiss,
                     modifier = Modifier.testTag("close_tab_switcher_button"),
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "بستن مدیریت تب‌ها")
+                    Icon(Icons.Default.Close, contentDescription = s.closeTabManagerDesc)
                 }
             }
 
@@ -136,7 +138,7 @@ fun TabSwitcherScreen(
                     icon = { Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp)) },
                     modifier = Modifier.testTag("segment_normal_tabs"),
                 ) {
-                    Text("تب‌های عادی (${normalTabs.size})")
+                    Text(String.format(s.normalTabsSegmentFormat, normalTabs.size))
                 }
                 SegmentedButton(
                     selected = showIncognitoOnly,
@@ -145,7 +147,7 @@ fun TabSwitcherScreen(
                     icon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(18.dp)) },
                     modifier = Modifier.testTag("segment_incognito_tabs"),
                 ) {
-                    Text("ناشناس (${incognitoTabs.size})")
+                    Text(String.format(s.incognitoTabsSegmentFormat, incognitoTabs.size))
                 }
             }
 
@@ -180,7 +182,7 @@ fun TabSwitcherScreen(
                             )
                         }
                         Text(
-                            text = if (showIncognitoOnly) "هیچ تب ناشناسی باز نیست" else "هیچ تب عادی باز نیست",
+                            text = if (showIncognitoOnly) s.noIncognitoTabs else s.noNormalTabs,
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Button(
@@ -192,7 +194,7 @@ fun TabSwitcherScreen(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (showIncognitoOnly) "ایجاد تب ناشناس" else "ایجاد تب جدید")
+                            Text(if (showIncognitoOnly) s.createIncognitoTab else s.createNewTab)
                         }
                     }
                 }
@@ -243,7 +245,7 @@ fun TabSwitcherScreen(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("تب جدید", fontWeight = FontWeight.Bold)
+                            Text(s.newTabButton, fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
@@ -255,7 +257,7 @@ fun TabSwitcherScreen(
                         ) {
                             Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = StealthViolet)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("تب ناشناس", color = StealthViolet)
+                            Text(s.incognitoButton, color = StealthViolet)
                         }
 
                         if (incognitoTabs.isNotEmpty()) {
@@ -269,7 +271,7 @@ fun TabSwitcherScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.DeleteSweep,
-                                    contentDescription = "پاکسازی همه تب‌های ناشناس",
+                                    contentDescription = s.burnIncognitoDesc,
                                     tint = MaterialTheme.colorScheme.error,
                                 )
                             }
@@ -288,6 +290,7 @@ private fun TabGridCard(
     onSelect: () -> Unit,
     onClose: () -> Unit,
 ) {
+    val s = LocalAppStrings.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.25f
     val targetBorder = when {
         isActive && tab.isIncognito -> StealthViolet
@@ -350,7 +353,9 @@ private fun TabGridCard(
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        text = tab.title,
+                        text = if (tab.isStartPage) {
+                            if (tab.isIncognito) s.incognitoStartTitle else s.startPageTitle
+                        } else tab.title,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -362,14 +367,14 @@ private fun TabGridCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "بستن تب",
+                        contentDescription = s.closeTabDesc,
                         modifier = Modifier.size(16.dp),
                     )
                 }
             }
 
             Text(
-                text = if (tab.isStartPage) "صفحه شروع کیهانی" else tab.url,
+                text = if (tab.isStartPage) s.startPageSubUrl else tab.url,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFontFamily),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -393,7 +398,7 @@ private fun TabGridCard(
                             modifier = Modifier.size(13.dp),
                         )
                         Text(
-                            text = "${tab.totalBlockedOnTab} مسدود",
+                            text = String.format(s.blockedCountFormat, tab.totalBlockedOnTab),
                             style = MaterialTheme.typography.labelSmall,
                             color = EmeraldShield,
                         )
@@ -404,13 +409,13 @@ private fun TabGridCard(
 
                 if (isActive) {
                     Text(
-                        text = "فعال",
+                        text = s.tabActiveLabel,
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = if (tab.isIncognito) StealthViolet else ElectricCyan,
                     )
                 } else if (tab.isHibernated) {
                     Text(
-                        text = "کم‌مصرف",
+                        text = s.tabHibernatedLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = ChromeSilver.copy(alpha = 0.7f),
                     )

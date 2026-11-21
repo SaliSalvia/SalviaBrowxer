@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.BrowserTab
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChromeSilver
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -59,6 +60,7 @@ fun BrowserBottomBar(
     onOpenTabSwitcher: () -> Unit,
     onOpenDevTools: () -> Unit,
 ) {
+    val s = LocalAppStrings.current
     val haptic = LocalHapticFeedback.current
     val homeScale by animateFloatAsState(
         targetValue = if (tab.isStartPage) 1.14f else 1f,
@@ -97,7 +99,7 @@ fun BrowserBottomBar(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "بازگشت",
+                        contentDescription = s.navBackDesc,
                         tint = if (!tab.isStartPage || tab.canGoBack) {
                             MaterialTheme.colorScheme.onSurface
                         } else {
@@ -113,7 +115,7 @@ fun BrowserBottomBar(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "جلو",
+                        contentDescription = s.navForwardDesc,
                         tint = if (tab.canGoForward) {
                             MaterialTheme.colorScheme.onSurface
                         } else {
@@ -132,7 +134,7 @@ fun BrowserBottomBar(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             imageVector = Icons.Default.Home,
-                            contentDescription = "صفحه شروع",
+                            contentDescription = s.navHomeDesc,
                             tint = if (tab.isStartPage) ElectricCyan else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.scale(homeScale),
                         )
@@ -154,7 +156,7 @@ fun BrowserBottomBar(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Extension,
-                        contentDescription = "افزونه‌ها",
+                        contentDescription = s.navExtensionsDesc,
                         tint = if (tab.isIncognito) MaterialTheme.colorScheme.primary else NebulaMagenta,
                     )
                 }
@@ -206,7 +208,7 @@ fun BrowserBottomBar(
                 ) {
                     Icon(
                         imageVector = Icons.Default.DeveloperMode,
-                        contentDescription = "ابزارهای توسعه‌دهنده",
+                        contentDescription = s.navDevToolsDesc,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

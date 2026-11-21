@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.ActiveSheet
 import com.example.ui.BrowserTab
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.CosmicViolet
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -105,6 +106,7 @@ fun BrowserTopBar(
     onFindNext: (Boolean) -> Unit,
     onCloseFind: () -> Unit,
 ) {
+    val s = LocalAppStrings.current
     val focusManager = LocalFocusManager.current
     var urlInput by remember(tab.id, tab.url) { mutableStateOf(tab.url) }
     var isFocused by remember { mutableStateOf(false) }
@@ -174,7 +176,7 @@ fun BrowserTopBar(
                                     tab.isSecureHttps -> Icons.Default.Lock
                                     else -> Icons.Default.Warning
                                 },
-                                contentDescription = "وضعیت امنیت و مسدودکننده تبلیغات",
+                                contentDescription = s.securityStatusDesc,
                                 tint = when {
                                     tab.isIncognito -> MaterialTheme.colorScheme.primary
                                     tab.isSecureHttps || tab.isStartPage -> ElectricCyan
@@ -247,7 +249,7 @@ fun BrowserTopBar(
                                     decorationBox = { innerTextField ->
                                         if (urlInput.isEmpty()) {
                                             Text(
-                                                text = if (tab.isIncognito) "جستجوی ناشناس یا آدرس وب…" else "جستجو یا آدرس وب…",
+                                                text = if (tab.isIncognito) s.searchOrUrlIncognitoHint else s.searchOrUrlHint,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 maxLines = 1,
@@ -266,7 +268,7 @@ fun BrowserTopBar(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
-                                        contentDescription = "پاک کردن آدرس",
+                                        contentDescription = s.clearUrlDesc,
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp),
                                     )
@@ -280,7 +282,7 @@ fun BrowserTopBar(
                                 ) {
                                     Icon(
                                         imageVector = if (tab.isLoading) Icons.Default.Close else Icons.Default.Refresh,
-                                        contentDescription = if (tab.isLoading) "توقف بارگذاری" else "بارگذاری مجدد",
+                                        contentDescription = if (tab.isLoading) s.stopLoadingDesc else s.reloadDesc,
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp),
                                     )
@@ -297,7 +299,7 @@ fun BrowserTopBar(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Extension,
-                            contentDescription = "افزونه‌ها",
+                            contentDescription = s.extensionsDesc,
                             tint = if (activeExtensionsCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -320,7 +322,7 @@ fun BrowserTopBar(
                     ) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
-                            contentDescription = "منوی مرورگر",
+                            contentDescription = s.browserMenuDesc,
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -331,7 +333,7 @@ fun BrowserTopBar(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     ) {
                         DropdownMenuItem(
-                            text = { Text("تب ناشناس جدید") },
+                            text = { Text(s.menuNewIncognitoTab) },
                             leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -340,7 +342,7 @@ fun BrowserTopBar(
                         )
                         if (!tab.isStartPage) {
                             DropdownMenuItem(
-                                text = { Text(if (isBookmarked) "حذف از نشانک‌ها" else "افزودن به نشانک‌ها") },
+                                text = { Text(if (isBookmarked) s.menuRemoveBookmark else s.menuAddBookmark) },
                                 leadingIcon = {
                                     Icon(
                                         if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -353,7 +355,7 @@ fun BrowserTopBar(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text(if (tab.isDesktopMode) "نمای موبایل" else "نمای دسکتاپ") },
+                                text = { Text(if (tab.isDesktopMode) s.menuMobileView else s.menuDesktopView) },
                                 leadingIcon = {
                                     Icon(
                                         if (tab.isDesktopMode) Icons.Default.PhoneAndroid else Icons.Default.Computer,
@@ -366,7 +368,7 @@ fun BrowserTopBar(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("جستجو در صفحه") },
+                                text = { Text(s.menuFindInPage) },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                                 onClick = {
                                     menuExpanded = false
@@ -376,7 +378,7 @@ fun BrowserTopBar(
                         }
                         HorizontalDivider()
                         DropdownMenuItem(
-                            text = { Text("نشانک‌ها") },
+                            text = { Text(s.menuBookmarks) },
                             leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -384,7 +386,7 @@ fun BrowserTopBar(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("تاریخچه مرور") },
+                            text = { Text(s.menuHistory) },
                             leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -392,7 +394,7 @@ fun BrowserTopBar(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("مدیریت دانلودها") },
+                            text = { Text(s.menuDownloads) },
                             leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -400,7 +402,7 @@ fun BrowserTopBar(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("ابزارهای توسعه‌دهنده (DevTools)") },
+                            text = { Text(s.menuDevTools) },
                             leadingIcon = { Icon(Icons.Default.DeveloperMode, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -408,7 +410,7 @@ fun BrowserTopBar(
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("تنظیمات و حریم خصوصی") },
+                            text = { Text(s.menuSettings) },
                             leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -441,19 +443,19 @@ fun BrowserTopBar(
                         modifier = Modifier.weight(1f),
                         decorationBox = { inner ->
                             if (findQuery.isEmpty()) {
-                                Text("جستجو در متن صفحه…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                Text(s.findInPagePlaceholder, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                             }
                             inner()
                         },
                     )
                     IconButton(onClick = { onFindNext(false) }, modifier = Modifier.minimumInteractiveComponentSize()) {
-                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "نتیجه قبلی")
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = s.findPrevDesc)
                     }
                     IconButton(onClick = { onFindNext(true) }, modifier = Modifier.minimumInteractiveComponentSize()) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "نتیجه بعدی")
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = s.findNextDesc)
                     }
                     IconButton(onClick = onCloseFind, modifier = Modifier.minimumInteractiveComponentSize()) {
-                        Icon(Icons.Default.Close, contentDescription = "بستن جستجو")
+                        Icon(Icons.Default.Close, contentDescription = s.closeFindDesc)
                     }
                 }
             }

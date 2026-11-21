@@ -11,6 +11,7 @@ import android.webkit.WebView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AdBlockRuleEntity
+import com.example.data.local.AppLanguage
 import com.example.data.local.BookmarkEntity
 import com.example.data.local.BrowserDatabase
 import com.example.data.local.BrowserRepository
@@ -28,6 +29,8 @@ import com.example.engine.ExtensionEngine
 import com.example.engine.MediaDownloadManager
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.WebViewConfigurator
+import com.example.ui.i18n.AppStrings
+import com.example.ui.i18n.stringsFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -68,7 +71,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (am?.isLowRamDevice == true) 2 else 3
     }.getOrDefault(3)
 
-    private val initialTab = BrowserTab(title = "صفحه شروع", isStartPage = true)
+    private val initialTab = BrowserTab(title = "Start Page", isStartPage = true)
     private val _tabs = MutableStateFlow(listOf(initialTab))
     val tabs: StateFlow<List<BrowserTab>> = _tabs.asStateFlow()
 
@@ -110,6 +113,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             repository.ensureSeeded()
         }
     }
+
+    private fun s(): AppStrings = stringsFor(settings.value.appLanguage)
 
     fun getCurrentTab(): BrowserTab =
         _tabs.value.firstOrNull { it.id == _activeTabId.value } ?: _tabs.value.first()
@@ -217,8 +222,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun createNewTab(isIncognito: Boolean = false, initialUrl: String? = null) {
         val resolved = initialUrl?.let { normalizeInputToUrl(it) }
+        val strings = s()
         val newTab = BrowserTab(
-            title = if (isIncognito) "تب ناشناس" else "تب جدید",
+            title = if (isIncognito) strings.incognitoTabTitle else strings.newTabTitle,
             url = resolved.orEmpty(),
             isStartPage = resolved.isNullOrBlank(),
             isIncognito = isIncognito,
@@ -250,7 +256,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
         val remaining = _tabs.value.filterNot { it.id == tabId }
         if (remaining.isEmpty()) {
-            val fresh = BrowserTab(title = "صفحه شروع", isStartPage = true, isIncognito = false)
+            val fresh = BrowserTab(title = s().startPageTitle, isStartPage = true, isIncognito = false)
             _tabs.value = listOf(fresh)
             _activeTabId.value = fresh.id
             touchTabMru(fresh.id)
@@ -279,7 +285,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
         val normalTabs = _tabs.value.filterNot { it.isIncognito }
         if (normalTabs.isEmpty()) {
-            val fresh = BrowserTab(title = "صفحه شروع", isStartPage = true, isIncognito = false)
+            val fresh = BrowserTab(title = s().startPageTitle, isStartPage = true, isIncognito = false)
             _tabs.value = listOf(fresh)
             _activeTabId.value = fresh.id
             touchTabMru(fresh.id)
@@ -292,7 +298,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
         WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
-        _statusToast.value = "تمام تب‌های ناشناس پاکسازی شدند"
+        _statusToast.value = s().toastIncognitoCleared
     }
 
     private fun destroyWebView(tabId: String) {
@@ -328,11 +334,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun goHomeActiveTab() {
         val tabId = _activeTabId.value
         webViews[tabId]?.stopLoading()
+        val strings = s()
         updateTab(tabId) {
             it.copy(
                 isStartPage = true,
                 url = "",
-                title = if (it.isIncognito) "صفحه شروع ناشناس" else "صفحه شروع",
+                title = if (it.isIncognito) strings.incognitoStartTitle else strings.startPageTitle,
                 isLoading = false,
                 progress = 0,
                 detectedMedia = emptyList(),
@@ -393,7 +400,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             )
             if (!tab.isStartPage) wv.reload()
         }
-        _statusToast.value = if (nextDesktop) "حالت دسکتاپ فعال شد" else "حالت موبایل فعال شد"
+        _statusToast.value = if (nextDesktop) s().toastDesktopEnabled else s().toastMobileEnabled
     }
 
     fun normalizeInputToUrl(input: String): String {
@@ -588,7 +595,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             wv.evaluateJavascript(mediaSniffer.earlyMediaHookScript(), null)
             wv.evaluateJavascript(mediaSniffer.domSnifferScript(), null)
         }
-        _statusToast.value = "اسکن عمیق مدیا در حال انجام است…"
+        _statusToast.value = s().toastDeepMediaScan
     }
 
     fun onHookedMediaUrl(tabId: String, mediaUrl: String, titleHint: String) {
@@ -642,7 +649,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         downloadManager.startDownload(fileName, quality, sourcePageUrl, ua)
-        _statusToast.value = "دانلود «$fileName» شروع شد"
+        _statusToast.value = String.format(s().toastDownloadStartedFormat, fileName)
     }
 
     fun downloadGenericUrl(url: String, mimeType: String, contentDisposition: String?) {
@@ -650,8 +657,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         val lower = url.lowercase()
+        val strings = s()
         val opt = MediaQualityOption(
-            label = "دانلود مستقیم",
+            label = strings.directDownloadLabel,
             resolutionHeight = 0,
             url = url,
             format = guessedName.substringAfterLast('.', "BIN").uppercase(),
@@ -660,7 +668,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isDash = lower.contains(".mpd"),
         )
         downloadManager.startDownload(guessedName, opt, tab.url, ua)
-        _statusToast.value = "در حال دانلود $guessedName"
+        _statusToast.value = String.format(strings.toastDownloadingFileFormat, guessedName)
     }
 
     fun pauseDownload(download: DownloadEntity) {
@@ -686,10 +694,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             if (currentlyWhitelisted) {
                 repository.removeAdBlockRuleByPattern(host, isWhitelist = true)
-                _statusToast.value = "سپر ضدتبلیغ برای $host فعال شد"
+                _statusToast.value = String.format(s().toastShieldEnabledHostFormat, host)
             } else {
                 repository.addAdBlockRule(host, isWhitelist = true)
-                _statusToast.value = "سپر ضدتبلیغ روی $host متوقف شد"
+                _statusToast.value = String.format(s().toastShieldPausedHostFormat, host)
             }
         }
         webViews[_activeTabId.value]?.reload()
@@ -728,7 +736,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         onConsoleLog(tab.id, "EVAL", "> $trimmed", "DevTools REPL")
         val wv = webViews[tab.id]
         if (wv == null || tab.isStartPage) {
-            onConsoleLog(tab.id, "WARN", "ابتدا یک صفحه وب را باز کنید", "DevTools")
+            onConsoleLog(tab.id, "WARN", s().devToolsPromptOpenPage, "DevTools")
             return
         }
         val wrapped = """
@@ -879,10 +887,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             if (exists) {
                 repository.removeBookmarkByUrl(tab.url)
-                _statusToast.value = "از نشانک‌ها حذف شد"
+                _statusToast.value = s().toastBookmarkRemoved
             } else {
                 repository.addBookmark(tab.title, tab.url)
-                _statusToast.value = "به نشانک‌ها اضافه شد"
+                _statusToast.value = s().toastBookmarkAdded
             }
         }
     }
@@ -904,7 +912,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun clearHistory() {
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearHistory()
-            _statusToast.value = "تاریخچه مرور پاک شد"
+            _statusToast.value = s().toastHistoryCleared
         }
     }
 
@@ -930,12 +938,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         jsCode: String,
         cssCode: String,
     ) {
+        val strings = s()
         val ext = ExtensionEntity(
             id = "custom_${UUID.randomUUID().toString().take(8)}",
             name = name.trim(),
             version = "1.0.0",
-            author = "کاربر",
-            description = description.ifBlank { "افزونه سفارشی UserScript" },
+            author = strings.extCustomAuthorDefault,
+            description = description.ifBlank { strings.extCustomDescDefault },
             iconKey = "extension",
             matchPattern = matchPattern.ifBlank { "*://*/*" },
             runAt = runAt,
@@ -948,7 +957,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         )
         viewModelScope.launch(Dispatchers.IO) {
             repository.saveCustomExtension(ext)
-            _statusToast.value = "افزونه «${ext.name}» نصب و فعال شد"
+            _statusToast.value = String.format(strings.toastCustomExtInstalledFormat, ext.name)
         }
     }
 
@@ -968,6 +977,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setDoNotTrackEnabled(enabled: Boolean) = viewModelScope.launch { prefsRepository.setDoNotTrackEnabled(enabled) }
     fun setSearchEngine(engine: SearchEngine) = viewModelScope.launch { prefsRepository.setSearchEngine(engine) }
     fun setThemePreference(theme: ThemePreference) = viewModelScope.launch { prefsRepository.setThemePreference(theme) }
+    fun setAppLanguage(language: AppLanguage) = viewModelScope.launch { prefsRepository.setAppLanguage(language) }
 
     fun addCustomAdRule(pattern: String, isWhitelist: Boolean) {
         if (pattern.isBlank()) return
@@ -992,7 +1002,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         WebViewConfigurator.clearAllBrowsingData(getApplication(), hadLiveWebViews = liveList.isNotEmpty())
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearHistory()
-            _statusToast.value = "کوکی‌ها، کش و تاریخچه کاملاً پاکسازی شدند"
+            _statusToast.value = s().toastAllBrowsingDataCleared
         }
     }
 

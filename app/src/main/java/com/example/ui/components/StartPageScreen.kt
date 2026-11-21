@@ -78,7 +78,7 @@ import com.example.R
 import com.example.data.local.BookmarkEntity
 import com.example.data.local.BrowserSettings
 import com.example.ui.ActiveSheet
-import com.example.ui.theme.AlexBrushFontFamily
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ChromeSilver
 import com.example.ui.theme.CosmicViolet
 import com.example.ui.theme.ElectricCyan
@@ -102,6 +102,7 @@ fun StartPageScreen(
     onNewIncognitoTab: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalAppStrings.current
     var searchText by remember { mutableStateOf("") }
     val speedDialItems = remember(bookmarks) {
         val pinned = bookmarks.filter { it.isPinnedSpeedDial }
@@ -208,7 +209,7 @@ fun StartPageScreen(
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_salvia_emblem_1795066312153),
-                                contentDescription = "لوگوی اختصاصی SalviaBrowxser",
+                                contentDescription = "SalviaBrowxser",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -235,38 +236,33 @@ fun StartPageScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(top = 4.dp),
                     ) {
-                        Text(
-                            text = if (isIncognito) "حالت ناشناس کیهانی" else "Salar Farzaneh",
-                            style = if (isIncognito) {
-                                MaterialTheme.typography.labelLarge
-                            } else {
-                                TextStyle(
-                                    fontFamily = AlexBrushFontFamily,
-                                    fontSize = 19.sp,
-                                    color = if (isDark) ChromeSilver else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            },
-                        )
+                        if (isIncognito) {
+                            Text(
+                                text = s.incognitoCosmicLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isDark) ChromeSilver else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
 
                         val badgeColor = if (isIncognito) StealthViolet else EmeraldShield
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(badgeColor.copy(alpha = 0.14f))
                                 .border(0.8.dp, badgeColor.copy(alpha = 0.50f), RoundedCornerShape(999.dp))
-                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
                         ) {
                             Icon(
                                 imageVector = if (isIncognito) Icons.Default.VisibilityOff else Icons.Default.Shield,
                                 contentDescription = null,
                                 tint = badgeColor,
-                                modifier = Modifier.size(12.dp),
+                                modifier = Modifier.size(13.dp),
                             )
                             Text(
-                                text = if (isIncognito) "ایزوله کامل" else "سپر Aloha فعال",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                                text = if (isIncognito) s.incognitoIsolatedBadge else s.adBlockerBadge,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
                                 color = badgeColor,
                                 maxLines = 1,
                             )
@@ -275,7 +271,7 @@ fun StartPageScreen(
 
                     if (isIncognito) {
                         Text(
-                            text = "هیچ تاریخچه، کوکی ماندگار یا ردپایی روی دستگاه ذخیره نمی‌شود.",
+                            text = s.incognitoStartSubtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFE9D5FF),
                             textAlign = TextAlign.Center,
@@ -293,7 +289,7 @@ fun StartPageScreen(
                         ) {
                             TelemetryMetric(
                                 value = settings.totalAdsBlockedLifetime.toString(),
-                                label = "تبلیغ مسدود",
+                                label = s.statAdsBlocked,
                                 accent = ElectricCyan,
                                 labelColor = secondaryText,
                                 modifier = Modifier.weight(1f),
@@ -306,7 +302,7 @@ fun StartPageScreen(
                             )
                             TelemetryMetric(
                                 value = settings.totalTrackersBlockedLifetime.toString(),
-                                label = "ردیاب مسدود",
+                                label = s.statTrackersBlocked,
                                 accent = NebulaMagenta,
                                 labelColor = secondaryText,
                                 modifier = Modifier.weight(1f),
@@ -319,7 +315,7 @@ fun StartPageScreen(
                             )
                             TelemetryMetric(
                                 value = activeExtensionsCount.toString(),
-                                label = "افزونه فعال",
+                                label = s.statActiveExtensions,
                                 accent = ChromeSilver,
                                 labelColor = secondaryText,
                                 modifier = Modifier.weight(1f),
@@ -379,7 +375,7 @@ fun StartPageScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
-                                contentDescription = "جستجو",
+                                contentDescription = s.searchIconDesc,
                                 tint = if (isIncognito) StealthViolet else ElectricCyan,
                                 modifier = Modifier.size(18.dp),
                             )
@@ -408,7 +404,7 @@ fun StartPageScreen(
                             decorationBox = { inner ->
                                 if (searchText.isEmpty()) {
                                     Text(
-                                        text = "جستجو با ${settings.searchEngine.displayName} یا آدرس وب…",
+                                        text = String.format(s.searchEngineHintFormat, settings.searchEngine.displayName),
                                         color = secondaryText,
                                         style = MaterialTheme.typography.bodyMedium,
                                         maxLines = 1,
@@ -425,7 +421,7 @@ fun StartPageScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "پاک کردن جستجو",
+                                    contentDescription = s.clearSearchDesc,
                                     tint = secondaryText,
                                     modifier = Modifier.size(18.dp),
                                 )
@@ -436,7 +432,7 @@ fun StartPageScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "جستجو و رفتن",
+                                    contentDescription = s.searchAndGoDesc,
                                     tint = ElectricCyan,
                                     modifier = Modifier.size(20.dp),
                                 )
@@ -453,7 +449,7 @@ fun StartPageScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     QuickToolGlassPill(
-                        label = "افزونه‌ها",
+                        label = s.quickExtensions,
                         icon = Icons.Default.Extension,
                         accent = NebulaMagenta,
                         titleColor = titleColor,
@@ -463,7 +459,7 @@ fun StartPageScreen(
                             .testTag("start_extensions_chip"),
                     )
                     QuickToolGlassPill(
-                        label = "دانلودها",
+                        label = s.quickDownloads,
                         icon = Icons.Default.Download,
                         accent = ChromeSilver,
                         titleColor = titleColor,
@@ -473,7 +469,7 @@ fun StartPageScreen(
                             .testTag("start_downloads_chip"),
                     )
                     QuickToolGlassPill(
-                        label = "DevTools",
+                        label = s.quickDevTools,
                         icon = Icons.Default.DeveloperMode,
                         accent = ElectricCyan,
                         titleColor = titleColor,
@@ -487,43 +483,38 @@ fun StartPageScreen(
 
             // Floating Cosmic Speed Dial Orbs
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "دسترسی سریع و ورود امن",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = titleColor,
-                    )
-                    if (!isIncognito) {
+                if (!isIncognito) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(StealthViolet.copy(alpha = 0.16f))
                                 .border(0.9.dp, StealthViolet.copy(alpha = 0.48f), RoundedCornerShape(14.dp))
                                 .clickable(onClick = onNewIncognitoTab)
                                 .minimumInteractiveComponentSize()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Default.VisibilityOff,
                                 contentDescription = null,
                                 tint = StealthViolet,
-                                modifier = Modifier.size(14.dp),
+                                modifier = Modifier.size(15.dp),
                             )
                             Text(
-                                text = "تب ناشناس",
+                                text = s.incognitoTabButton,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = StealthViolet,
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
-                Spacer(modifier = Modifier.height(14.dp))
 
                 val rowsList = remember(speedDialItems) { speedDialItems.chunked(4) }
                 Column(

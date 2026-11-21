@@ -8,7 +8,7 @@ data class BookmarkEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val url: String,
-    val category: String = "عمومی",
+    val category: String = "General",
     val isPinnedSpeedDial: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
 )

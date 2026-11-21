@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ExtensionEntity
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,6 +77,7 @@ fun ExtensionsSheet(
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    val s = LocalAppStrings.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var inspectingExtension by remember { mutableStateOf<ExtensionEntity?>(null) }
@@ -108,11 +110,11 @@ fun ExtensionsSheet(
                     )
                     Column {
                         Text(
-                            text = "افزونه‌ها (Add-ons)",
+                            text = s.extensionsTitle,
                             style = MaterialTheme.typography.titleLarge,
                         )
                         Text(
-                            text = "پشتیبانی به سبک فایرفاکس • اسکریپت و استایل وب‌اکستنشن",
+                            text = s.extensionsSubtitle,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -123,13 +125,13 @@ fun ExtensionsSheet(
                         onClick = { showCreateDialog = true },
                         modifier = Modifier.testTag("add_custom_extension_button"),
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "ساخت افزونه جدید")
+                        Icon(Icons.Default.Add, contentDescription = s.addExtensionDesc)
                     }
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier.testTag("close_extensions_button"),
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "بستن")
+                        Icon(Icons.Default.Close, contentDescription = s.closeDesc)
                     }
                 }
             }
@@ -141,12 +143,12 @@ fun ExtensionsSheet(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("نصب‌شده (${installed.size})") },
+                    text = { Text(String.format(s.installedTabFormat, installed.size)) },
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("فروشگاه افزونه‌ها (${catalog.size})") },
+                    text = { Text(String.format(s.storeTabFormat, catalog.size)) },
                 )
             }
             PrismHairline(alpha = 0.75f)
@@ -178,7 +180,7 @@ fun ExtensionsSheet(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("افزودن افزونه سفارشی (UserScript / CSS)")
+                        Text(s.addCustomExtensionButton)
                     }
                 }
             }
@@ -199,16 +201,16 @@ fun ExtensionsSheet(
     inspectingExtension?.let { ext ->
         AlertDialog(
             onDismissRequest = { inspectingExtension = null },
-            title = { Text(ext.name) },
+            title = { Text(s.extensionName(ext)) },
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("نسخه: ${ext.version} • سازنده: ${ext.author}", style = MaterialTheme.typography.labelMedium)
-                    Text("الگوی آدرس: ${ext.matchPattern}", style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily))
-                    Text("زمان اجرا: ${ext.runAt}", style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily))
-                    Text("دسترسی‌ها: ${ext.permissions}", style = MaterialTheme.typography.labelSmall)
+                    Text(String.format(s.versionLabelFormat, ext.version, ext.author), style = MaterialTheme.typography.labelMedium)
+                    Text(String.format(s.matchPatternLabelFormat, ext.matchPattern), style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily))
+                    Text(String.format(s.runAtLabelFormat, ext.runAt), style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily))
+                    Text(String.format(s.permissionsLabelFormat, ext.permissions), style = MaterialTheme.typography.labelSmall)
                     if (ext.cssCode.isNotBlank()) {
                         Text("CSS:", style = MaterialTheme.typography.labelMedium)
                         Text(ext.cssCode, style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFontFamily))
@@ -221,7 +223,7 @@ fun ExtensionsSheet(
             },
             confirmButton = {
                 TextButton(onClick = { inspectingExtension = null }) {
-                    Text("بستن")
+                    Text(s.closeDesc)
                 }
             },
         )
@@ -236,6 +238,9 @@ private fun ExtensionCard(
     onInspect: () -> Unit,
     onDeleteCustom: () -> Unit,
 ) {
+    val s = LocalAppStrings.current
+    val resolvedName = s.extensionName(extension)
+    val resolvedDesc = s.extensionDescription(extension)
     val icon: ImageVector = when (extension.iconKey) {
         "dark_mode" -> Icons.Default.DarkMode
         "shield" -> Icons.Default.Shield
@@ -275,13 +280,13 @@ private fun ExtensionCard(
                 ) {
                     Icon(
                         imageVector = icon,
-                        contentDescription = extension.name,
+                        contentDescription = resolvedName,
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = extension.name,
+                        text = resolvedName,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -303,13 +308,13 @@ private fun ExtensionCard(
                         onClick = { onInstallToggle(true) },
                         shape = RoundedCornerShape(12.dp),
                     ) {
-                        Text("نصب")
+                        Text(s.installButton)
                     }
                 }
             }
 
             Text(
-                text = extension.description,
+                text = resolvedDesc,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -320,24 +325,24 @@ private fun ExtensionCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = "الگو: ${extension.matchPattern}",
+                    text = String.format(s.patternShortFormat, extension.matchPattern),
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = onInspect) {
-                        Text("مشاهده کد")
+                        Text(s.viewCodeButton)
                     }
                     if (extension.isInstalled) {
                         if (extension.isBuiltIn) {
                             TextButton(onClick = { onInstallToggle(false) }) {
-                                Text("حذف نصب", color = MaterialTheme.colorScheme.error)
+                                Text(s.uninstallButton, color = MaterialTheme.colorScheme.error)
                             }
                         } else {
                             IconButton(onClick = onDeleteCustom) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
-                                    contentDescription = "حذف افزونه",
+                                    contentDescription = s.deleteExtensionDesc,
                                     tint = MaterialTheme.colorScheme.error,
                                 )
                             }
@@ -354,6 +359,7 @@ private fun CreateExtensionDialog(
     onDismiss: () -> Unit,
     onSave: (String, String, String, String, String, String) -> Unit,
 ) {
+    val s = LocalAppStrings.current
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var matchPattern by remember { mutableStateOf("*://*/*") }
@@ -363,7 +369,7 @@ private fun CreateExtensionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("ساخت افزونه سفارشی (WebExtension)") },
+        title = { Text(s.createExtDialogTitle) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -372,21 +378,21 @@ private fun CreateExtensionDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("نام افزونه") },
+                    label = { Text(s.extNameLabel) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("توضیحات") },
+                    label = { Text(s.extDescLabel) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = matchPattern,
                     onValueChange = { matchPattern = it },
-                    label = { Text("الگوی آدرس (مثلاً *://*/*)") },
+                    label = { Text(s.extMatchLabel) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -405,7 +411,7 @@ private fun CreateExtensionDialog(
                 OutlinedTextField(
                     value = jsCode,
                     onValueChange = { jsCode = it },
-                    label = { Text("کد JavaScript") },
+                    label = { Text(s.extJsLabel) },
                     minLines = 3,
                     maxLines = 5,
                     modifier = Modifier.fillMaxWidth(),
@@ -413,7 +419,7 @@ private fun CreateExtensionDialog(
                 OutlinedTextField(
                     value = cssCode,
                     onValueChange = { cssCode = it },
-                    label = { Text("کد CSS (اختیاری)") },
+                    label = { Text(s.extCssLabel) },
                     minLines = 2,
                     maxLines = 4,
                     modifier = Modifier.fillMaxWidth(),
@@ -425,11 +431,11 @@ private fun CreateExtensionDialog(
                 onClick = { onSave(name, description, matchPattern, runAt, jsCode, cssCode) },
                 enabled = name.isNotBlank() && (jsCode.isNotBlank() || cssCode.isNotBlank()),
             ) {
-                Text("نصب و فعال‌سازی")
+                Text(s.extSaveEnableButton)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("انصراف") }
+            TextButton(onClick = onDismiss) { Text(s.cancelButton) }
         },
     )
 }
