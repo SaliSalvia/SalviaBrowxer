@@ -219,26 +219,21 @@ fun StartPageScreen(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    Text(
-                        text = "SalviaBrowxser",
-                        style = TextStyle(
-                            fontFamily = AlexBrushFontFamily,
-                            fontSize = 38.sp,
-                            brush = Brush.horizontalGradient(
-                                if (isIncognito) {
-                                    listOf(StarlightWhite, StealthViolet, NebulaMagenta, ChromeSilver)
-                                } else {
-                                    listOf(StarlightWhite, ElectricCyan, SapphireGlow, NebulaMagenta, ChromeSilver)
-                                },
-                            ),
-                        ),
-                        maxLines = 1,
+                    Image(
+                        painter = painterResource(id = R.drawable.salvia_signature_wordmark),
+                        contentDescription = "SalviaBrowxser",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth(0.84f)
+                            .widthIn(max = 330.dp)
+                            .height(68.dp)
+                            .alpha(if (isIncognito) 0.88f else 1f),
                     )
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 2.dp),
+                        modifier = Modifier.padding(top = 4.dp),
                     ) {
                         Text(
                             text = if (isIncognito) "حالت ناشناس کیهانی" else "Salar Farzaneh",
@@ -248,7 +243,7 @@ fun StartPageScreen(
                                 TextStyle(
                                     fontFamily = AlexBrushFontFamily,
                                     fontSize = 19.sp,
-                                    color = ChromeSilver,
+                                    color = if (isDark) ChromeSilver else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             },
                         )

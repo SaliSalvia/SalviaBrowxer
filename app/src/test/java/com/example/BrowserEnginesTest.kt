@@ -121,6 +121,28 @@ class BrowserEnginesTest {
                 adBlockEnabled = true,
             ),
         )
+
+        val wildcardRules = listOf(
+            AdBlockRuleEntity(id = 4L, pattern = "*://*.ads-cdn.example/*banner*", isWhitelist = false, isEnabled = true),
+        )
+        assertTrue(
+            AdBlockerEngine.evaluate(
+                url = "https://static.ads-cdn.example/v2/top-banner.js",
+                pageHost = "news.example.com",
+                adBlockEnabled = true,
+                trackerBlockEnabled = true,
+                customRules = wildcardRules,
+            ).isBlocked,
+        )
+        assertFalse(
+            AdBlockerEngine.evaluate(
+                url = "https://static.ads-cdn.example/v2/player.js",
+                pageHost = "news.example.com",
+                adBlockEnabled = true,
+                trackerBlockEnabled = true,
+                customRules = wildcardRules,
+            ).isBlocked,
+        )
     }
 
     @Test

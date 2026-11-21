@@ -56,6 +56,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val pendingProbedUrls = ConcurrentHashMap.newKeySet<String>()
     private val networkBuffers = ConcurrentHashMap<String, ArrayDeque<NetworkRequestEntry>>()
     private val consoleBuffers = ConcurrentHashMap<String, ArrayDeque<ConsoleLogEntry>>()
+    private val pendingAdsDelta = java.util.concurrent.atomic.AtomicLong(0L)
+    private val pendingTrackersDelta = java.util.concurrent.atomic.AtomicLong(0L)
+    private var statsFlushJob: kotlinx.coroutines.Job? = null
+    @Volatile
+    private var lastDevToolsSyncMs: Long = 0L
+    private var devToolsTrailingSyncJob: kotlinx.coroutines.Job? = null
 
     private val maxLiveWebViews: Int = runCatching {
         val am = application.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -495,7 +501,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         headers: Map<String, String>,
     ): BlockDecision {
         val tab = _tabs.value.firstOrNull { it.id == tabId }
-        val pageHost = runCatching { Uri.parse(tab?.url.orEmpty()).host }.getOrNull()
+        val tabUrl = tab?.url.orEmpty()
+        val pageHost = if (tabUrl.isNotBlank()) runCatching { Uri.parse(tabUrl).host }.getOrNull() else null
         val decision = if (isMainFrame) {
             BlockDecision(false)
         } else {
@@ -510,28 +517,21 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
         val isCandidateMedia = !decision.isBlocked && mediaSniffer.isCandidateMediaUrl(requestUrl)
         if (isCandidateMedia) {
-            probeAndAttachNetworkMedia(tabId, requestUrl, tab?.url.orEmpty(), tab?.title.orEmpty())
+            probeAndAttachNetworkMedia(tabId, requestUrl, tabUrl, tab?.title.orEmpty())
         }
 
         if (decision.isBlocked) {
+            val isTracker = decision.category == BlockCategory.TRACKER
+            val adInc = if (isTracker) 0 else 1
+            val trkInc = if (isTracker) 1 else 0
             updateTab(tabId) { current ->
-                val adInc = if (
-                    decision.category == BlockCategory.AD ||
-                    decision.category == BlockCategory.CUSTOM_RULE ||
-                    decision.category == BlockCategory.CRYPTO_MINER ||
-                    decision.category == BlockCategory.POPUP_REDIRECT
-                ) 1 else 0
-                val trkInc = if (decision.category == BlockCategory.TRACKER) 1 else 0
                 current.copy(
                     blockedAdsCount = current.blockedAdsCount + adInc,
                     blockedTrackersCount = current.blockedTrackersCount + trkInc,
                 )
             }
-            viewModelScope.launch(Dispatchers.IO) {
-                val adDelta = if (decision.category == BlockCategory.TRACKER) 0L else 1L
-                val trkDelta = if (decision.category == BlockCategory.TRACKER) 1L else 0L
-                prefsRepository.incrementBlockedStats(adDelta, trkDelta)
-            }
+            if (isTracker) pendingTrackersDelta.incrementAndGet() else pendingAdsDelta.incrementAndGet()
+            scheduleBlockedStatsFlush()
         }
 
         val resourceType = inferResourceType(requestUrl, isMainFrame, isCandidateMedia)
@@ -550,7 +550,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             while (buf.size > 120) buf.removeLast()
         }
         if (_activeSheet.value == ActiveSheet.DEVTOOLS && _activeTabId.value == tabId) {
-            syncDevToolsBuffers(tabId)
+            syncDevToolsBuffersThrottled(tabId)
         }
 
         return decision
@@ -560,8 +560,23 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         updateTab(tabId) { current ->
             current.copy(blockedAdsCount = current.blockedAdsCount + 1)
         }
-        viewModelScope.launch(Dispatchers.IO) {
-            prefsRepository.incrementBlockedStats(1L, 0L)
+        pendingAdsDelta.incrementAndGet()
+        scheduleBlockedStatsFlush()
+    }
+
+    private fun scheduleBlockedStatsFlush() {
+        if (statsFlushJob?.isActive == true) return
+        statsFlushJob = viewModelScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(1500L)
+            flushBlockedStatsNow()
+        }
+    }
+
+    private suspend fun flushBlockedStatsNow() {
+        val ads = pendingAdsDelta.getAndSet(0L)
+        val trackers = pendingTrackersDelta.getAndSet(0L)
+        if (ads > 0L || trackers > 0L) {
+            prefsRepository.incrementBlockedStats(ads, trackers)
         }
     }
 
@@ -702,7 +717,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             while (buf.size > 200) buf.removeFirst()
         }
         if (_activeSheet.value == ActiveSheet.DEVTOOLS && _activeTabId.value == tabId) {
-            syncDevToolsBuffers(tabId)
+            syncDevToolsBuffersThrottled(tabId)
         }
     }
 
@@ -747,6 +762,22 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tabId = _activeTabId.value
         networkBuffers[tabId]?.let { synchronized(it) { it.clear() } }
         updateTab(tabId) { it.copy(networkRequests = emptyList()) }
+    }
+
+    private fun syncDevToolsBuffersThrottled(tabId: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastDevToolsSyncMs >= 250L) {
+            lastDevToolsSyncMs = now
+            syncDevToolsBuffers(tabId)
+        } else if (devToolsTrailingSyncJob?.isActive != true) {
+            devToolsTrailingSyncJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(250L)
+                if (_activeSheet.value == ActiveSheet.DEVTOOLS && _activeTabId.value == tabId) {
+                    lastDevToolsSyncMs = System.currentTimeMillis()
+                    syncDevToolsBuffers(tabId)
+                }
+            }
+        }
     }
 
     private fun syncDevToolsBuffers(tabId: String) {
@@ -950,7 +981,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearAllBrowsingData() {
-        WebViewConfigurator.clearAllBrowsingData(getApplication())
+        val liveList = webViews.values.toList()
+        liveList.forEach { wv ->
+            runCatching {
+                wv.clearCache(true)
+                wv.clearHistory()
+                wv.clearFormData()
+            }
+        }
+        WebViewConfigurator.clearAllBrowsingData(getApplication(), hadLiveWebViews = liveList.isNotEmpty())
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearHistory()
             _statusToast.value = "کوکی‌ها، کش و تاریخچه کاملاً پاکسازی شدند"
@@ -1007,6 +1046,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         super.onCleared()
+        val remainingAds = pendingAdsDelta.getAndSet(0L)
+        val remainingTrackers = pendingTrackersDelta.getAndSet(0L)
+        if (remainingAds > 0L || remainingTrackers > 0L) {
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                prefsRepository.incrementBlockedStats(remainingAds, remainingTrackers)
+            }
+        }
         webViews.values.forEach { runCatching { it.destroy() } }
         webViews.clear()
         savedTabStates.clear()

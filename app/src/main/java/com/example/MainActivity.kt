@@ -112,6 +112,10 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
         viewModel.clearToast()
     }
 
+    BackHandler(enabled = activeSheet == ActiveSheet.FIND_IN_PAGE) {
+        viewModel.closeSheet()
+    }
+
     BackHandler(enabled = activeSheet == ActiveSheet.NONE && !activeTab.isStartPage) {
         viewModel.goBack()
     }
@@ -200,7 +204,10 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
             }
 
             if (renderCosmicScaffold) {
-                CosmicSpaceBackdrop(isIncognito = activeTab.isIncognito) {
+                CosmicSpaceBackdrop(
+                    isIncognito = activeTab.isIncognito,
+                    showEmblemWatermark = true,
+                ) {
                     scaffoldContent()
                 }
             } else {

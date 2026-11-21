@@ -13,7 +13,15 @@ import java.util.WeakHashMap
 
 object WebViewConfigurator {
 
+    private const val DESKTOP_UA =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    private const val FALLBACK_MOBILE_UA =
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+
     private val lastAppliedConfigs = WeakHashMap<WebView, String>()
+
+    @Volatile
+    private var cachedMobileUa: String? = null
 
     /**
      * Generates a clean Chromium Mobile or Desktop User-Agent without the `; wv)` token.
@@ -21,18 +29,20 @@ object WebViewConfigurator {
      * login attempts with `disallowed_useragent`.
      */
     fun resolveUserAgent(context: Context, desktopMode: Boolean): String {
-        if (desktopMode) {
-            return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-        }
+        if (desktopMode) return DESKTOP_UA
+        cachedMobileUa?.let { return it }
         val defaultUa = runCatching { WebSettings.getDefaultUserAgent(context) }.getOrNull().orEmpty()
         val cleaned = defaultUa
             .replace("; wv)", ")")
             .replace("; wv;", ";")
             .replace("Version/4.0 ", "")
-        if (cleaned.isBlank() || !cleaned.contains("Chrome/", ignoreCase = true)) {
-            return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+        val resolved = if (cleaned.isBlank() || !cleaned.contains("Chrome/", ignoreCase = true)) {
+            FALLBACK_MOBILE_UA
+        } else {
+            cleaned
         }
-        return cleaned
+        cachedMobileUa = resolved
+        return resolved
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -44,8 +54,10 @@ object WebViewConfigurator {
         blockThirdPartyCookiesIncognito: Boolean,
     ) {
         val signature = "$isIncognito|$desktopMode|$javaScriptEnabled|$blockThirdPartyCookiesIncognito"
-        if (lastAppliedConfigs[webView] == signature) return
-        lastAppliedConfigs[webView] = signature
+        synchronized(lastAppliedConfigs) {
+            if (lastAppliedConfigs[webView] == signature) return
+            lastAppliedConfigs[webView] = signature
+        }
 
         val context = webView.context
         val settings = webView.settings
@@ -99,17 +111,19 @@ object WebViewConfigurator {
         }
     }
 
-    fun clearAllBrowsingData(context: Context) {
+    fun clearAllBrowsingData(context: Context, hadLiveWebViews: Boolean = false) {
         runCatching {
             CookieManager.getInstance().removeAllCookies(null)
             CookieManager.getInstance().flush()
             WebStorage.getInstance().deleteAllData()
             WebViewDatabase.getInstance(context).clearHttpAuthUsernamePassword()
-            WebView(context).apply {
-                clearCache(true)
-                clearHistory()
-                clearFormData()
-                destroy()
+            if (!hadLiveWebViews) {
+                WebView(context).apply {
+                    clearCache(true)
+                    clearHistory()
+                    clearFormData()
+                    destroy()
+                }
             }
         }
     }

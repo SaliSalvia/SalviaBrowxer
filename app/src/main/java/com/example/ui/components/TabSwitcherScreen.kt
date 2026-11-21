@@ -90,8 +90,8 @@ fun TabSwitcherScreen(
         mutableStateOf(activeTab?.isIncognito == true)
     }
 
-    val normalTabs = tabs.filterNot { it.isIncognito }
-    val incognitoTabs = tabs.filter { it.isIncognito }
+    val normalTabs = remember(tabs) { tabs.filterNot { it.isIncognito } }
+    val incognitoTabs = remember(tabs) { tabs.filter { it.isIncognito } }
     val displayedTabs = if (showIncognitoOnly) incognitoTabs else normalTabs
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.25f
 
@@ -288,6 +288,7 @@ private fun TabGridCard(
     onSelect: () -> Unit,
     onClose: () -> Unit,
 ) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.25f
     val targetBorder = when {
         isActive && tab.isIncognito -> StealthViolet
         isActive -> ElectricCyan
@@ -298,10 +299,11 @@ private fun TabGridCard(
         animationSpec = tween(180),
         label = "tab_border",
     )
-    val cardBrush = if (tab.isIncognito) {
-        Brush.verticalGradient(listOf(Color(0xFF1A1038).copy(alpha = 0.85f), Color(0xFF0B061C).copy(alpha = 0.90f)))
-    } else {
-        Brush.verticalGradient(listOf(Color(0xFF0A1436).copy(alpha = 0.84f), ObsidianSurface.copy(alpha = 0.88f)))
+    val cardBrush = when {
+        !isDark && tab.isIncognito -> Brush.verticalGradient(listOf(Color(0xFFEDE9FE), Color(0xFFF5F3FF)))
+        !isDark -> Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surface))
+        tab.isIncognito -> Brush.verticalGradient(listOf(Color(0xFF1A1038).copy(alpha = 0.85f), Color(0xFF0B061C).copy(alpha = 0.90f)))
+        else -> Brush.verticalGradient(listOf(Color(0xFF0A1436).copy(alpha = 0.84f), ObsidianSurface.copy(alpha = 0.88f)))
     }
 
     Box(

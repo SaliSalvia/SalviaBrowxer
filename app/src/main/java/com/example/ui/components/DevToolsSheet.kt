@@ -576,8 +576,8 @@ private fun StorageBlock(
                     ),
                     color = ElectricCyan,
                 )
-                IconButton(onClick = onCopy, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "کپی $title", modifier = Modifier.size(16.dp))
+                IconButton(onClick = onCopy) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "کپی $title", modifier = Modifier.size(18.dp))
                 }
             }
             Text(

@@ -45,6 +45,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,6 +85,25 @@ fun WebViewContainer(
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
     var popupTitle by remember { mutableStateOf("ورود امن / پنجره بازشو") }
+
+    val dismissPopup: () -> Unit = {
+        popupWebView?.let { popup ->
+            runCatching {
+                popup.onPause()
+                popup.stopLoading()
+                popup.loadUrl("about:blank")
+                popup.removeAllViews()
+                popup.destroy()
+            }
+        }
+        popupWebView = null
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            dismissPopup()
+        }
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
@@ -133,11 +153,9 @@ fun WebViewContainer(
                             settings = settings,
                             viewModel = viewModel,
                             onTitleChanged = { t -> popupTitle = t },
-                            onClosePopup = {
-                                popupWebView?.destroy()
-                                popupWebView = null
-                            },
+                            onClosePopup = dismissPopup,
                         )
+                        dismissPopup()
                         popupWebView = popup
                         val transport = resultMsg.obj as? WebView.WebViewTransport
                         transport?.webView = popup
@@ -178,10 +196,7 @@ fun WebViewContainer(
         // OAuth / Google Sign-In / Multi-Window Popup Overlay
         popupWebView?.let { popup ->
             Dialog(
-                onDismissRequest = {
-                    popup.destroy()
-                    popupWebView = null
-                },
+                onDismissRequest = dismissPopup,
                 properties = DialogProperties(usePlatformDefaultWidth = false),
             ) {
                 Surface(
@@ -219,10 +234,7 @@ fun WebViewContainer(
                                 )
                             }
                             IconButton(
-                                onClick = {
-                                    popup.destroy()
-                                    popupWebView = null
-                                },
+                                onClick = dismissPopup,
                                 modifier = Modifier.testTag("close_popup_button"),
                             ) {
                                 Icon(Icons.Default.Close, contentDescription = "بستن پنجره")

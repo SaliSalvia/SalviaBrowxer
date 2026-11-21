@@ -235,25 +235,32 @@ object ExtensionEngine {
         ),
     )
 
+    private val matchRegexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
     fun matchesUrl(pattern: String, url: String): Boolean {
         val trimmed = pattern.trim()
         if (trimmed.isEmpty() || trimmed == "*://*/*" || trimmed == "<all_urls>") return true
-        val regexStr = buildString {
-            append('^')
-            for (ch in trimmed) {
-                when (ch) {
-                    '*' -> append(".*")
-                    '.', '?', '+', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\' -> {
-                        append('\\')
-                        append(ch)
+        val regex = matchRegexCache[trimmed] ?: run {
+            if (matchRegexCache.size >= 128) matchRegexCache.clear()
+            val regexStr = buildString {
+                append('^')
+                for (ch in trimmed) {
+                    when (ch) {
+                        '*' -> append(".*")
+                        '.', '?', '+', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\' -> {
+                            append('\\')
+                            append(ch)
+                        }
+                        else -> append(ch)
                     }
-                    else -> append(ch)
                 }
+                append('$')
             }
-            append('$')
-        }
-        return runCatching { Regex(regexStr, RegexOption.IGNORE_CASE).containsMatchIn(url) }
-            .getOrDefault(false)
+            runCatching { Regex(regexStr, RegexOption.IGNORE_CASE) }.getOrNull()?.also {
+                matchRegexCache[trimmed] = it
+            }
+        } ?: return false
+        return regex.containsMatchIn(url)
     }
 
     fun buildInjectionScript(extensions: List<ExtensionEntity>, url: String, phase: String): String {

@@ -1,18 +1,23 @@
 package com.example.ui.components
 
+import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -35,12 +40,14 @@ import com.example.ui.theme.SapphireGlow
 import com.example.ui.theme.StealthViolet
 
 /**
- * Full-bleed deep cosmic space backdrop using the bespoke starfield nebula image + lightweight
- * GPU radial prism glows so the entire SalviaBrowxser UI floats inside empty starry space.
+ * Full-bleed deep cosmic space backdrop using the bespoke starfield nebula image,
+ * optional large softly-blurred emblem watermark, and lightweight GPU radial prism glows
+ * so the SalviaBrowxser UI floats inside empty starry space.
  */
 @Composable
 fun CosmicSpaceBackdrop(
     isIncognito: Boolean = false,
+    showEmblemWatermark: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -60,7 +67,7 @@ fun CosmicSpaceBackdrop(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(if (isIncognito) 0.72f else 0.92f),
+                    .alpha(if (isIncognito) 0.74f else 0.94f),
             )
             Box(
                 modifier = Modifier
@@ -72,7 +79,7 @@ fun CosmicSpaceBackdrop(
                                     accentPrimary.copy(alpha = if (isIncognito) 0.20f else 0.16f),
                                     Color.Transparent,
                                 ),
-                                center = Offset(size.width * 0.5f, size.height * 0.18f),
+                                center = Offset(size.width * 0.5f, size.height * 0.20f),
                                 radius = size.maxDimension * 0.56f,
                             ),
                         )
@@ -82,22 +89,49 @@ fun CosmicSpaceBackdrop(
                                     accentSecondary.copy(alpha = 0.10f),
                                     Color.Transparent,
                                 ),
-                                center = Offset(size.width * 0.85f, size.height * 0.55f),
+                                center = Offset(size.width * 0.85f, size.height * 0.58f),
                                 radius = size.maxDimension * 0.44f,
                             ),
                         )
                         drawRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    ObsidianBg.copy(alpha = 0.35f),
+                                    ObsidianBg.copy(alpha = 0.34f),
                                     Color.Transparent,
-                                    ObsidianBg.copy(alpha = 0.55f),
+                                    ObsidianBg.copy(alpha = 0.56f),
                                 ),
                             ),
                         )
                     },
             )
         }
+
+        if (showEmblemWatermark) {
+            val blurModifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Modifier.blur(2.4.dp)
+            } else {
+                Modifier
+            }
+            Image(
+                painter = painterResource(id = R.drawable.salvia_emblem_transparent),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.95f)
+                    .widthIn(max = 460.dp)
+                    .aspectRatio(1f)
+                    .then(blurModifier)
+                    .alpha(
+                        when {
+                            !isDark -> 0.08f
+                            isIncognito -> 0.11f
+                            else -> 0.145f
+                        },
+                    ),
+            )
+        }
+
         content()
     }
 }

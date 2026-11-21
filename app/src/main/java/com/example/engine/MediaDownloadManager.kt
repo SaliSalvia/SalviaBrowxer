@@ -176,6 +176,7 @@ class MediaDownloadManager(
                     f
                 }
 
+                val latestProgressJob = java.util.concurrent.atomic.AtomicReference<Job?>(null)
                 coroutineScope {
                     val tasks = (0 until threadCount).map { idx ->
                         async(Dispatchers.IO) {
@@ -209,24 +210,25 @@ class MediaDownloadManager(
                                         out.write(buffer, 0, read)
                                         val totalNow = downloadedCounter.addAndGet(read.toLong())
                                         val now = System.currentTimeMillis()
-                                        val dt = now - lastTickTime
-                                        if (dt >= 500L) {
+                                        if (now - lastTickTime >= 500L) {
                                             synchronized(this@MediaDownloadManager) {
                                                 val dt2 = System.currentTimeMillis() - lastTickTime
                                                 if (dt2 >= 500L) {
                                                     val speed = ((totalNow - lastTickBytes) * 1000L) / dt2.coerceAtLeast(1L)
                                                     lastTickTime = System.currentTimeMillis()
                                                     lastTickBytes = totalNow
-                                                    scope.launch(Dispatchers.IO) {
-                                                        repository.updateDownloadProgress(
-                                                            downloadId,
-                                                            totalNow,
-                                                            totalBytes,
-                                                            speed.coerceAtLeast(0L),
-                                                            "DOWNLOADING",
-                                                            supportsResume = true,
-                                                        )
-                                                    }
+                                                    latestProgressJob.set(
+                                                        launch(Dispatchers.IO) {
+                                                            repository.updateDownloadProgress(
+                                                                downloadId,
+                                                                totalNow,
+                                                                totalBytes,
+                                                                speed.coerceAtLeast(0L),
+                                                                "DOWNLOADING",
+                                                                supportsResume = true,
+                                                            )
+                                                        },
+                                                    )
                                                 }
                                             }
                                         }
@@ -236,6 +238,7 @@ class MediaDownloadManager(
                         }
                     }
                     tasks.awaitAll()
+                    latestProgressJob.get()?.join()
                 }
 
                 // Merge chunks into final destination
@@ -422,9 +425,7 @@ class MediaDownloadManager(
             val aFile = File(tempDir, "dash_audio.m4a")
 
             downloadUrlToFile(videoUrl, vFile, referer, userAgent, cookie) { dl, total, spd ->
-                scope.launch(Dispatchers.IO) {
-                    repository.updateDownloadProgress(downloadId, dl, total, spd, "DOWNLOADING")
-                }
+                repository.updateDownloadProgress(downloadId, dl, total, spd, "DOWNLOADING")
             }
             downloadUrlToFile(audioUrl, aFile, referer, userAgent, cookie) { _, _, _ -> }
 
@@ -602,10 +603,44 @@ class MediaDownloadManager(
             val buffer = ByteBuffer.allocate(maxBufSize)
             val bufferInfo = MediaCodec.BufferInfo()
 
-            // Write video+embedded audio samples
-            pumpExtractorToMuxer(videoExtractor, trackMap.filter { it.first === videoExtractor }, muxer, buffer, bufferInfo)
+            // Write video & audio samples interleaved by presentation timestamp for universal playback
+            val videoDstBySrc = trackMap.filter { it.first === videoExtractor }.associate { it.second to it.third }
             if (audioExtractor != null) {
-                pumpExtractorToMuxer(audioExtractor, trackMap.filter { it.first === audioExtractor }, muxer, buffer, bufferInfo)
+                val audioDstBySrc = trackMap.filter { it.first === audioExtractor }.associate { it.second to it.third }
+                while (true) {
+                    val vTrack = videoExtractor.sampleTrackIndex
+                    val aTrack = audioExtractor.sampleTrackIndex
+                    if (vTrack < 0 && aTrack < 0) break
+
+                    val useVideo = when {
+                        vTrack < 0 -> false
+                        aTrack < 0 -> true
+                        else -> videoExtractor.sampleTime <= audioExtractor.sampleTime
+                    }
+                    val activeExtractor = if (useVideo) videoExtractor else audioExtractor
+                    val activeTrack = if (useVideo) vTrack else aTrack
+                    val dstTrack = if (useVideo) videoDstBySrc[activeTrack] else audioDstBySrc[activeTrack]
+
+                    if (dstTrack == null) {
+                        activeExtractor.advance()
+                        continue
+                    }
+                    buffer.clear()
+                    val size = activeExtractor.readSampleData(buffer, 0)
+                    if (size < 0) {
+                        activeExtractor.advance()
+                        continue
+                    }
+                    bufferInfo.offset = 0
+                    bufferInfo.size = size
+                    bufferInfo.presentationTimeUs = activeExtractor.sampleTime.coerceAtLeast(0L)
+                    @Suppress("WrongConstant")
+                    bufferInfo.flags = activeExtractor.sampleFlags
+                    muxer.writeSampleData(dstTrack, buffer, bufferInfo)
+                    activeExtractor.advance()
+                }
+            } else {
+                pumpExtractorToMuxer(videoExtractor, videoDstBySrc, muxer, buffer, bufferInfo)
             }
 
             muxer.stop()
@@ -621,12 +656,11 @@ class MediaDownloadManager(
 
     private fun pumpExtractorToMuxer(
         extractor: MediaExtractor,
-        tracks: List<Triple<MediaExtractor, Int, Int>>,
+        dstBySrc: Map<Int, Int>,
         muxer: MediaMuxer,
         buffer: ByteBuffer,
         info: MediaCodec.BufferInfo,
     ) {
-        val dstBySrc = tracks.associate { it.second to it.third }
         while (true) {
             val sampleTrack = extractor.sampleTrackIndex
             if (sampleTrack < 0) break
@@ -672,13 +706,13 @@ class MediaDownloadManager(
         }.getOrDefault(-1L to false)
     }
 
-    private fun downloadUrlToFile(
+    private suspend fun downloadUrlToFile(
         url: String,
         file: File,
         referer: String,
         userAgent: String,
         cookie: String,
-        onProgress: (Long, Long, Long) -> Unit,
+        onProgress: suspend (Long, Long, Long) -> Unit,
     ) {
         val req = Request.Builder()
             .url(url)

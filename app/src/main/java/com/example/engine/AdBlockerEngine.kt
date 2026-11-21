@@ -390,6 +390,31 @@ object AdBlockerEngine {
         """.trimIndent()
     }
 
+    private const val MAX_CACHED_REGEX = 256
+    private val regexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
+    private fun getOrCompileWildcardRegex(rule: String): Regex? {
+        regexCache[rule]?.let { return it }
+        if (regexCache.size >= MAX_CACHED_REGEX) {
+            regexCache.clear()
+        }
+        val regexStr = buildString(rule.length + 16) {
+            for (ch in rule) {
+                when (ch) {
+                    '*' -> append(".*")
+                    '.', '?', '+', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\' -> {
+                        append('\\')
+                        append(ch)
+                    }
+                    else -> append(ch)
+                }
+            }
+        }
+        val compiled = runCatching { Regex(regexStr, RegexOption.IGNORE_CASE) }.getOrNull() ?: return null
+        regexCache[rule] = compiled
+        return compiled
+    }
+
     private fun matchesFilterRule(rawRule: String, url: String, host: String): Boolean {
         val rule = rawRule.trim()
         if (rule.isEmpty()) return false
@@ -399,13 +424,12 @@ object AdBlockerEngine {
                 host == domainPart || host.endsWith(".$domainPart")
             }
             rule.contains("*") -> {
-                val regex = Regex(
-                    Regex.escape(rule).replace("\\*", ".*"),
-                    RegexOption.IGNORE_CASE,
-                )
-                regex.containsMatchIn(url)
+                getOrCompileWildcardRegex(rule)?.containsMatchIn(url) == true
             }
-            else -> url.contains(rule, ignoreCase = true) || host == rule.lowercase() || host.endsWith(".${rule.lowercase()}")
+            else -> {
+                val lowerRule = rule.lowercase()
+                url.contains(lowerRule, ignoreCase = true) || host == lowerRule || host.endsWith(".$lowerRule")
+            }
         }
     }
 
