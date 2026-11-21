@@ -184,11 +184,13 @@ class BrowserEnginesTest {
         assertTrue(sniffer.isCandidateMediaUrl("https://cdn.example.com/stream/master.m3u8?token=abc"))
         assertTrue(sniffer.isCandidateMediaUrl("https://cdn.example.com/stream/manifest.mpd"))
         assertTrue(sniffer.isCandidateMediaUrl("https://cdn.example.com/video/movie.mp4"))
+        assertTrue(sniffer.isCandidateMediaUrl("https://cdn.example.com/videoplayback?mime%3Dvideo%2Fmp4"))
         assertFalse(sniffer.isCandidateMediaUrl("https://cdn.example.com/stream/seg_001.ts"))
         assertFalse(sniffer.isCandidateMediaUrl("https://cdn.example.com/stream/chunk_01.m4s"))
         assertFalse(sniffer.isCandidateMediaUrl("blob:https://example.com/1234-5678"))
         assertTrue(sniffer.earlyMediaHookScript().contains("XMLHttpRequest"))
         assertTrue(sniffer.earlyMediaHookScript().contains("window.fetch"))
+        assertTrue(sniffer.domSnifferScript().contains("MutationObserver"))
     }
 
     @Test

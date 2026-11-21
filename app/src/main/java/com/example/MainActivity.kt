@@ -7,6 +7,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +64,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIncomingIntent(intent)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        viewModel.onTrimMemory(level)
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
@@ -183,24 +194,33 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
             }
 
             // Overlays & Modal Sheets
-            when (activeSheet) {
-                ActiveSheet.TABS -> TabSwitcherScreen(
-                    tabs = tabs,
-                    activeTabId = activeTab.id,
-                    onSelectTab = { viewModel.selectTab(it) },
-                    onCloseTab = { viewModel.closeTab(it) },
-                    onNewTab = { incognito -> viewModel.createNewTab(isIncognito = incognito) },
-                    onCloseAllIncognito = { viewModel.closeAllIncognitoTabs() },
-                    onDismiss = { viewModel.closeSheet() },
-                )
+            AnimatedContent(
+                targetState = activeSheet,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(170)) + scaleIn(initialScale = 0.97f, animationSpec = tween(170)))
+                        .togetherWith(fadeOut(animationSpec = tween(130)))
+                },
+                label = "active_sheet_transition",
+            ) { sheet ->
+                when (sheet) {
+                    ActiveSheet.TABS -> TabSwitcherScreen(
+                        tabs = tabs,
+                        activeTabId = activeTab.id,
+                        onSelectTab = { viewModel.selectTab(it) },
+                        onCloseTab = { viewModel.closeTab(it) },
+                        onNewTab = { incognito -> viewModel.createNewTab(isIncognito = incognito) },
+                        onCloseAllIncognito = { viewModel.closeAllIncognitoTabs() },
+                        onDismiss = { viewModel.closeSheet() },
+                    )
 
-                ActiveSheet.MEDIA_DOWNLOADER -> MediaDownloaderSheet(
-                    detectedMedia = activeTab.detectedMedia,
-                    onStartDownload = { fileName, quality, pageUrl ->
-                        viewModel.downloadMedia(fileName, quality, pageUrl)
-                    },
-                    onDismiss = { viewModel.closeSheet() },
-                )
+                    ActiveSheet.MEDIA_DOWNLOADER -> MediaDownloaderSheet(
+                        detectedMedia = activeTab.detectedMedia,
+                        onStartDownload = { fileName, quality, pageUrl ->
+                            viewModel.downloadMedia(fileName, quality, pageUrl)
+                        },
+                        onRescanMedia = { viewModel.rescanActiveTabMedia() },
+                        onDismiss = { viewModel.closeSheet() },
+                    )
 
                 ActiveSheet.EXTENSIONS -> ExtensionsSheet(
                     extensions = extensions,
@@ -279,7 +299,8 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                     onDismiss = { viewModel.closeSheet() },
                 )
 
-                ActiveSheet.FIND_IN_PAGE, ActiveSheet.NONE -> Unit
+                    ActiveSheet.FIND_IN_PAGE, ActiveSheet.NONE -> Unit
+                }
             }
         }
     }

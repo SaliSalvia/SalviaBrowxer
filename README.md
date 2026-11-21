@@ -16,6 +16,9 @@
   - پشتیبانی از سینتکس **EasyList / AdBlock Plus** (`||domain^`، `@@||domain^`، `##selector` و وایلدکارد `*`)، مسدودسازی اسکریپت‌های ماینر ارز دیجیتال (Crypto-miners)، و مسدودسازی ریدایرکت‌ها و پاپ‌آپ‌های تبلیغاتی (`window.open` و `shouldOverrideUrlLoading`).
   - پاک‌سازی زنده DOM با `MutationObserver` و حذف لایه‌های شفاف کلیک‌دزدی (Clickjacking overlays).
   - کلید توقف/فعال‌سازی سپر برای هر سایت به‌صورت مجزا در منوی امنیت آدرس‌بار، ضمن حفظ لیست سفید ورود به Gmail و OAuth.
+- **بهینه‌سازی مصرف رم و کارایی (Tab Hibernation & Zero-GC Buffers)**:
+  - توقف خودکار تب‌های پس‌زمینه (`onPause`) و خواب زمستانی هوشمند تب‌های کم‌کاربرد (ذخیره وضعیت ناوبری و آزادسازی موتور Chromium WebView برای نگهداشت حداکثر ۲ تا ۳ تب فعال در رم و بازیابی فوری هنگام بازگشت) به همراه واکنش به رویداد `onTrimMemory`.
+  - بافرگذاری سبک لاگ‌های شبکه و کنسول و تزریق رویدادمحور (`MutationObserver`) برای پیمایش روان و مصرف حداقل CPU و حافظه.
 - **سیستم افزونه‌ها به سبک فایرفاکس (WebExtensions / UserScripts)**:
   - شامل ۶ افزونه پیش‌فرض (*Dark Reader Pro*، *uBlock Script Shield*، *Video Ad Auto-Skipper*، *Force Copy*، *Video Speed Controller*، *JSON Formatter Pro*) و امکان ساخت افزونه سفارشی با JS و CSS.
 - **ابزارهای توسعه‌دهندگان (DevTools)**:

@@ -131,6 +131,7 @@ fun WebViewContainer(
                             context = context,
                             tab = tab,
                             settings = settings,
+                            viewModel = viewModel,
                             onTitleChanged = { t -> popupTitle = t },
                             onClosePopup = {
                                 popupWebView?.destroy()
@@ -143,8 +144,10 @@ fun WebViewContainer(
                         resultMsg.sendToTarget()
                     },
                 ).also { created ->
+                    val savedBundle = viewModel.consumeSavedTabState(tab.id)
                     viewModel.registerWebView(tab.id, created)
-                    if (tab.url.isNotBlank()) {
+                    val restored = savedBundle != null && created.restoreState(savedBundle) != null
+                    if (!restored && tab.url.isNotBlank()) {
                         created.loadUrl(tab.url)
                     }
                 }
@@ -358,6 +361,7 @@ private fun createConfiguredWebView(
                 if (url.startsWith("http://") || url.startsWith("https://")) {
                     val pageHost = runCatching { Uri.parse(view?.url.orEmpty()).host }.getOrNull()
                     if (AdBlockerEngine.shouldBlockAdRedirect(url, pageHost, settings.adBlockEnabled)) {
+                        viewModel.incrementBlockedAd(tabId)
                         return true // Block off-domain ad redirect cleanly like Aloha
                     }
                     return false
@@ -483,9 +487,11 @@ private fun createPopupWebView(
     context: android.content.Context,
     tab: BrowserTab,
     settings: BrowserSettings,
+    viewModel: BrowserViewModel,
     onTitleChanged: (String) -> Unit,
     onClosePopup: () -> Unit,
 ): WebView {
+    val parentHost = runCatching { Uri.parse(tab.url).host }.getOrNull()
     return WebView(context).apply {
         WebViewConfigurator.configure(
             webView = this,
@@ -494,7 +500,32 @@ private fun createPopupWebView(
             javaScriptEnabled = settings.javaScriptEnabled,
             blockThirdPartyCookiesIncognito = settings.blockThirdPartyCookiesIncognito,
         )
-        webViewClient = WebViewClient()
+        webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString() ?: return false
+                if (AdBlockerEngine.shouldBlockAdRedirect(url, parentHost, settings.adBlockEnabled)) {
+                    viewModel.incrementBlockedAd(tab.id)
+                    onClosePopup()
+                    return true
+                }
+                return false
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?,
+            ): WebResourceResponse? {
+                val url = request?.url?.toString() ?: return null
+                val decision = viewModel.evaluateRequest(
+                    tabId = tab.id,
+                    requestUrl = url,
+                    method = request.method ?: "GET",
+                    isMainFrame = request.isForMainFrame,
+                    headers = request.requestHeaders ?: emptyMap(),
+                )
+                return if (decision.isBlocked) AdBlockerEngine.emptyBlockedResponse() else null
+            }
+        }
         webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
                 if (!title.isNullOrBlank()) onTitleChanged(title)

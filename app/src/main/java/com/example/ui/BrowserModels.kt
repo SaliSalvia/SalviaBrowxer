@@ -77,6 +77,7 @@ data class BrowserTab(
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val isSecureHttps: Boolean = true,
+    val isHibernated: Boolean = false,
     val blockedAdsCount: Int = 0,
     val blockedTrackersCount: Int = 0,
     val detectedMedia: List<DetectedMedia> = emptyList(),

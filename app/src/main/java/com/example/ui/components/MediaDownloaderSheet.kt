@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -35,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -67,6 +69,7 @@ import java.util.Locale
 fun MediaDownloaderSheet(
     detectedMedia: List<DetectedMedia>,
     onStartDownload: (fileName: String, quality: MediaQualityOption, sourcePageUrl: String) -> Unit,
+    onRescanMedia: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
@@ -119,8 +122,16 @@ fun MediaDownloaderSheet(
                         )
                     }
                 }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "بستن")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onRescanMedia,
+                        modifier = Modifier.testTag("rescan_media_header_button"),
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "اسکن مجدد مدیا", tint = ElectricCyan)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "بستن")
+                    }
                 }
             }
 
@@ -148,10 +159,20 @@ fun MediaDownloaderSheet(
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Text(
-                            text = "پخش ویدیو را در صفحه شروع کنید؛ دکمه دانلود به محض تشخیص جریان استریم (MP4 / HLS) روشن می‌شود و کلیپ‌های تبلیغاتی کوتاه نادیده گرفته می‌شوند.",
+                            text = "پخش ویدیو را در صفحه شروع کنید؛ حباب دانلود به محض تشخیص استریم (MP4 / HLS / DASH) روشن می‌شود و کلیپ‌های تبلیغاتی کوتاه نادیده گرفته می‌شوند.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        OutlinedButton(
+                            onClick = onRescanMedia,
+                            modifier = Modifier
+                                .height(48.dp)
+                                .testTag("rescan_media_button"),
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("اسکن عمیق مجدد صفحه")
+                        }
                     }
                 }
             } else {

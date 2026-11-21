@@ -18,15 +18,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
@@ -38,6 +37,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -284,6 +284,30 @@ fun StartPageScreen(
                                 inner()
                             },
                         )
+                        if (searchText.isNotEmpty()) {
+                            IconButton(
+                                onClick = { searchText = "" },
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "پاک کردن جستجو",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            IconButton(
+                                onClick = { onNavigate(searchText) },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "جستجو و رفتن",
+                                    tint = ElectricCyan,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -341,22 +365,28 @@ fun StartPageScreen(
                 }
                 Spacer(modifier = Modifier.height(10.dp))
 
-                val rows = (speedDialItems.size + 3) / 4
-                val gridHeight = (rows * 102).dp
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(4),
-                    userScrollEnabled = false,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                val rowsList = remember(speedDialItems) { speedDialItems.chunked(4) }
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(gridHeight),
                 ) {
-                    items(speedDialItems, key = { it.id }) { item ->
-                        SpeedDialTile(
-                            bookmark = item,
-                            onClick = { onNavigate(item.url) },
-                        )
+                    rowsList.forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            rowItems.forEach { item ->
+                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                    SpeedDialTile(
+                                        bookmark = item,
+                                        onClick = { onNavigate(item.url) },
+                                    )
+                                }
+                            }
+                            repeat(4 - rowItems.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }

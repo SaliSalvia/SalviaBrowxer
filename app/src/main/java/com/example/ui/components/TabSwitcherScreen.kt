@@ -1,6 +1,8 @@
 package com.example.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -254,11 +256,16 @@ private fun TabGridCard(
     onSelect: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val borderColor = when {
+    val targetBorder = when {
         isActive && tab.isIncognito -> StealthViolet
         isActive -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
     }
+    val borderColor by animateColorAsState(
+        targetValue = targetBorder,
+        animationSpec = tween(180),
+        label = "tab_border",
+    )
 
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -351,6 +358,12 @@ private fun TabGridCard(
                         text = "فعال",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = if (tab.isIncognito) StealthViolet else MaterialTheme.colorScheme.primary,
+                    )
+                } else if (tab.isHibernated) {
+                    Text(
+                        text = "کم‌مصرف",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

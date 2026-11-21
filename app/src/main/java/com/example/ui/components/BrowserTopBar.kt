@@ -1,6 +1,11 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -171,6 +176,11 @@ fun BrowserTopBar(
                 }
 
                 // Omnibox URL / Search Field
+                val omniboxBorderColor by animateColorAsState(
+                    targetValue = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    animationSpec = tween(180),
+                    label = "omnibox_border",
+                )
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -178,8 +188,8 @@ fun BrowserTopBar(
                         .clip(RoundedCornerShape(22.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .border(
-                            width = 1.dp,
-                            color = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                            width = if (isFocused) 1.5.dp else 1.dp,
+                            color = omniboxBorderColor,
                             shape = RoundedCornerShape(22.dp),
                         )
                         .padding(horizontal = 12.dp),
@@ -427,18 +437,29 @@ fun BrowserTopBar(
                 }
             }
 
-            // Loading progress line
-            if (tab.isLoading && !tab.isStartPage) {
-                Spacer(modifier = Modifier.height(4.dp))
-                LinearProgressIndicator(
-                    progress = { (tab.progress.coerceIn(5, 100)) / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.5.dp)
-                        .clip(RoundedCornerShape(2.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
+            // Smooth animated loading progress line
+            val animatedProgress by animateFloatAsState(
+                targetValue = (tab.progress.coerceIn(5, 100)) / 100f,
+                animationSpec = tween(durationMillis = 160),
+                label = "page_progress",
+            )
+            AnimatedVisibility(
+                visible = tab.isLoading && !tab.isStartPage,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(220)),
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
             }
         }
     }

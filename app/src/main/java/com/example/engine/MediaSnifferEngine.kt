@@ -52,10 +52,12 @@ class MediaSnifferEngine {
         val hasVideoExt = videoExtensions.any { path.endsWith(it) || lower.contains("$it?") }
         val hasAudioExt = audioExtensions.any { path.endsWith(it) || lower.contains("$it?") }
         val hasStreamingHint = lower.contains("mime=video") ||
+            lower.contains("mime%3dvideo") ||
             lower.contains("type=video") ||
             lower.contains("playlist.m3u8") ||
             lower.contains("master.m3u8") ||
-            lower.contains("manifest.mpd")
+            lower.contains("manifest.mpd") ||
+            lower.contains(".ism/manifest")
 
         return hasVideoExt || hasAudioExt || hasStreamingHint
     }
@@ -697,11 +699,9 @@ class MediaSnifferEngine {
 
     fun domSnifferScript(): String = """
         (function() {
-            if (window.__navaMediaSnifferInstalled) return;
-            window.__navaMediaSnifferInstalled = true;
-
             function scanMedia() {
                 try {
+                    if (document.hidden) return;
                     const list = [];
                     const adRegex = /(ad[-_]?break|preroll|midroll|vast|vmap|doubleclick|imasdk|sponsored|ad-showing)/i;
                     const pageTitle = document.title || '';
@@ -715,17 +715,22 @@ class MediaSnifferEngine {
                         const isAdEl = adRegex.test(classText);
 
                         const sources = [];
+                        const dataSrc = el.getAttribute('data-src') || el.getAttribute('data-mp4') || el.getAttribute('data-hls') || '';
                         if (el.currentSrc) {
                             sources.push({ url: el.currentSrc, height: el.videoHeight || 0, label: '' });
                         }
                         if (el.src && el.src !== el.currentSrc) {
                             sources.push({ url: el.src, height: el.videoHeight || 0, label: '' });
                         }
+                        if (dataSrc && dataSrc !== el.currentSrc && dataSrc !== el.src) {
+                            sources.push({ url: dataSrc, height: el.videoHeight || 0, label: '' });
+                        }
                         el.querySelectorAll('source').forEach(s => {
-                            if (s.src) {
+                            const sUrl = s.src || s.getAttribute('data-src') || '';
+                            if (sUrl) {
                                 const h = parseInt(s.getAttribute('res') || s.getAttribute('size') || '0', 10) || (el.videoHeight || 0);
                                 const lbl = s.getAttribute('label') || '';
-                                sources.push({ url: s.src, height: h, label: lbl });
+                                sources.push({ url: sUrl, height: h, label: lbl });
                             }
                         });
 
@@ -773,7 +778,7 @@ class MediaSnifferEngine {
                     });
 
                     // OpenGraph / Twitter video fallback
-                    const ogVideo = document.querySelector('meta[property="og:video"], meta[property="og:video:secure_url"], meta[name="twitter:player:stream"]');
+                    const ogVideo = document.querySelector('meta[property="og:video"], meta[property="og:video:url"], meta[property="og:video:secure_url"], meta[name="twitter:player:stream"]');
                     const ogImage = document.querySelector('meta[property="og:image"]');
                     if (ogVideo && ogVideo.content && !list.some(i => i.src === ogVideo.content)) {
                         list.push({
@@ -797,10 +802,28 @@ class MediaSnifferEngine {
                 } catch (err) {}
             }
 
+            window.__salviaScanMediaNow = scanMedia;
             scanMedia();
+
+            if (window.__navaMediaSnifferInstalled) return;
+            window.__navaMediaSnifferInstalled = true;
+
             document.addEventListener('play', scanMedia, true);
             document.addEventListener('loadedmetadata', scanMedia, true);
-            setInterval(scanMedia, 2200);
+            if (window.MutationObserver && document.documentElement) {
+                var timer = null;
+                var mo = new MutationObserver(function(mutations) {
+                    for (var i = 0; i < mutations.length; i++) {
+                        if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
+                            clearTimeout(timer);
+                            timer = setTimeout(scanMedia, 500);
+                            break;
+                        }
+                    }
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            }
+            setInterval(scanMedia, 4500);
         })();
     """.trimIndent()
 }

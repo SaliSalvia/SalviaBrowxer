@@ -9,7 +9,11 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewDatabase
 
+import java.util.WeakHashMap
+
 object WebViewConfigurator {
+
+    private val lastAppliedConfigs = WeakHashMap<WebView, String>()
 
     /**
      * Generates a clean Chromium Mobile or Desktop User-Agent without the `; wv)` token.
@@ -39,6 +43,10 @@ object WebViewConfigurator {
         javaScriptEnabled: Boolean,
         blockThirdPartyCookiesIncognito: Boolean,
     ) {
+        val signature = "$isIncognito|$desktopMode|$javaScriptEnabled|$blockThirdPartyCookiesIncognito"
+        if (lastAppliedConfigs[webView] == signature) return
+        lastAppliedConfigs[webView] = signature
+
         val context = webView.context
         val settings = webView.settings
 
@@ -46,6 +54,7 @@ object WebViewConfigurator {
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.setSupportMultipleWindows(true)
         settings.domStorageEnabled = true
+        @Suppress("DEPRECATION")
         settings.databaseEnabled = !isIncognito
         settings.loadsImagesAutomatically = true
         settings.mediaPlaybackRequiresUserGesture = false

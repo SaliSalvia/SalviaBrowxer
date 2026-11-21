@@ -1,7 +1,11 @@
 package com.example.ui
 
+import android.app.ActivityManager
 import android.app.Application
+import android.content.ComponentCallbacks2
+import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebView
 import androidx.lifecycle.AndroidViewModel
@@ -34,6 +38,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -46,7 +51,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val downloadManager = MediaDownloadManager(application, repository, viewModelScope)
 
     private val webViews = ConcurrentHashMap<String, WebView>()
+    private val savedTabStates = ConcurrentHashMap<String, Bundle>()
+    private val tabMruOrder = ArrayDeque<String>()
     private val pendingProbedUrls = ConcurrentHashMap.newKeySet<String>()
+    private val networkBuffers = ConcurrentHashMap<String, ArrayDeque<NetworkRequestEntry>>()
+    private val consoleBuffers = ConcurrentHashMap<String, ArrayDeque<ConsoleLogEntry>>()
+
+    private val maxLiveWebViews: Int = runCatching {
+        val am = application.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        if (am?.isLowRamDevice == true) 2 else 3
+    }.getOrDefault(3)
 
     private val initialTab = BrowserTab(title = "صفحه شروع", isStartPage = true)
     private val _tabs = MutableStateFlow(listOf(initialTab))
@@ -96,13 +110,75 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun registerWebView(tabId: String, webView: WebView) {
         webViews[tabId] = webView
+        touchTabMru(tabId)
+        syncWebViewLifecycleAndMemory(activeId = _activeTabId.value)
     }
 
     fun getWebView(tabId: String): WebView? = webViews[tabId]
 
+    fun consumeSavedTabState(tabId: String): Bundle? {
+        val state = savedTabStates.remove(tabId)
+        updateTab(tabId) { it.copy(isHibernated = false) }
+        return state
+    }
+
+    fun onTrimMemory(level: Int) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW || level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            val activeId = _activeTabId.value
+            val backgroundIds = webViews.keys.filter { it != activeId }
+            backgroundIds.forEach { hibernateWebView(it) }
+            if (pendingProbedUrls.size > 150) {
+                pendingProbedUrls.clear()
+            }
+        }
+    }
+
+    private fun touchTabMru(tabId: String) {
+        synchronized(tabMruOrder) {
+            tabMruOrder.remove(tabId)
+            tabMruOrder.addFirst(tabId)
+        }
+    }
+
+    private fun syncWebViewLifecycleAndMemory(activeId: String) {
+        webViews.forEach { (id, wv) ->
+            if (id == activeId) {
+                runCatching { wv.onResume() }
+            } else {
+                runCatching { wv.onPause() }
+            }
+        }
+        val evictIds = synchronized(tabMruOrder) {
+            val liveOrdered = tabMruOrder.filter { webViews.containsKey(it) && it != activeId }
+            val allowedBackground = (maxLiveWebViews - 1).coerceAtLeast(1)
+            if (liveOrdered.size > allowedBackground) {
+                liveOrdered.drop(allowedBackground)
+            } else {
+                emptyList()
+            }
+        }
+        evictIds.forEach { hibernateWebView(it) }
+    }
+
+    private fun hibernateWebView(tabId: String) {
+        val wv = webViews.remove(tabId) ?: return
+        runCatching {
+            val bundle = Bundle()
+            if (wv.saveState(bundle) != null) {
+                savedTabStates[tabId] = bundle
+            }
+            wv.onPause()
+            wv.stopLoading()
+            wv.removeAllViews()
+            wv.destroy()
+        }
+        updateTab(tabId) { it.copy(isHibernated = true, isLoading = false) }
+    }
+
     fun openSheet(sheet: ActiveSheet) {
         _activeSheet.value = sheet
         if (sheet == ActiveSheet.DEVTOOLS) {
+            syncDevToolsBuffers(_activeTabId.value)
             refreshDomInspection()
         }
     }
@@ -117,6 +193,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun setDevToolsTab(tab: DevToolsTab) {
         _devToolsTab.value = tab
+        syncDevToolsBuffers(_activeTabId.value)
         if (tab == DevToolsTab.DOM || tab == DevToolsTab.STORAGE) {
             refreshDomInspection()
         }
@@ -143,28 +220,41 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _tabs.update { it + newTab }
         _activeTabId.value = newTab.id
         _activeSheet.value = ActiveSheet.NONE
+        touchTabMru(newTab.id)
+        syncWebViewLifecycleAndMemory(newTab.id)
     }
 
     fun selectTab(tabId: String) {
         if (_tabs.value.any { it.id == tabId }) {
             _activeTabId.value = tabId
             _activeSheet.value = ActiveSheet.NONE
+            touchTabMru(tabId)
+            syncWebViewLifecycleAndMemory(tabId)
         }
     }
 
     fun closeTab(tabId: String) {
         val tabToClose = _tabs.value.firstOrNull { it.id == tabId } ?: return
         destroyWebView(tabId)
+        savedTabStates.remove(tabId)
+        networkBuffers.remove(tabId)
+        consoleBuffers.remove(tabId)
+        synchronized(tabMruOrder) { tabMruOrder.remove(tabId) }
+        pendingProbedUrls.removeIf { it.startsWith("$tabId|") }
+
         val remaining = _tabs.value.filterNot { it.id == tabId }
         if (remaining.isEmpty()) {
             val fresh = BrowserTab(title = "صفحه شروع", isStartPage = true, isIncognito = false)
             _tabs.value = listOf(fresh)
             _activeTabId.value = fresh.id
+            touchTabMru(fresh.id)
         } else {
             _tabs.value = remaining
             if (_activeTabId.value == tabId) {
                 _activeTabId.value = remaining.last().id
             }
+            touchTabMru(_activeTabId.value)
+            syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
         if (tabToClose.isIncognito && _tabs.value.none { it.isIncognito }) {
             WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
@@ -173,17 +263,27 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeAllIncognitoTabs() {
         val incognitoIds = _tabs.value.filter { it.isIncognito }.map { it.id }
-        incognitoIds.forEach { destroyWebView(it) }
+        incognitoIds.forEach { id ->
+            destroyWebView(id)
+            savedTabStates.remove(id)
+            networkBuffers.remove(id)
+            consoleBuffers.remove(id)
+            synchronized(tabMruOrder) { tabMruOrder.remove(id) }
+            pendingProbedUrls.removeIf { it.startsWith("$id|") }
+        }
         val normalTabs = _tabs.value.filterNot { it.isIncognito }
         if (normalTabs.isEmpty()) {
             val fresh = BrowserTab(title = "صفحه شروع", isStartPage = true, isIncognito = false)
             _tabs.value = listOf(fresh)
             _activeTabId.value = fresh.id
+            touchTabMru(fresh.id)
         } else {
             _tabs.value = normalTabs
             if (_tabs.value.none { it.id == _activeTabId.value }) {
                 _activeTabId.value = normalTabs.last().id
             }
+            touchTabMru(_activeTabId.value)
+            syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
         WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
         _statusToast.value = "تمام تب‌های ناشناس پاکسازی شدند"
@@ -191,9 +291,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private fun destroyWebView(tabId: String) {
         webViews.remove(tabId)?.apply {
+            onPause()
             stopLoading()
             loadUrl("about:blank")
             clearHistory()
+            removeAllViews()
             destroy()
         }
     }
@@ -265,6 +367,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             wv.stopLoading()
             updateTab(tab.id) { it.copy(isLoading = false, progress = 0) }
         } else if (!tab.isStartPage) {
+            pendingProbedUrls.removeIf { it.startsWith("${tab.id}|") }
             updateTab(tab.id) { it.copy(detectedMedia = emptyList()) }
             wv.reload()
         }
@@ -314,6 +417,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // --- WebView Callbacks & Engines ---
 
     fun onPageStarted(tabId: String, url: String) {
+        pendingProbedUrls.removeIf { it.startsWith("$tabId|") }
         updateTab(tabId) {
             it.copy(
                 url = url,
@@ -321,6 +425,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isLoading = true,
                 progress = 15,
                 isSecureHttps = url.startsWith("https://"),
+                isHibernated = false,
                 detectedMedia = emptyList(),
             )
         }
@@ -439,12 +544,36 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isMediaDetected = isCandidateMedia,
             headersSummary = headers.entries.take(4).joinToString(" • ") { "${it.key}: ${it.value}" },
         )
-        updateTab(tabId) { current ->
-            val updated = (listOf(entry) + current.networkRequests).take(250)
-            current.copy(networkRequests = updated)
+        val buf = networkBuffers.getOrPut(tabId) { ArrayDeque() }
+        synchronized(buf) {
+            buf.addFirst(entry)
+            while (buf.size > 120) buf.removeLast()
+        }
+        if (_activeSheet.value == ActiveSheet.DEVTOOLS && _activeTabId.value == tabId) {
+            syncDevToolsBuffers(tabId)
         }
 
         return decision
+    }
+
+    fun incrementBlockedAd(tabId: String) {
+        updateTab(tabId) { current ->
+            current.copy(blockedAdsCount = current.blockedAdsCount + 1)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            prefsRepository.incrementBlockedStats(1L, 0L)
+        }
+    }
+
+    fun rescanActiveTabMedia() {
+        val tab = getCurrentTab()
+        if (tab.isStartPage) return
+        pendingProbedUrls.removeIf { it.startsWith("${tab.id}|") }
+        webViews[tab.id]?.let { wv ->
+            wv.evaluateJavascript(mediaSniffer.earlyMediaHookScript(), null)
+            wv.evaluateJavascript(mediaSniffer.domSnifferScript(), null)
+        }
+        _statusToast.value = "اسکن عمیق مدیا در حال انجام است…"
     }
 
     fun onHookedMediaUrl(tabId: String, mediaUrl: String, titleHint: String) {
@@ -567,8 +696,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun onConsoleLog(tabId: String, level: String, message: String, source: String) {
         val entry = ConsoleLogEntry(level = level, message = message, source = source)
-        updateTab(tabId) { current ->
-            current.copy(consoleLogs = (current.consoleLogs + entry).takeLast(300))
+        val buf = consoleBuffers.getOrPut(tabId) { ArrayDeque() }
+        synchronized(buf) {
+            buf.addLast(entry)
+            while (buf.size > 200) buf.removeFirst()
+        }
+        if (_activeSheet.value == ActiveSheet.DEVTOOLS && _activeTabId.value == tabId) {
+            syncDevToolsBuffers(tabId)
         }
     }
 
@@ -605,12 +739,20 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearConsoleLogs() {
         val tabId = _activeTabId.value
+        consoleBuffers[tabId]?.let { synchronized(it) { it.clear() } }
         updateTab(tabId) { it.copy(consoleLogs = emptyList()) }
     }
 
     fun clearNetworkLogs() {
         val tabId = _activeTabId.value
+        networkBuffers[tabId]?.let { synchronized(it) { it.clear() } }
         updateTab(tabId) { it.copy(networkRequests = emptyList()) }
+    }
+
+    private fun syncDevToolsBuffers(tabId: String) {
+        val netSnapshot = networkBuffers[tabId]?.let { buf -> synchronized(buf) { buf.toList() } } ?: emptyList()
+        val conSnapshot = consoleBuffers[tabId]?.let { buf -> synchronized(buf) { buf.toList() } } ?: emptyList()
+        updateTab(tabId) { it.copy(networkRequests = netSnapshot, consoleLogs = conSnapshot) }
     }
 
     fun refreshDomInspection() {
@@ -867,5 +1009,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         super.onCleared()
         webViews.values.forEach { runCatching { it.destroy() } }
         webViews.clear()
+        savedTabStates.clear()
+        networkBuffers.clear()
+        consoleBuffers.clear()
+        pendingProbedUrls.clear()
     }
 }

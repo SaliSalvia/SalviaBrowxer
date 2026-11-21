@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Cancel
@@ -187,7 +188,7 @@ fun DownloadsSheet(
                                                         }
                                                     },
                                                 ) {
-                                                    Icon(Icons.Default.OpenInNew, contentDescription = "باز کردن فایل", tint = EmeraldShield)
+                                                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "باز کردن فایل", tint = EmeraldShield)
                                                 }
                                             }
                                             IconButton(onClick = { onDelete(dl) }) {
