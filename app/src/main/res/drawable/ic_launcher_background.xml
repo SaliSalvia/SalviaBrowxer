@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- No backdrop: the launcher icon is just the emblem circle, corners stay transparent. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#010207" />
+    <solid android:color="@android:color/transparent" />
 </shape>
