@@ -28,7 +28,7 @@
 
 ## ساخت خودکار APK در GitHub Actions
 
-این مخزن دارای ورکفلو آماده در مسیر `.github/workflows/build-apk.yml` است که با هر `push` به شاخه‌های `main` یا `master`، اجرای دستی (`workflow_dispatch`)، یا ثبت تگ نسخه (`v1.0.0`) به صورت خودکار:
+این مخزن دارای ورکفلو آماده در مسیر `.github/workflows/build-apk.yml` است که با هر `push` به شاخه‌های `main` یا `master`، اجرای دستی (`workflow_dispatch`)، یا ثبت تگ نسخه (`v1.0.0`) به صورت خودکار روی **JDK 21** (همراه با Android SDK Platform 36.1 و Build-Tools 36.1.0) اجرا می‌شود:
 
 1. تست‌های واحد (`:app:testDebugUnitTest`) را اجرا می‌کند.
 2. فایل نصب اندروید (`SalviaBrowxser-debug.apk`) را می‌سازد و در بخش **Actions → Artifacts** مخزن برای دانلود قرار می‌دهد.
@@ -44,9 +44,32 @@
 
 ## ساخت محلی (Local Build)
 
+### پیش‌نیازها
+- **JDK 21**: تست‌های واحد با Robolectric روی Android SDK 36 اجرا می‌شوند و این سندباکس به Java 21 نیاز دارد (Gradle 9.3.1 و AGP 9.1.1 نیز روی JDK 21 اجرا می‌شوند).
+- **Android SDK**: `platforms;android-36.1` و `build-tools;36.1.0`
+- **Gradle 9.3.1**
+
+پیکربندی امضای `debugConfig` فایل `debug.keystore` را در ریشه پروژه می‌خواند؛ پیش از اولین ساخت آن را بسازید:
+
+```bash
+keytool -genkey -v -keystore debug.keystore -storepass android \
+  -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+  -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+```
+
+سپس تست‌ها و فایل نصب را بسازید:
+
 ```bash
 gradle :app:testDebugUnitTest
 gradle :app:assembleDebug
 ```
 
 فایل خروجی در مسیر `app/build/outputs/apk/debug/app-debug.apk` تولید می‌شود.
+
+برای ساخت نسخه Release امضاشده، فایل `my-upload-key.jks` را با کلید (`alias`) به نام `upload` در ریشه پروژه قرار دهید و رمزها را به‌صورت متغیر محیطی تنظیم کنید:
+
+```bash
+STORE_PASSWORD=... KEY_PASSWORD=... gradle :app:assembleRelease
+```
+
+خروجی: `app/build/outputs/apk/release/app-release.apk`
