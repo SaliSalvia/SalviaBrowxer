@@ -1,0 +1,6 @@
+{
+  "name": "SalviaBrowxser",
+  "description": "SalviaBrowxser — مرورگر فوق‌حرفه‌ای کرومیوم با طراحی کیهانی تیره، مسدودکننده تبلیغات، حالت ناشناس، پشتیبانی از افزونه‌های فایرفاکسی، ابزار توسعه‌دهندگان و حباب شناور مغناطیسی دانلود ویدیو",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

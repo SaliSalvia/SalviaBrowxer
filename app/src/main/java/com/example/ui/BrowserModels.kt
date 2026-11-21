@@ -1,0 +1,113 @@
+package com.example.ui
+
+import java.util.UUID
+
+data class MediaQualityOption(
+    val id: String = UUID.randomUUID().toString(),
+    val label: String,        // e.g. "1080p Full HD", "720p HD", "480p", "صدا (M4A)"
+    val resolutionHeight: Int, // 1080, 720, 480, 360, 0 for audio
+    val url: String,
+    val audioUrl: String = "", // Optional separate audio stream URL (HLS/DASH) for muxing into MP4
+    val format: String,        // "MP4", "HLS", "DASH", "WEBM", "M4A", "MP3"
+    val mimeType: String,
+    val sizeBytes: Long = -1L,
+    val bandwidthBps: Long = 0L,
+    val isHls: Boolean = false,
+    val isDash: Boolean = false,
+)
+
+data class DetectedMedia(
+    val id: String,
+    val title: String,
+    val sourcePageUrl: String,
+    val primaryUrl: String,
+    val thumbnailUrl: String = "",
+    val durationSeconds: Double = 0.0,
+    val width: Int = 0,
+    val height: Int = 0,
+    val domAreaPx: Long = 0L,
+    val priorityScore: Int = 0,
+    val isMainVideo: Boolean = false,
+    val isAudioOnly: Boolean = false,
+    val qualities: List<MediaQualityOption> = emptyList(),
+    val detectedAt: Long = System.currentTimeMillis(),
+)
+
+data class ConsoleLogEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val level: String, // "LOG", "WARN", "ERROR", "INFO", "EVAL"
+    val message: String,
+    val source: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+)
+
+data class NetworkRequestEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val method: String,
+    val url: String,
+    val resourceType: String, // "DOC", "XHR", "SCRIPT", "MEDIA", "IMG", "CSS", "OTHER"
+    val isBlocked: Boolean = false,
+    val blockReason: String = "",
+    val isMediaDetected: Boolean = false,
+    val headersSummary: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+)
+
+data class DomInspectionSnapshot(
+    val url: String = "",
+    val title: String = "",
+    val htmlSource: String = "",
+    val metaTags: List<Pair<String, String>> = emptyList(),
+    val cookies: String = "",
+    val localStorageJson: String = "{}",
+    val sessionStorageJson: String = "{}",
+    val userAgent: String = "",
+    val viewport: String = "",
+)
+
+data class BrowserTab(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String = "تب جدید",
+    val url: String = "",
+    val isStartPage: Boolean = true,
+    val isIncognito: Boolean = false,
+    val isDesktopMode: Boolean = false,
+    val isLoading: Boolean = false,
+    val progress: Int = 0,
+    val canGoBack: Boolean = false,
+    val canGoForward: Boolean = false,
+    val isSecureHttps: Boolean = true,
+    val blockedAdsCount: Int = 0,
+    val blockedTrackersCount: Int = 0,
+    val detectedMedia: List<DetectedMedia> = emptyList(),
+    val consoleLogs: List<ConsoleLogEntry> = emptyList(),
+    val networkRequests: List<NetworkRequestEntry> = emptyList(),
+    val domSnapshot: DomInspectionSnapshot = DomInspectionSnapshot(),
+) {
+    val hasMainMedia: Boolean
+        get() = detectedMedia.isNotEmpty()
+
+    val totalBlockedOnTab: Int
+        get() = blockedAdsCount + blockedTrackersCount
+}
+
+enum class DevToolsTab(val label: String) {
+    CONSOLE("کنسول JS"),
+    NETWORK("شبکه"),
+    DOM("سورس و DOM"),
+    STORAGE("کوکی و حافظه"),
+}
+
+enum class ActiveSheet {
+    NONE,
+    TABS,
+    MEDIA_DOWNLOADER,
+    EXTENSIONS,
+    DEVTOOLS,
+    BOOKMARKS,
+    HISTORY,
+    DOWNLOADS,
+    SETTINGS,
+    SITE_INFO,
+    FIND_IN_PAGE,
+}
