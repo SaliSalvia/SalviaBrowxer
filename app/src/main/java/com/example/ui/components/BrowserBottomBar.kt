@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,15 +35,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.BrowserTab
-import com.example.ui.theme.CosmicViolet
+import com.example.ui.theme.ChromeSilver
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.NebulaMagenta
+import com.example.ui.theme.SapphireGlow
 
 @Composable
 fun BrowserBottomBar(
@@ -57,31 +61,27 @@ fun BrowserBottomBar(
 ) {
     val haptic = LocalHapticFeedback.current
     val homeScale by animateFloatAsState(
-        targetValue = if (tab.isStartPage) 1.12f else 1f,
+        targetValue = if (tab.isStartPage) 1.14f else 1f,
         animationSpec = spring(dampingRatio = 0.65f, stiffness = 420f),
         label = "home_scale",
     )
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.25f
+    val dockColor = if (!isDark) {
+        MaterialTheme.colorScheme.surface
+    } else if (tab.isStartPage) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.66f)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+    }
 
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
+        color = dockColor,
+        tonalElevation = 0.dp,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                CosmicViolet.copy(alpha = 0.35f),
-                                ElectricCyan.copy(alpha = 0.55f),
-                                CosmicViolet.copy(alpha = 0.35f),
-                            ),
-                        ),
-                    ),
-            )
+            PrismHairline(isIncognito = tab.isIncognito, height = 1.dp, alpha = 0.8f)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -95,32 +95,32 @@ fun BrowserBottomBar(
                     enabled = !tab.isStartPage || tab.canGoBack,
                     modifier = Modifier.testTag("nav_back_button"),
                 ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "بازگشت",
-                    tint = if (!tab.isStartPage || tab.canGoBack) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-                    },
-                )
-            }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "بازگشت",
+                        tint = if (!tab.isStartPage || tab.canGoBack) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        },
+                    )
+                }
 
-            IconButton(
-                onClick = onForward,
-                enabled = tab.canGoForward,
-                modifier = Modifier.testTag("nav_forward_button"),
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "جلو",
-                    tint = if (tab.canGoForward) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-                    },
-                )
-            }
+                IconButton(
+                    onClick = onForward,
+                    enabled = tab.canGoForward,
+                    modifier = Modifier.testTag("nav_forward_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "جلو",
+                        tint = if (tab.canGoForward) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        },
+                    )
+                }
 
                 IconButton(
                     onClick = {
@@ -129,12 +129,23 @@ fun BrowserBottomBar(
                     },
                     modifier = Modifier.testTag("nav_home_button"),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Home,
-                        contentDescription = "صفحه شروع",
-                        tint = if (tab.isStartPage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.scale(homeScale),
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = "صفحه شروع",
+                            tint = if (tab.isStartPage) ElectricCyan else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.scale(homeScale),
+                        )
+                        if (tab.isStartPage) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .size(4.dp)
+                                    .clip(CircleShape)
+                                    .background(ElectricCyan),
+                            )
+                        }
+                    }
                 }
 
                 IconButton(
@@ -144,7 +155,7 @@ fun BrowserBottomBar(
                     Icon(
                         imageVector = Icons.Default.Extension,
                         contentDescription = "افزونه‌ها",
-                        tint = MaterialTheme.colorScheme.secondary,
+                        tint = if (tab.isIncognito) MaterialTheme.colorScheme.primary else NebulaMagenta,
                     )
                 }
 
@@ -165,9 +176,15 @@ fun BrowserBottomBar(
                         modifier = Modifier
                             .size(26.dp)
                             .border(
-                                width = 2.dp,
-                                color = if (tab.isIncognito) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                shape = RoundedCornerShape(7.dp),
+                                width = 1.6.dp,
+                                brush = Brush.linearGradient(
+                                    if (tab.isIncognito) {
+                                        listOf(MaterialTheme.colorScheme.primary, NebulaMagenta)
+                                    } else {
+                                        listOf(ChromeSilver, ElectricCyan, SapphireGlow)
+                                    },
+                                ),
+                                shape = RoundedCornerShape(8.dp),
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -177,7 +194,7 @@ fun BrowserBottomBar(
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
                             ),
-                            color = if (tab.isIncognito) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            color = if (tab.isIncognito) MaterialTheme.colorScheme.primary else ElectricCyan,
                         )
                     }
                 }

@@ -122,10 +122,10 @@ fun DownloadsSheet(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(downloads, key = { it.id }) { dl ->
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(glassCardModifier(cornerRadius = 18.dp, isActive = dl.status == "DOWNLOADING")),
                     ) {
                         Column(
                             modifier = Modifier.padding(14.dp),
@@ -282,12 +282,10 @@ fun BookmarksSheet(
             modifier = Modifier.fillMaxSize(),
         ) {
             items(bookmarks, key = { it.id }) { bm ->
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .then(glassCardModifier(cornerRadius = 16.dp))
                         .clickable {
                             onOpenUrl(bm.url)
                             onDismiss()
@@ -384,12 +382,10 @@ fun HistorySheet(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(history, key = { it.id }) { item ->
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .then(glassCardModifier(cornerRadius = 16.dp))
                             .clickable {
                                 onOpenUrl(item.url)
                                 onDismiss()
@@ -684,7 +680,7 @@ private fun FullSheetScaffold(
     trailingAction: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+    CosmicSpaceBackdrop {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -694,13 +690,14 @@ private fun FullSheetScaffold(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.65f))
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    Icon(icon, contentDescription = null, tint = ElectricCyan)
+                    Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     trailingAction()
@@ -709,7 +706,7 @@ private fun FullSheetScaffold(
                     }
                 }
             }
-            HorizontalDivider()
+            PrismHairline(alpha = 0.8f)
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 content()
             }

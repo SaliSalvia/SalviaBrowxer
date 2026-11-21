@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.ThemePreference
@@ -34,6 +35,7 @@ import com.example.ui.BrowserViewModel
 import com.example.ui.components.BookmarksSheet
 import com.example.ui.components.BrowserBottomBar
 import com.example.ui.components.BrowserTopBar
+import com.example.ui.components.CosmicSpaceBackdrop
 import com.example.ui.components.DevToolsSheet
 import com.example.ui.components.DownloadsSheet
 import com.example.ui.components.ExtensionsSheet
@@ -119,45 +121,48 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
         isIncognito = activeTab.isIncognito,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Scaffold(
-                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-                topBar = {
-                    BrowserTopBar(
-                        tab = activeTab,
-                        isBookmarked = isBookmarked,
-                        adBlockEnabled = settings.adBlockEnabled,
-                        activeExtensionsCount = activeExtensionsCount,
-                        findInPageActive = activeSheet == ActiveSheet.FIND_IN_PAGE,
-                        findQuery = findQuery,
-                        onNavigate = { viewModel.navigateActiveTab(it) },
-                        onReloadOrStop = { viewModel.reloadOrStop() },
-                        onOpenSheet = { viewModel.openSheet(it) },
-                        onToggleBookmark = { viewModel.toggleBookmarkActiveTab() },
-                        onToggleDesktopMode = { viewModel.toggleDesktopModeForActiveTab() },
-                        onCreateIncognitoTab = { viewModel.createNewTab(isIncognito = true) },
-                        onFindQueryChange = { viewModel.findInPage(it) },
-                        onFindNext = { viewModel.findNext(it) },
-                        onCloseFind = { viewModel.closeSheet() },
-                    )
-                },
-                bottomBar = {
-                    BrowserBottomBar(
-                        tab = activeTab,
-                        tabCount = tabs.size,
-                        onBack = { viewModel.goBack() },
-                        onForward = { viewModel.goForward() },
-                        onHome = { viewModel.goHomeActiveTab() },
-                        onOpenExtensions = { viewModel.openSheet(ActiveSheet.EXTENSIONS) },
-                        onOpenTabSwitcher = { viewModel.openSheet(ActiveSheet.TABS) },
-                        onOpenDevTools = { viewModel.openSheet(ActiveSheet.DEVTOOLS) },
-                    )
-                },
-            ) { innerPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                ) {
+            val renderCosmicScaffold = activeTab.isStartPage
+            val scaffoldContent: @Composable () -> Unit = {
+                Scaffold(
+                    containerColor = if (renderCosmicScaffold) Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.background,
+                    snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+                    topBar = {
+                        BrowserTopBar(
+                            tab = activeTab,
+                            isBookmarked = isBookmarked,
+                            adBlockEnabled = settings.adBlockEnabled,
+                            activeExtensionsCount = activeExtensionsCount,
+                            findInPageActive = activeSheet == ActiveSheet.FIND_IN_PAGE,
+                            findQuery = findQuery,
+                            onNavigate = { viewModel.navigateActiveTab(it) },
+                            onReloadOrStop = { viewModel.reloadOrStop() },
+                            onOpenSheet = { viewModel.openSheet(it) },
+                            onToggleBookmark = { viewModel.toggleBookmarkActiveTab() },
+                            onToggleDesktopMode = { viewModel.toggleDesktopModeForActiveTab() },
+                            onCreateIncognitoTab = { viewModel.createNewTab(isIncognito = true) },
+                            onFindQueryChange = { viewModel.findInPage(it) },
+                            onFindNext = { viewModel.findNext(it) },
+                            onCloseFind = { viewModel.closeSheet() },
+                        )
+                    },
+                    bottomBar = {
+                        BrowserBottomBar(
+                            tab = activeTab,
+                            tabCount = tabs.size,
+                            onBack = { viewModel.goBack() },
+                            onForward = { viewModel.goForward() },
+                            onHome = { viewModel.goHomeActiveTab() },
+                            onOpenExtensions = { viewModel.openSheet(ActiveSheet.EXTENSIONS) },
+                            onOpenTabSwitcher = { viewModel.openSheet(ActiveSheet.TABS) },
+                            onOpenDevTools = { viewModel.openSheet(ActiveSheet.DEVTOOLS) },
+                        )
+                    },
+                ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                    ) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         if (activeTab.isStartPage) {
                             StartPageScreen(
@@ -191,6 +196,15 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                         onClick = { viewModel.openSheet(ActiveSheet.MEDIA_DOWNLOADER) },
                     )
                 }
+            }
+            }
+
+            if (renderCosmicScaffold) {
+                CosmicSpaceBackdrop(isIncognito = activeTab.isIncognito) {
+                    scaffoldContent()
+                }
+            } else {
+                scaffoldContent()
             }
 
             // Overlays & Modal Sheets

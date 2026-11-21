@@ -84,10 +84,7 @@ fun DevToolsSheet(
 ) {
     BackHandler(onBack = onDismiss)
 
-    Surface(
-        color = MaterialTheme.colorScheme.background,
-        modifier = Modifier.fillMaxSize(),
-    ) {
+    CosmicSpaceBackdrop(isIncognito = tab.isIncognito) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -125,7 +122,10 @@ fun DevToolsSheet(
                 }
             }
 
-            PrimaryTabRow(selectedTabIndex = selectedTab.ordinal) {
+            PrimaryTabRow(
+                selectedTabIndex = selectedTab.ordinal,
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            ) {
                 DevToolsTab.entries.forEach { devTab ->
                     Tab(
                         selected = selectedTab == devTab,
@@ -134,6 +134,7 @@ fun DevToolsSheet(
                     )
                 }
             }
+            PrismHairline(isIncognito = tab.isIncognito, alpha = 0.75f)
 
             when (selectedTab) {
                 DevToolsTab.CONSOLE -> ConsolePane(

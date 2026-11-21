@@ -83,10 +83,7 @@ fun ExtensionsSheet(
     val installed = extensions.filter { it.isInstalled }
     val catalog = extensions.filterNot { it.isInstalled }
 
-    Surface(
-        color = MaterialTheme.colorScheme.background,
-        modifier = Modifier.fillMaxSize(),
-    ) {
+    CosmicSpaceBackdrop {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -137,7 +134,10 @@ fun ExtensionsSheet(
                 }
             }
 
-            PrimaryTabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            ) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -149,6 +149,7 @@ fun ExtensionsSheet(
                     text = { Text("فروشگاه افزونه‌ها (${catalog.size})") },
                 )
             }
+            PrismHairline(alpha = 0.75f)
 
             val listToShow = if (selectedTab == 0) installed else catalog
 
@@ -245,19 +246,14 @@ private fun ExtensionCard(
         else -> Icons.Default.Extension
     }
 
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .border(
-                1.dp,
-                if (extension.isEnabled && extension.isInstalled) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-                } else {
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                },
-                RoundedCornerShape(18.dp),
+            .then(
+                glassCardModifier(
+                    cornerRadius = 18.dp,
+                    isActive = extension.isEnabled && extension.isInstalled,
+                ),
             ),
     ) {
         Column(

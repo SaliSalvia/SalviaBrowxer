@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,15 +50,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.ui.BrowserTab
+import com.example.ui.theme.ChromeSilver
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldShield
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.NebulaMagenta
+import com.example.ui.theme.ObsidianSurface
+import com.example.ui.theme.SapphireBlue
+import com.example.ui.theme.SapphireGlow
+import com.example.ui.theme.StarlightWhite
 import com.example.ui.theme.StealthViolet
 
 @Composable
@@ -79,11 +93,9 @@ fun TabSwitcherScreen(
     val normalTabs = tabs.filterNot { it.isIncognito }
     val incognitoTabs = tabs.filter { it.isIncognito }
     val displayedTabs = if (showIncognitoOnly) incognitoTabs else normalTabs
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.25f
 
-    Surface(
-        color = MaterialTheme.colorScheme.background,
-        modifier = Modifier.fillMaxSize(),
-    ) {
+    CosmicSpaceBackdrop(isIncognito = showIncognitoOnly) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -100,7 +112,8 @@ fun TabSwitcherScreen(
             ) {
                 Text(
                     text = "مدیریت تب‌ها (${tabs.size})",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = if (isDark) StarlightWhite else MaterialTheme.colorScheme.onBackground,
                 )
                 IconButton(
                     onClick = onDismiss,
@@ -150,12 +163,22 @@ fun TabSwitcherScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Icon(
-                            imageVector = if (showIncognitoOnly) Icons.Default.VisibilityOff else Icons.Default.Language,
-                            contentDescription = null,
-                            tint = if (showIncognitoOnly) StealthViolet else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(56.dp),
-                        )
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(110.dp)) {
+                            Image(
+                                painter = painterResource(id = R.drawable.salvia_prism_rings_alpha),
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .alpha(0.75f),
+                            )
+                            Icon(
+                                imageVector = if (showIncognitoOnly) Icons.Default.VisibilityOff else Icons.Default.Language,
+                                contentDescription = null,
+                                tint = if (showIncognitoOnly) StealthViolet else ElectricCyan,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
                         Text(
                             text = if (showIncognitoOnly) "هیچ تب ناشناسی باز نیست" else "هیچ تب عادی باز نیست",
                             style = MaterialTheme.typography.titleMedium,
@@ -163,7 +186,8 @@ fun TabSwitcherScreen(
                         Button(
                             onClick = { onNewTab(showIncognitoOnly) },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (showIncognitoOnly) StealthViolet else MaterialTheme.colorScheme.primary,
+                                containerColor = if (showIncognitoOnly) StealthViolet else SapphireBlue,
+                                contentColor = StarlightWhite,
                             ),
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null)
@@ -191,56 +215,64 @@ fun TabSwitcherScreen(
                 }
             }
 
-            // Bottom Actions Bar
+            // Bottom Frosted Glass Actions Dock
             Surface(
-                tonalElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+                color = if (isDark) ObsidianSurface.copy(alpha = 0.78f) else MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Button(
-                        onClick = { onNewTab(false) },
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    PrismHairline(isIncognito = showIncognitoOnly)
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .testTag("new_normal_tab_button"),
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("تب جدید")
-                    }
-
-                    OutlinedButton(
-                        onClick = { onNewTab(true) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .testTag("new_incognito_tab_button"),
-                    ) {
-                        Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = StealthViolet)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("تب ناشناس", color = StealthViolet)
-                    }
-
-                    if (incognitoTabs.isNotEmpty()) {
-                        IconButton(
-                            onClick = onCloseAllIncognito,
+                        Button(
+                            onClick = { onNewTab(false) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ElectricCyan,
+                                contentColor = Color(0xFF031524),
+                            ),
                             modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.14f))
-                                .testTag("burn_incognito_tabs_button"),
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("new_normal_tab_button"),
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = "پاکسازی همه تب‌های ناشناس",
-                                tint = MaterialTheme.colorScheme.error,
-                            )
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("تب جدید", fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = { onNewTab(true) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("new_incognito_tab_button"),
+                        ) {
+                            Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = StealthViolet)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("تب ناشناس", color = StealthViolet)
+                        }
+
+                        if (incognitoTabs.isNotEmpty()) {
+                            IconButton(
+                                onClick = onCloseAllIncognito,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.14f))
+                                    .testTag("burn_incognito_tabs_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = "پاکسازی همه تب‌های ناشناس",
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
                         }
                     }
                 }
@@ -258,23 +290,38 @@ private fun TabGridCard(
 ) {
     val targetBorder = when {
         isActive && tab.isIncognito -> StealthViolet
-        isActive -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+        isActive -> ElectricCyan
+        else -> SapphireGlow.copy(alpha = 0.35f)
     }
     val borderColor by animateColorAsState(
         targetValue = targetBorder,
         animationSpec = tween(180),
         label = "tab_border",
     )
+    val cardBrush = if (tab.isIncognito) {
+        Brush.verticalGradient(listOf(Color(0xFF1A1038).copy(alpha = 0.85f), Color(0xFF0B061C).copy(alpha = 0.90f)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xFF0A1436).copy(alpha = 0.84f), ObsidianSurface.copy(alpha = 0.88f)))
+    }
 
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = if (tab.isIncognito) Color(0xFF1A1330) else MaterialTheme.colorScheme.surfaceVariant,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(148.dp)
-            .border(if (isActive) 2.dp else 1.dp, borderColor, RoundedCornerShape(18.dp))
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .background(cardBrush)
+            .border(
+                width = if (isActive) 1.8.dp else 1.dp,
+                brush = if (isActive) {
+                    Brush.linearGradient(
+                        if (tab.isIncognito) listOf(StealthViolet, NebulaMagenta, ChromeSilver)
+                        else listOf(ElectricCyan, SapphireGlow, NebulaMagenta),
+                    )
+                } else {
+                    Brush.linearGradient(listOf(borderColor, borderColor.copy(alpha = 0.5f)))
+                },
+                shape = RoundedCornerShape(20.dp),
+            )
             .clickable(onClick = onSelect)
             .testTag("tab_card_${tab.id}"),
     ) {
@@ -297,7 +344,7 @@ private fun TabGridCard(
                     Icon(
                         imageVector = if (tab.isIncognito) Icons.Default.VisibilityOff else Icons.Default.Language,
                         contentDescription = null,
-                        tint = if (tab.isIncognito) StealthViolet else MaterialTheme.colorScheme.primary,
+                        tint = if (tab.isIncognito) StealthViolet else ElectricCyan,
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
@@ -320,7 +367,7 @@ private fun TabGridCard(
             }
 
             Text(
-                text = if (tab.isStartPage) "صفحه شروع" else tab.url,
+                text = if (tab.isStartPage) "صفحه شروع کیهانی" else tab.url,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFontFamily),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -357,13 +404,13 @@ private fun TabGridCard(
                     Text(
                         text = "فعال",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (tab.isIncognito) StealthViolet else MaterialTheme.colorScheme.primary,
+                        color = if (tab.isIncognito) StealthViolet else ElectricCyan,
                     )
                 } else if (tab.isHibernated) {
                     Text(
                         text = "کم‌مصرف",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = ChromeSilver.copy(alpha = 0.7f),
                     )
                 }
             }

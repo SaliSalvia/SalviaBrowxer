@@ -66,7 +66,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -79,7 +81,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.ActiveSheet
 import com.example.ui.BrowserTab
+import com.example.ui.theme.CosmicViolet
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.SapphireBlue
+import com.example.ui.theme.SapphireGlow
 
 @Composable
 fun BrowserTopBar(
@@ -110,163 +116,178 @@ fun BrowserTopBar(
         }
     }
 
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.25f
+    val barColor = if (!isDark) {
+        MaterialTheme.colorScheme.surface
+    } else if (tab.isStartPage) {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+    }
+
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp,
+        color = barColor,
+        tonalElevation = 0.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth(),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
             ) {
-                // Shield / Incognito / Security Icon Pill
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (tab.isIncognito) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else if (adBlockEnabled) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable { onOpenSheet(ActiveSheet.SITE_INFO) }
-                        .testTag("site_shield_button"),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    ) {
-                        Icon(
-                            imageVector = when {
-                                tab.isIncognito -> Icons.Default.VisibilityOff
-                                tab.isStartPage -> Icons.Default.Shield
-                                tab.isSecureHttps -> Icons.Default.Lock
-                                else -> Icons.Default.Warning
-                            },
-                            contentDescription = "وضعیت امنیت و مسدودکننده تبلیغات",
-                            tint = when {
-                                tab.isIncognito -> MaterialTheme.colorScheme.primary
-                                tab.isSecureHttps || tab.isStartPage -> MaterialTheme.colorScheme.secondary
-                                else -> MaterialTheme.colorScheme.tertiary
-                            },
-                            modifier = Modifier.size(18.dp),
-                        )
-                        if (tab.totalBlockedOnTab > 0) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = tab.totalBlockedOnTab.toString(),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                ),
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    // Shield / Incognito / Security Icon Pill
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (tab.isIncognito) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                        } else if (adBlockEnabled) {
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                        },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(
+                                0.9.dp,
+                                if (adBlockEnabled) ElectricCyan.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                RoundedCornerShape(16.dp),
                             )
-                        }
-                    }
-                }
-
-                // Omnibox URL / Search Field
-                val omniboxBorderColor by animateColorAsState(
-                    targetValue = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                    animationSpec = tween(180),
-                    label = "omnibox_border",
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .border(
-                            width = if (isFocused) 1.5.dp else 1.dp,
-                            color = omniboxBorderColor,
-                            shape = RoundedCornerShape(22.dp),
-                        )
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
+                            .clickable { onOpenSheet(ActiveSheet.SITE_INFO) }
+                            .testTag("site_shield_button"),
                     ) {
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            BasicTextField(
-                                value = urlInput,
-                                onValueChange = { urlInput = it },
-                                singleLine = true,
-                                textStyle = TextStyle(
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    fontSize = 13.sp,
-                                ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                                keyboardActions = KeyboardActions(
-                                    onGo = {
-                                        focusManager.clearFocus()
-                                        onNavigate(urlInput)
-                                    },
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .onFocusChanged { focusState ->
-                                        isFocused = focusState.isFocused
-                                    }
-                                    .testTag("omnibox_input"),
-                                decorationBox = { innerTextField ->
-                                    if (urlInput.isEmpty()) {
-                                        Text(
-                                            text = if (tab.isIncognito) "جستجوی ناشناس یا آدرس وب…" else "جستجو یا آدرس وب…",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                    innerTextField()
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        ) {
+                            Icon(
+                                imageVector = when {
+                                    tab.isIncognito -> Icons.Default.VisibilityOff
+                                    tab.isStartPage -> Icons.Default.Shield
+                                    tab.isSecureHttps -> Icons.Default.Lock
+                                    else -> Icons.Default.Warning
                                 },
+                                contentDescription = "وضعیت امنیت و مسدودکننده تبلیغات",
+                                tint = when {
+                                    tab.isIncognito -> MaterialTheme.colorScheme.primary
+                                    tab.isSecureHttps || tab.isStartPage -> ElectricCyan
+                                    else -> MaterialTheme.colorScheme.tertiary
+                                },
+                                modifier = Modifier.size(18.dp),
                             )
-                        }
-
-                        if (isFocused && urlInput.isNotEmpty()) {
-                            IconButton(
-                                onClick = { urlInput = "" },
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "پاک کردن آدرس",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
-                        } else if (!tab.isStartPage) {
-                            IconButton(
-                                onClick = onReloadOrStop,
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .testTag("reload_stop_button"),
-                            ) {
-                                Icon(
-                                    imageVector = if (tab.isLoading) Icons.Default.Close else Icons.Default.Refresh,
-                                    contentDescription = if (tab.isLoading) "توقف بارگذاری" else "بارگذاری مجدد",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp),
+                            if (tab.totalBlockedOnTab > 0) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = tab.totalBlockedOnTab.toString(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                    ),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
                             }
                         }
                     }
-                }
+
+                    // Omnibox URL / Search Field
+                    val omniboxBorderColor by animateColorAsState(
+                        targetValue = if (isFocused) ElectricCyan else SapphireGlow.copy(alpha = 0.45f),
+                        animationSpec = tween(180),
+                        label = "omnibox_border",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (tab.isStartPage && isDark) 0.78f else 0.96f))
+                            .border(
+                                width = if (isFocused) 1.5.dp else 1.dp,
+                                color = omniboxBorderColor,
+                                shape = RoundedCornerShape(22.dp),
+                            )
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                BasicTextField(
+                                    value = urlInput,
+                                    onValueChange = { urlInput = it },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontSize = 13.sp,
+                                    ),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                                    keyboardActions = KeyboardActions(
+                                        onGo = {
+                                            focusManager.clearFocus()
+                                            onNavigate(urlInput)
+                                        },
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .onFocusChanged { focusState ->
+                                            isFocused = focusState.isFocused
+                                        }
+                                        .testTag("omnibox_input"),
+                                    decorationBox = { innerTextField ->
+                                        if (urlInput.isEmpty()) {
+                                            Text(
+                                                text = if (tab.isIncognito) "جستجوی ناشناس یا آدرس وب…" else "جستجو یا آدرس وب…",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        innerTextField()
+                                    },
+                                )
+                            }
+
+                            if (isFocused && urlInput.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { urlInput = "" },
+                                    modifier = Modifier.minimumInteractiveComponentSize(),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "پاک کردن آدرس",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            } else if (!tab.isStartPage) {
+                                IconButton(
+                                    onClick = onReloadOrStop,
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("reload_stop_button"),
+                                ) {
+                                    Icon(
+                                        imageVector = if (tab.isLoading) Icons.Default.Close else Icons.Default.Refresh,
+                                        contentDescription = if (tab.isLoading) "توقف بارگذاری" else "بارگذاری مجدد",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                 // Quick Extensions Icon with active count dot
                 Box(contentAlignment = Alignment.TopEnd) {
@@ -425,13 +446,13 @@ fun BrowserTopBar(
                             inner()
                         },
                     )
-                    IconButton(onClick = { onFindNext(false) }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { onFindNext(false) }, modifier = Modifier.minimumInteractiveComponentSize()) {
                         Icon(Icons.Default.KeyboardArrowUp, contentDescription = "نتیجه قبلی")
                     }
-                    IconButton(onClick = { onFindNext(true) }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { onFindNext(true) }, modifier = Modifier.minimumInteractiveComponentSize()) {
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = "نتیجه بعدی")
                     }
-                    IconButton(onClick = onCloseFind, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = onCloseFind, modifier = Modifier.minimumInteractiveComponentSize()) {
                         Icon(Icons.Default.Close, contentDescription = "بستن جستجو")
                     }
                 }
@@ -456,11 +477,13 @@ fun BrowserTopBar(
                             .fillMaxWidth()
                             .height(2.5.dp)
                             .clip(RoundedCornerShape(2.dp)),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = ElectricCyan,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
                 }
             }
+        }
+            PrismHairline(isIncognito = tab.isIncognito, height = 1.dp, alpha = 0.8f)
         }
     }
 }

@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,12 +47,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.ChromeSilver
 import com.example.ui.theme.CosmicViolet
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.JetBrainsMonoFontFamily
-import com.example.ui.theme.MetallicGold
 import com.example.ui.theme.NebulaMagenta
 import com.example.ui.theme.ObsidianElevated
+import com.example.ui.theme.ObsidianSurface
+import com.example.ui.theme.SapphireBlue
+import com.example.ui.theme.SapphireGlow
+import com.example.ui.theme.StarlightWhite
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -62,7 +65,7 @@ import kotlin.math.roundToInt
  * - Tap to open the InShot-style Media Quality & Download Sheet.
  * - Long-press & drag anywhere over the browser viewport; snaps magnetically to the nearest
  *   horizontal display edge (left or right) when released.
- * - Glows with SalviaBrowxser's cosmic Violet/Cyan/Magenta aura + count badge when a main video is detected.
+ * - Styled as a Quantum Sapphire Prism Orb matching the new SalviaBrowxser emblem.
  */
 @Composable
 fun FloatingDownloadBubble(
@@ -125,15 +128,15 @@ fun FloatingDownloadBubble(
         )
 
         val borderBrush = if (hasMedia) {
-            Brush.sweepGradient(listOf(ElectricCyan, CosmicViolet, NebulaMagenta, MetallicGold, ElectricCyan))
+            Brush.sweepGradient(listOf(ElectricCyan, SapphireGlow, CosmicViolet, ChromeSilver, NebulaMagenta, ElectricCyan))
         } else {
-            Brush.linearGradient(listOf(CosmicViolet.copy(alpha = 0.5f), ElectricCyan.copy(alpha = 0.4f)))
+            Brush.linearGradient(listOf(SapphireGlow.copy(alpha = 0.55f), ElectricCyan.copy(alpha = 0.45f)))
         }
 
         val orbFill = if (hasMedia) {
-            Brush.linearGradient(listOf(CosmicViolet, Color(0xFF4C1D95), Color(0xFF0E7490)))
+            Brush.linearGradient(listOf(Color(0xFF071338), SapphireBlue, Color(0xFF0A4170)))
         } else {
-            Brush.linearGradient(listOf(ObsidianElevated.copy(alpha = 0.86f), Color(0xFF0E1022).copy(alpha = 0.86f)))
+            Brush.linearGradient(listOf(ObsidianElevated.copy(alpha = 0.88f), ObsidianSurface.copy(alpha = 0.90f)))
         }
 
         Box(
@@ -141,16 +144,16 @@ fun FloatingDownloadBubble(
                 .offset { IntOffset(offsetX.value.roundToInt(), offsetY.value.roundToInt()) }
                 .size(bubbleSizeDp)
                 .scale(dragScale * glowScale)
-                .alpha(if (hasMedia || isDragging) 1f else 0.74f)
+                .alpha(if (hasMedia || isDragging) 1f else 0.78f)
                 .shadow(
-                    elevation = if (hasMedia || isDragging) 14.dp else 6.dp,
+                    elevation = if (hasMedia || isDragging) 16.dp else 6.dp,
                     shape = CircleShape,
-                    ambientColor = if (hasMedia) NebulaMagenta else CosmicViolet,
-                    spotColor = if (hasMedia) ElectricCyan else CosmicViolet,
+                    ambientColor = if (hasMedia) SapphireGlow else CosmicViolet,
+                    spotColor = if (hasMedia) ElectricCyan else SapphireBlue,
                 )
                 .clip(CircleShape)
                 .background(orbFill)
-                .border(width = if (hasMedia) 2.5.dp else 1.5.dp, brush = borderBrush, shape = CircleShape)
+                .border(width = if (hasMedia) 2.4.dp else 1.4.dp, brush = borderBrush, shape = CircleShape)
                 .pointerInput(maxX, maxY) {
                     detectDragGesturesAfterLongPress(
                         onDragStart = {
@@ -197,7 +200,7 @@ fun FloatingDownloadBubble(
             Icon(
                 imageVector = Icons.Default.Download,
                 contentDescription = "حباب شناور تشخیص و دانلود مدیا",
-                tint = if (hasMedia) MetallicGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (hasMedia) StarlightWhite else ChromeSilver.copy(alpha = 0.8f),
                 modifier = Modifier.size(26.dp),
             )
 
@@ -205,14 +208,15 @@ fun FloatingDownloadBubble(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(6.dp)
+                        .padding(5.dp)
                         .clip(CircleShape)
-                        .background(MetallicGold)
+                        .background(ElectricCyan)
+                        .border(0.8.dp, StarlightWhite.copy(alpha = 0.7f), CircleShape)
                         .padding(horizontal = 5.dp, vertical = 1.dp),
                 ) {
                     Text(
                         text = mediaCount.toString(),
-                        color = Color(0xFF1A1100),
+                        color = Color(0xFF021024),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = JetBrainsMonoFontFamily,
