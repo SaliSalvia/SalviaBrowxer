@@ -146,6 +146,12 @@ object WebViewConfigurator {
      */
     fun cookieHeader(webView: WebView?, url: String): String {
         if (webView == null) return CookieManager.getInstance().getCookie(url).orEmpty()
+        val privateProfileIsolated = synchronized(lastAppliedConfigs) {
+            val isPrivate = lastAppliedConfigs[webView]?.startsWith("true|") == true
+            !isPrivate || isolatedIncognitoWebViews[webView] == true
+        }
+        // Never let a private tab's native probe/downloader inherit normal-profile cookies.
+        if (!privateProfileIsolated) return ""
         return runCatching { cookieManagerFor(webView).getCookie(url).orEmpty() }
             .getOrDefault("")
     }
@@ -159,11 +165,9 @@ object WebViewConfigurator {
     }
 
     /**
-     * Deletes only the dedicated private profile after every private WebView is
-     * destroyed. Never calls global WebStorage.deleteAllData/removeAllCookies:
-     * those APIs would wipe the normal profile as well.
-     *
-     * On old WebView implementations, no destructive global fallback is used.
+     * Clears data only inside the dedicated private profile. Never calls global
+     * WebStorage.deleteAllData/removeAllCookies, which would wipe normal browsing
+     * data. The installed WebView may complete storage deletion asynchronously.
      */
     @Suppress("UNUSED_PARAMETER")
     fun clearIncognitoAndVolatileData(context: Context, clearCookiesToo: Boolean): Boolean {
