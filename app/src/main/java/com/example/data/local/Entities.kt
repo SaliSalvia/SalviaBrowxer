@@ -59,6 +59,7 @@ data class DownloadEntity(
     val isDashStream: Boolean = false,
     val supportsResume: Boolean = false,
     val isIncognito: Boolean = false,
+    val isDesktopMode: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
 )
 
