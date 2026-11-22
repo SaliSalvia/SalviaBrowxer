@@ -103,6 +103,19 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
     val findQuery by viewModel.findInPageQuery.collectAsStateWithLifecycle()
 
     val activeTab = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
+    var hadIncognitoTabs by remember { mutableStateOf(tabs.any { it.isIncognito }) }
+
+    LaunchedEffect(tabs.count { it.isIncognito }) {
+        val hasIncognitoTabs = tabs.any { it.isIncognito }
+        if (hasIncognitoTabs) {
+            hadIncognitoTabs = true
+        } else if (hadIncognitoTabs) {
+            // Runs after the outgoing WebViewContainer has disposed its popup and primary WebView.
+            viewModel.onIncognitoSessionClosed()
+            hadIncognitoTabs = false
+        }
+    }
+
     val isDarkTheme = when (settings.themePreference) {
         ThemePreference.DARK -> true
         ThemePreference.LIGHT -> false
