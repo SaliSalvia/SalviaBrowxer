@@ -124,12 +124,18 @@ class DownloadCoordinator(context: Context) {
     suspend fun recoverPendingDownloads() = withContext(Dispatchers.IO) {
         val pending = repository.getPendingNormalDownloads()
         pending.filter { it.status == "QUEUED" }.forEach { download ->
-            scheduleNormalDownload(download.id, replaceExisting = false)
+            if (DownloadSchedulerPolicy.shouldRescheduleQueuedWorkOnAppStart(Build.VERSION.SDK_INT)) {
+                scheduleNormalDownload(download.id, replaceExisting = false)
+            } else if (!manager.isDownloadExecuting(download.id) && !hasPlatformWork(download.id)) {
+                // UIDT must be scheduled from a foreground, user-visible action.
+                // Do not silently recreate a job that the user/system may have stopped.
+                repository.updateDownloadStatus(download.id, "PAUSED")
+            }
         }
 
         pending.filter { it.status == "DOWNLOADING" }.forEach { download ->
-            // If neither this process nor the OS owns the task, leave its partial data
-            // intact and expose PAUSED. The user can explicitly resume it from Downloads.
+            // A live process or JobScheduler/WorkManager owns the transfer; otherwise
+            // retain its partial data and require an explicit Resume action.
             delay(1_500L)
             if (manager.isDownloadExecuting(download.id)) return@forEach
             if (hasPlatformWork(download.id)) return@forEach
