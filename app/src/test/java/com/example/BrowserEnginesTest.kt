@@ -343,8 +343,8 @@ class BrowserEnginesTest {
         val sniffer = MediaSnifferEngine()
         val payload = """
             [{
-              "src": "https://cdn.example.com/videos/feature.mp4",
-              "sources": [{"url": "https://cdn.example.com/videos/feature.mp4", "height": 1080}],
+              "src": "../videos/feature.mp4",
+              "sources": [{"url": "../videos/feature.mp4", "height": 1080}],
               "source": "JSON_LD",
               "duration": 240.0,
               "width": 1920,
@@ -367,6 +367,8 @@ class BrowserEnginesTest {
         assertEquals(MediaDetectionSource.JSON_LD, result.detectionSource)
         assertEquals(MediaCaptureStatus.DOWNLOADABLE, result.captureStatus)
         assertTrue(result.isDownloadable)
+        assertEquals("https://m.youtube.com/videos/feature.mp4", result.primaryUrl)
+        assertEquals("https://m.youtube.com/videos/feature.mp4", result.qualities.single().url)
         assertEquals("YouTube", result.platformLabel)
         assertTrue(result.confidenceScore >= 80)
     }
@@ -386,6 +388,27 @@ class BrowserEnginesTest {
                 "https://youtube.com.attacker.example/watch",
                 "https://cdn.example.com/video.mp4",
             ).label,
+        )
+    }
+
+
+    @Test
+    fun `relative and protocol relative media URLs resolve against the page`() {
+        val sniffer = MediaSnifferEngine()
+
+        assertEquals(
+            "https://example.com/videos/master.m3u8",
+            sniffer.resolveMediaUrl(
+                "https://example.com/watch/page",
+                "../videos/master.m3u8",
+            ),
+        )
+        assertEquals(
+            "https://cdn.example.com/video.mp4",
+            sniffer.resolveMediaUrl(
+                "https://example.com/watch",
+                "//cdn.example.com/video.mp4",
+            ),
         )
     }
 
