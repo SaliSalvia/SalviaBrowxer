@@ -667,8 +667,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun onHookedMediaUrl(tabId: String, mediaUrl: String, titleHint: String) {
         val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
-        if (!mediaSniffer.isCandidateMediaUrl(mediaUrl)) return
-        probeAndAttachNetworkMedia(tabId, mediaUrl, tab.url, titleHint.ifBlank { tab.title })
+        val resolvedMediaUrl = mediaSniffer.resolveMediaUrl(tab.url, mediaUrl)
+        if (!mediaSniffer.isCandidateMediaUrl(resolvedMediaUrl)) return
+        probeAndAttachNetworkMedia(
+            tabId,
+            resolvedMediaUrl,
+            tab.url,
+            titleHint.ifBlank { tab.title },
+        )
     }
 
     private fun probeAndAttachNetworkMedia(
