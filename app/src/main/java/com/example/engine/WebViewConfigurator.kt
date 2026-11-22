@@ -30,6 +30,7 @@ object WebViewConfigurator {
 
     private val lastAppliedConfigs = WeakHashMap<WebView, String>()
     private val isolatedIncognitoWebViews = WeakHashMap<WebView, Boolean>()
+    private val profileCookieManagers = WeakHashMap<WebView, CookieManager>()
 
     @Volatile
     private var cachedMobileUa: String? = null
@@ -137,6 +138,9 @@ object WebViewConfigurator {
         cookieManager.setAcceptCookie(true)
         val allowThirdParty = if (isIncognito) !blockThirdPartyCookiesIncognito else true
         cookieManager.setAcceptThirdPartyCookies(webView, allowThirdParty)
+        synchronized(lastAppliedConfigs) {
+            profileCookieManagers[webView] = cookieManager
+        }
         return isolated
     }
 
@@ -157,12 +161,11 @@ object WebViewConfigurator {
     fun cookieManagerForTab(webView: WebView?, isIncognito: Boolean): CookieManager? {
         if (!isIncognito) return CookieManager.getInstance()
         if (webView == null) return null
-        val privateProfileIsolated = synchronized(lastAppliedConfigs) {
-            isolatedIncognitoWebViews[webView] == true &&
+        return synchronized(lastAppliedConfigs) {
+            val privateProfileIsolated = isolatedIncognitoWebViews[webView] == true &&
                 lastAppliedConfigs[webView]?.startsWith("true|") == true
+            if (privateProfileIsolated) profileCookieManagers[webView] else null
         }
-        if (!privateProfileIsolated) return null
-        return runCatching { WebViewCompat.getProfile(webView).cookieManager }.getOrNull()
     }
 
     private fun cookieManagerFor(webView: WebView): CookieManager {
