@@ -736,7 +736,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     isDesktopMode = tab.isDesktopMode,
                 )
             }.onFailure {
-                withContext(Dispatchers.Main) {
+                withContext(Dispatchers.Main.immediate) {
                     _statusToast.value = getApplication<Application>().getString(
                         com.example.R.string.download_schedule_failed,
                     )
@@ -864,7 +864,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun recoverPendingDownloads() {
-        viewModelScope.launch(Dispatchers.IO) {
+        DownloadRuntime.launchMaintenance {
             downloadCoordinator.recoverPendingDownloads()
         }
     }
