@@ -322,7 +322,7 @@ private fun DetectedMediaCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-    
+
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -365,52 +365,52 @@ private fun DetectedMediaCard(
                                     formatBytes(quality.sizeBytes, s.unknownSize)
                                 } else if (quality.bandwidthBps > 0) {
                                     "${quality.bandwidthBps / 1000} kbps"
-                            } else {
-                                quality.format
+                                } else {
+                                    quality.format
+                                }
+                                Text(
+                                    text = sizeLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
-                            Text(
-                                text = sizeLabel,
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                         }
                     }
                 }
-            }
 
-            OutlinedTextField(
-                value = customFileName,
-                onValueChange = { customFileName = it },
-                label = { Text(s.outputFileNameLabel) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Button(
-                onClick = {
-                    val chosen = selectedQuality ?: media.qualities.firstOrNull()
-                    if (chosen != null) {
-                        onDownload(customFileName.ifBlank { media.title }, chosen)
-                    }
-                },
-                enabled = selectedQuality != null,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = EmeraldShield,
-                    contentColor = Color(0xFF031C18),
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("confirm_media_download_button"),
-            ) {
-                Icon(Icons.Default.Download, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = String.format(s.downloadWithQualityFormat, selectedQuality?.label.orEmpty()),
-                    fontWeight = FontWeight.Bold,
+                OutlinedTextField(
+                    value = customFileName,
+                    onValueChange = { customFileName = it },
+                    label = { Text(s.outputFileNameLabel) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
+
+                Button(
+                    onClick = {
+                        val chosen = selectedQuality ?: media.qualities.firstOrNull()
+                        if (chosen != null) {
+                            onDownload(customFileName.ifBlank { media.title }, chosen)
+                        }
+                    },
+                    enabled = selectedQuality != null,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldShield,
+                        contentColor = Color(0xFF031C18),
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("confirm_media_download_button"),
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = String.format(s.downloadWithQualityFormat, selectedQuality?.label.orEmpty()),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             } else {
                 val notice = when (media.captureStatus) {
                     com.example.ui.MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY -> s.mseReferenceNotice
