@@ -120,6 +120,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private fun s(): AppStrings = stringsFor(settings.value.appLanguage)
 
+    private fun cookieHeaderForTab(tab: BrowserTab, url: String): String {
+        val tabWebView = webViews[tab.id]
+        // A missing/hibernated private WebView must never fall back to normal-profile cookies.
+        if (tab.isIncognito && tabWebView == null) return ""
+        return WebViewConfigurator.cookieHeader(tabWebView, url)
+    }
+
     fun getCurrentTab(): BrowserTab =
         _tabs.value.firstOrNull { it.id == _activeTabId.value } ?: _tabs.value.first()
 
@@ -644,7 +651,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val cacheKey = "$tabId|$mediaUrl"
         if (!pendingProbedUrls.add(cacheKey)) return
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), desktopMode = false)
-        val cookieHeader = WebViewConfigurator.cookieHeader(webViews[tabId], mediaUrl)
+        val sourceTab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val cookieHeader = cookieHeaderForTab(sourceTab, mediaUrl)
         viewModelScope.launch(Dispatchers.IO) {
             val detected = mediaSniffer.probeNetworkMedia(
                 mediaUrl = mediaUrl,
@@ -686,7 +694,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
-        val cookieHeader = WebViewConfigurator.cookieHeader(webViews[tab.id], quality.url)
+        val cookieHeader = cookieHeaderForTab(tab, quality.url)
         downloadManager.startDownload(fileName, quality, sourcePageUrl, ua, cookieHeader, allowGlobalCookieFallback = !tab.isIncognito)
         _statusToast.value = String.format(s().toastDownloadStartedFormat, fileName)
     }
@@ -695,7 +703,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val guessedName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
-        val cookieHeader = WebViewConfigurator.cookieHeader(webViews[tab.id], url)
+        val cookieHeader = cookieHeaderForTab(tab, url)
         val lower = url.lowercase()
         val strings = s()
         val opt = MediaQualityOption(
