@@ -15,6 +15,7 @@ import com.example.data.local.BrowserRepository
 import com.example.data.local.DownloadEntity
 import com.example.ui.MediaQualityOption
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -56,7 +57,8 @@ class MediaDownloadManager(
         sourcePageUrl: String,
         userAgent: String,
         sessionCookieManager: CookieManager? = null,
-        allowGlobalCookieFallback: Boolean = true,
+        allowGlobalCookieFallback: Boolean = !isIncognito,
+        isIncognito: Boolean = false,
     ) {
         val safeFileName = sanitizeFileName(fileName, quality)
         scope.launch(Dispatchers.IO) {
@@ -74,6 +76,7 @@ class MediaDownloadManager(
                     isHlsStream = quality.isHls,
                     isDashStream = quality.isDash,
                     supportsResume = !quality.isHls && !quality.isDash,
+                    isIncognito = isIncognito,
                 ),
             )
             launchJobForEntity(
@@ -87,7 +90,7 @@ class MediaDownloadManager(
                 isHls = quality.isHls || quality.url.lowercase().contains(".m3u8"),
                 isDash = quality.isDash,
                 sessionCookieManager = sessionCookieManager,
-                allowGlobalCookieFallback = allowGlobalCookieFallback,
+                allowGlobalCookieFallback = allowGlobalCookieFallback && !isIncognito,
             )
         }
     }
@@ -119,9 +122,26 @@ class MediaDownloadManager(
                 isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
                 isDash = download.isDashStream,
                 sessionCookieManager = sessionCookieManager,
-                allowGlobalCookieFallback = allowGlobalCookieFallback,
+                allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
             )
         }
+    }
+
+    /**
+     * Cancels all active private downloads, removes partial files, and deletes
+     * their Room metadata before the dedicated private WebView profile is removed.
+     * Completed files intentionally published to MediaStore are retained.
+     */
+    suspend fun clearIncognitoDownloads() {
+        val privateDownloads = repository.getIncognitoDownloads()
+        privateDownloads.forEach { download ->
+            pausedIds.remove(download.id)
+            activeJobs.remove(download.id)?.cancelAndJoin()
+            chunkDir(download.id).deleteRecursively()
+            repository.deleteDownload(download.id)
+        }
+        // Sweep records inserted just before the session-close snapshot.
+        repository.deleteIncognitoDownloads()
     }
 
     fun cancelDownload(download: DownloadEntity) {
