@@ -169,7 +169,12 @@ object WebViewConfigurator {
     fun clearIncognitoAndVolatileData(context: Context, clearCookiesToo: Boolean): Boolean {
         if (!supportsIsolatedIncognitoProfiles()) return false
         return runCatching {
-            ProfileStore.getInstance().deleteProfile(PRIVATE_PROFILE_NAME)
+            val privateProfile = ProfileStore.getInstance().getOrCreateProfile(PRIVATE_PROFILE_NAME)
+            privateProfile.cookieManager.removeAllCookies(null)
+            privateProfile.cookieManager.flush()
+            privateProfile.webStorage.deleteAllData()
+            privateProfile.geolocationPermissions.clearAll()
+            true
         }.getOrDefault(false)
     }
 
