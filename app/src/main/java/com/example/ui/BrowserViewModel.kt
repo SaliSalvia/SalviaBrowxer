@@ -730,7 +730,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // --- Media Download Action ---
 
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
-        if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(quality.url)) {
+        if (!quality.isVerifiedDownloadSource) {
             _statusToast.value = s().unavailableMediaSourceNotice
             return
         }
