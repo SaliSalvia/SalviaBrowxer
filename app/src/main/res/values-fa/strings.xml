@@ -16,4 +16,5 @@
     <string name="web_permission_deny">رد کردن</string>
     <string name="incognito_isolation_unavailable">نسخه WebView دستگاه از پروفایل خصوصی جداگانه پشتیبانی نمی‌کند. جداسازی تب خصوصی محدود است؛ اطلاعات حساس وارد نکنید.</string>
     <string name="incognito_profile_cleared">نشست مرور خصوصی بسته شد و حذف داده‌های پروفایل آن زمان‌بندی شد.</string>
+    <string name="incognito_cleanup_failed">پاک‌سازی پروفایل خصوصی تأیید نشد. پیش از استفاده از سایت‌های حساس، همه تب‌های خصوصی را ببندید و دوباره تلاش کنید.</string>
 </resources>
