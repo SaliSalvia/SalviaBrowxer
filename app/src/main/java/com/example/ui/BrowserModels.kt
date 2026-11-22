@@ -56,7 +56,8 @@ data class DetectedMedia(
         get() = captureStatus == MediaCaptureStatus.DOWNLOADABLE &&
             qualities.any { quality ->
                 val uri = runCatching { java.net.URI(quality.url) }.getOrNull()
-                uri?.scheme?.lowercase() in setOf("http", "https") &&
+                uri != null &&
+                    uri.scheme?.lowercase() in setOf("http", "https") &&
                     !uri.host.isNullOrBlank()
             }
 }
