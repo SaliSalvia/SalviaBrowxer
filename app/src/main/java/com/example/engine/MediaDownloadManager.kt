@@ -529,13 +529,17 @@ class MediaDownloadManager(
             tempDir.deleteRecursively()
             repository.updateDownloadProgress(downloadId, finalSize, finalSize, 0L, "COMPLETED", finalUri, false)
         } catch (_: CancellationException) {
-            tempDir.deleteRecursively()
-            repository.updateDownloadStatus(downloadId, "CANCELLED")
+            if (pausedIds.remove(downloadId)) {
+                repository.updateDownloadStatus(downloadId, "PAUSED")
+            } else {
+                tempDir.deleteRecursively()
+                repository.updateDownloadStatus(downloadId, "CANCELLED")
+            }
         } catch (_: Exception) {
             tempDir.deleteRecursively()
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
-            activeJobs.remove(downloadId)
+            // activeJobs is cleared by the central Job completion handler.
         }
     }
 
@@ -571,13 +575,17 @@ class MediaDownloadManager(
             tempDir.deleteRecursively()
             repository.updateDownloadProgress(downloadId, len, len, 0L, "COMPLETED", outUri, false)
         } catch (_: CancellationException) {
-            tempDir.deleteRecursively()
-            repository.updateDownloadStatus(downloadId, "CANCELLED")
+            if (pausedIds.remove(downloadId)) {
+                repository.updateDownloadStatus(downloadId, "PAUSED")
+            } else {
+                tempDir.deleteRecursively()
+                repository.updateDownloadStatus(downloadId, "CANCELLED")
+            }
         } catch (_: Exception) {
             tempDir.deleteRecursively()
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
-            activeJobs.remove(downloadId)
+            // activeJobs is cleared by the central Job completion handler.
         }
     }
 
