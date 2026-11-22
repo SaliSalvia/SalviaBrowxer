@@ -109,9 +109,6 @@ class DownloadUidtJobService : JobService() {
         val downloadId = params.extras.getLong(EXTRA_DOWNLOAD_ID, -1L)
         if (downloadId > 0L) {
             activeJobs.remove(downloadId)?.cancel()
-            serviceScope.launch(Dispatchers.IO) {
-                DownloadRuntime.manager(applicationContext).stopForSystemRetry(downloadId)
-            }
         }
         // Retry system interruptions. Explicit user pause/cancel is already
         // persisted in Room before the coordinator cancels the JobScheduler ID.
