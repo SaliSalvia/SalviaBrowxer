@@ -310,7 +310,7 @@ class MediaSnifferEngine {
                     }
                 }
 
-                if (!isBlobReference && qualityList.isEmpty()) {
+                if (!isBlobReference && !isMediaStreamReference && qualityList.isEmpty()) {
                     val isHls = src.lowercase().contains(".m3u8")
                     val isDash = src.lowercase().contains(".mpd")
                     val format = when {
