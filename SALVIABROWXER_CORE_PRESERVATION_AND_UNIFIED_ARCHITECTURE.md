@@ -521,14 +521,16 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 - نرمال‌سازی آدرس‌های نسبی و protocol-relative نسبت به URL صفحه، پیش از اعتبارسنجی HTTP(S).
 - نگهداری Blob/MSE و MediaStream به‌عنوان مرجع غیرقابل‌دانلود، بدون تولید گزینهٔ دانلود جعلی.
 - پشتیبانی از Live MediaStream بدون `src` یا `currentSrc` با شناسهٔ تشخیصی داخلی و بدون درخواست شبکه.
-- فعال‌سازی کنترل دانلود فقط برای quality URL مطلق HTTP(S).
+- فعال‌سازی کنترل دانلود فقط برای quality URL مطلق HTTP(S)؛ اگر quality دارای audio sidecar جداگانه باشد، آن URL نیز باید HTTP(S) معتبر باشد.
+- اشتراک یک policy واحد برای اعتبارسنجی URL در مدل، Media Probe و DownloadCoordinator؛ رد ورودی نامعتبر پیش از ایجاد رکورد Room و schedule.
 - حفظ اولویت Main Video برای candidateهای قوی حاصل از Network Hook.
 - استفاده از User-Agent واقعی تب (mobile/desktop) در Media Probe.
 - پیام محدودیت فارسی و انگلیسی برای مرجع MSE/Blob، Live و منبع غیرقابل‌اعتبارسنجی.
 
 حفظ هسته:
 - بدون تغییر Room schema و migration.
-- بدون تغییر DownloadCoordinator، WorkManager، UIDT، recovery، notification actions یا private-profile isolation.
+- منطق schedule و اجرای DownloadCoordinator، WorkManager، UIDT، recovery و notification actions تغییر نکرده است؛ تنها guard اعتبارسنجی URLهای اصلی و audio sidecar پیش از ایجاد رکورد دانلود به DownloadCoordinator اضافه شده است.
+- private-profile isolation و انتقال cookie/session تغییر نکرده‌اند.
 - بدون حذف قابلیت‌های موجود مرورگر، DevTools، Extensions، AdBlock یا media ranking.
 
 محدودیت‌ها:
@@ -543,6 +545,7 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 - جلوگیری از schemeهای `file:`، `javascript:`، `blob:` و سایر منابع غیر HTTP(S).
 - مرزبندی exact-host برای تشخیص پلتفرم.
 - حفظ نقش Main برای candidate معتبر Network Hook.
-- اعتبارسنجی `DetectedMedia.isDownloadable`.
+- اعتبارسنجی policy مشترک HTTP(S)، فیلتر qualityهای نامعتبر و رد audio sidecar نامعتبر.
+- اعتبارسنجی `DetectedMedia.isDownloadable` و guard پیش از enqueue.
 
 **CI:** فقط Run مربوط به آخرین SHA این PR ملاک پذیرش است؛ نتیجه و Artifact پس از پایان workflow باید ثبت شوند.
