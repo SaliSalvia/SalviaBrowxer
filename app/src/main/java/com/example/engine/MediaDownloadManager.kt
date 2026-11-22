@@ -139,6 +139,9 @@ class MediaDownloadManager(
         val download = repository.getDownloadById(downloadId) ?: return null
         if (download.status in setOf("COMPLETED", "CANCELLED", "FAILED")) return download
 
+        // A fresh explicit resume must not inherit an old scheduler-stop marker.
+        pausedIds.remove(downloadId)
+
         val job = launchJobForEntity(
             downloadId = download.id,
             fileName = download.fileName,
