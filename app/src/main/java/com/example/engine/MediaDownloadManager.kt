@@ -72,7 +72,6 @@ class MediaDownloadManager(
                 isIncognito = isIncognito,
                 isDesktopMode = isDesktopMode,
             )
-            val task = repository.getDownloadById(downloadId) ?: return@launch
             executePersistedDownload(
                 downloadId = downloadId,
                 userAgent = userAgent,
@@ -137,10 +136,14 @@ class MediaDownloadManager(
     }
 
     suspend fun stopForSystemRetry(downloadId: Long) {
+        val before = repository.getDownloadById(downloadId) ?: return
+        // Explicit user pause/cancel always wins over a concurrent scheduler stop.
+        if (before.status in setOf("PAUSED", "CANCELLED", "COMPLETED", "FAILED")) return
+
         pausedIds.add(downloadId)
         activeJobs[downloadId]?.cancelAndJoin()
-        val current = repository.getDownloadById(downloadId) ?: return
-        if (current.status != "PAUSED") {
+        val after = repository.getDownloadById(downloadId) ?: return
+        if (after.status !in setOf("CANCELLED", "COMPLETED", "FAILED")) {
             repository.updateDownloadStatus(downloadId, "QUEUED")
         }
     }
