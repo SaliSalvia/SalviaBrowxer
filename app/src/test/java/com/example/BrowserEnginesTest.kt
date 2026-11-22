@@ -15,6 +15,7 @@ import com.example.ui.MediaCaptureStatus
 import com.example.ui.MediaDetectionSource
 import com.example.ui.DetectedMedia
 import com.example.ui.MediaQualityOption
+import com.example.ui.MediaSourceUrlPolicy
 import com.example.ui.i18n.stringsFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -433,6 +434,17 @@ class BrowserEnginesTest {
         assertFalse(sniffer.isCandidateMediaUrl("file:///sdcard/Movies/video.mp4"))
         assertFalse(sniffer.isCandidateMediaUrl("javascript:https://cdn.example.com/video.mp4"))
         assertFalse(sniffer.isCandidateMediaUrl("blob:https://example.com/video"))
+    }
+
+    @Test
+    fun `shared download URL policy accepts only absolute HTTP origins`() {
+        assertTrue(MediaSourceUrlPolicy.isVerifiedHttpUrl("https://cdn.example.com/video.mp4"))
+        assertTrue(MediaSourceUrlPolicy.isVerifiedHttpUrl("http://cdn.example.com/video.mp4"))
+        assertFalse(MediaSourceUrlPolicy.isVerifiedHttpUrl("file:///sdcard/video.mp4"))
+        assertFalse(MediaSourceUrlPolicy.isVerifiedHttpUrl("blob:https://example.com/video"))
+        assertFalse(MediaSourceUrlPolicy.isVerifiedHttpUrl("javascript:https://example.com/video"))
+        assertFalse(MediaSourceUrlPolicy.isVerifiedHttpUrl("//cdn.example.com/video.mp4"))
+        assertFalse(MediaSourceUrlPolicy.isVerifiedHttpUrl("https:///video.mp4"))
     }
 
 
