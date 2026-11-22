@@ -134,6 +134,7 @@ class MediaDownloadManager(
         userAgent: String,
         sessionCookieManager: CookieManager? = null,
         allowGlobalCookieFallback: Boolean = true,
+        cancelTransferWhenCallerCancelled: Boolean = true,
     ): DownloadEntity? {
         val download = repository.getDownloadById(downloadId) ?: return null
         if (download.status in setOf("COMPLETED", "CANCELLED", "FAILED")) return download
@@ -156,7 +157,9 @@ class MediaDownloadManager(
             job.join()
         } finally {
             // Stop the process-wide IO task when its owning Worker/JobService is cancelled.
-            if (!callerContext.isActive && job.isActive) job.cancelAndJoin()
+            if (cancelTransferWhenCallerCancelled && !callerContext.isActive && job.isActive) {
+                job.cancelAndJoin()
+            }
         }
         return repository.getDownloadById(downloadId)
     }
