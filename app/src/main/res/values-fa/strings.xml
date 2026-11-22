@@ -22,4 +22,6 @@
     <string name="download_notification_title">دانلود با SalviaBrowxer</string>
     <string name="download_notification_text">در حال دانلود %1$s</string>
     <string name="download_schedule_failed">زمان‌بندی دانلود انجام نشد. لطفاً دوباره تلاش کنید.</string>
+    <string name="download_notification_pause">مکث</string>
+    <string name="download_notification_cancel">لغو</string>
 </resources>
