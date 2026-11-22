@@ -109,6 +109,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
+        // Clear leftovers from a previous process before any private WebView is created.
+        if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+            WebViewConfigurator.clearIncognitoAndVolatileData(application, clearCookiesToo = false)
+        }
         viewModelScope.launch(Dispatchers.IO) {
             repository.ensureSeeded()
         }
@@ -318,6 +322,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             else -> com.example.R.string.incognito_cleanup_failed
         }
         _statusToast.value = getApplication<Application>().getString(cleanupMessage)
+    }
+
+    override fun onCleared() {
+        webViews.keys.toList().forEach(::destroyWebView)
+        if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+            WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
+        }
+        super.onCleared()
     }
 
     private fun destroyWebView(tabId: String) {
