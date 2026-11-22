@@ -61,6 +61,15 @@ class BrowserRepository(private val db: BrowserDatabase) {
 
     suspend fun deleteIncognitoDownloads() = downloadDao.deleteIncognitoDownloads()
 
+    suspend fun getPendingNormalDownloads(): List<DownloadEntity> =
+        downloadDao.getPendingNormalDownloads()
+
+    suspend fun markInterruptedDownloadQueued(id: Long): Int =
+        downloadDao.markInterruptedQueued(id)
+
+    suspend fun updateDownloadStatusIfNonTerminal(id: Long, status: String): Int =
+        downloadDao.updateNonTerminalStatus(id, status)
+
     suspend fun insertDownload(download: DownloadEntity): Long = downloadDao.insert(download)
 
     suspend fun updateDownloadProgress(
