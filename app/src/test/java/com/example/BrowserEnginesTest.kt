@@ -477,10 +477,20 @@ class BrowserEnginesTest {
                     format = "MP4",
                     mimeType = "video/mp4",
                 ),
+                MediaQualityOption(
+                    label = "Invalid DASH audio sidecar",
+                    resolutionHeight = 360,
+                    url = "https://cdn.example.com/video-only.mp4",
+                    audioUrl = "file:///sdcard/audio.m4a",
+                    format = "DASH",
+                    mimeType = "video/mp4",
+                    isDash = true,
+                ),
             ),
         )
 
         assertTrue(media.isDownloadable)
+        assertFalse(media.qualities.last().isVerifiedDownloadSource)
         assertEquals(listOf("HTTPS"), media.downloadableQualities.map { it.label })
     }
 
