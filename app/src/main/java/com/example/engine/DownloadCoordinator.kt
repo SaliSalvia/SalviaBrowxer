@@ -92,7 +92,7 @@ class DownloadCoordinator(context: Context) {
                 allowGlobalCookieFallback = false,
             )
         } else {
-            scheduleNormalDownload(download.id, replaceExisting = true)
+            scheduleNormalDownload(download.id, replaceExisting = false)
         }
     }
 
@@ -208,7 +208,7 @@ class DownloadCoordinator(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             jobScheduler?.cancel(jobIdFor(downloadId))
         } else {
-            workManager.cancelUniqueWork(DownloadWorker.uniqueWorkName(downloadId))
+            workManager.cancelUniqueWork(DownloadSchedulerPolicy.uniqueWorkName(downloadId))
         }
     }
 
