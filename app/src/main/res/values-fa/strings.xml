@@ -17,4 +17,5 @@
     <string name="incognito_isolation_unavailable">این WebView نتوانست پروفایل خصوصی جداگانه را فعال کند و ممکن است کوکی‌ها یا فضای ذخیره‌سازی تب‌های عادی را به‌اشتراک بگذارد؛ در این نشست وارد حساب نشوید و اطلاعات حساس وارد نکنید.</string>
     <string name="incognito_profile_cleared">پروفایل مستقل مرور خصوصی برای حذف ثبت شد؛ ممکن است WebView پاک‌سازی نهایی داده‌ها را به‌صورت ناهمگام تکمیل کند.</string>
     <string name="incognito_cleanup_failed">پاک‌سازی پروفایل خصوصی تأیید نشد. پیش از استفاده از سایت‌های حساس، همه تب‌های خصوصی را ببندید و دوباره تلاش کنید.</string>
+    <string name="incognito_bookmark_blocked">بوکمارک‌ها از تب خصوصی ذخیره نمی‌شوند.</string>
 </resources>
