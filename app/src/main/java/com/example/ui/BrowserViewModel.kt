@@ -674,7 +674,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         val cookieHeader = WebViewConfigurator.cookieHeader(webViews[tab.id], quality.url)
-        downloadManager.startDownload(fileName, quality, sourcePageUrl, ua, cookieHeader)
+        downloadManager.startDownload(fileName, quality, sourcePageUrl, ua, cookieHeader, allowGlobalCookieFallback = !tab.isIncognito)
         _statusToast.value = String.format(s().toastDownloadStartedFormat, fileName)
     }
 
@@ -694,7 +694,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isHls = lower.contains(".m3u8"),
             isDash = lower.contains(".mpd"),
         )
-        downloadManager.startDownload(guessedName, opt, tab.url, ua, cookieHeader)
+        downloadManager.startDownload(guessedName, opt, tab.url, ua, cookieHeader, allowGlobalCookieFallback = !tab.isIncognito)
         _statusToast.value = String.format(strings.toastDownloadingFileFormat, guessedName)
     }
 
