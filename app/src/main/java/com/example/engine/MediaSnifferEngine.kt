@@ -88,6 +88,12 @@ class MediaSnifferEngine {
         return resolveRelativeUrl(Uri.parse(pageUrl), candidate)
     }
 
+    suspend fun probeNetworkMedia(
+        mediaUrl: String,
+        pageUrl: String,
+        pageTitle: String,
+        userAgent: String,
+        cookieHeader: String? = null,
     ): DetectedMedia? = withContext(Dispatchers.IO) {
         val normalizedUrl = resolveMediaUrl(pageUrl, mediaUrl)
         if (!isCandidateMediaUrl(normalizedUrl)) return@withContext null
