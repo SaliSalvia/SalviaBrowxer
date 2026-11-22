@@ -27,6 +27,7 @@ import com.example.engine.BlockCategory
 import com.example.engine.BlockDecision
 import com.example.engine.ExtensionEngine
 import com.example.engine.DownloadCoordinator
+import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
@@ -723,7 +724,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         val sessionCookieManager = cookieManagerForTab(tab)
-        viewModelScope.launch(Dispatchers.IO) {
+        DownloadRuntime.launchMaintenance {
             runCatching {
                 downloadCoordinator.enqueue(
                     fileName = fileName,
@@ -784,7 +785,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun pauseDownload(download: DownloadEntity) {
-        viewModelScope.launch(Dispatchers.IO) {
+        DownloadRuntime.launchMaintenance {
             downloadCoordinator.pause(download)
         }
     }
@@ -816,7 +817,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             )
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        DownloadRuntime.launchMaintenance {
             downloadCoordinator.resume(
                 download = download,
                 privateCookieManager = sessionCookieManager,
@@ -826,7 +827,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun cancelDownload(download: DownloadEntity) {
-        viewModelScope.launch(Dispatchers.IO) {
+        DownloadRuntime.launchMaintenance {
             downloadCoordinator.cancel(download)
         }
     }
@@ -850,7 +851,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteDownload(download: DownloadEntity) {
-        viewModelScope.launch(Dispatchers.IO) {
+        DownloadRuntime.launchMaintenance {
+            downloadCoordinator.cancel(download)
             repository.deleteDownload(download.id)
         }
     }
