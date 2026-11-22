@@ -292,6 +292,9 @@ private fun DetectedMediaCard(
                         if (media.durationSeconds > 0) add(formatDuration(media.durationSeconds))
                         if (media.height > 0) add("${media.width}x${media.height}")
                         add(String.format(s.qualitiesCountFormat, media.qualities.size))
+                        if (media.platformLabel.isNotBlank() && media.platformLabel != "Web") {
+                            add(media.platformLabel)
+                        }
                     }
                     Text(
                         text = metaParts.joinToString(" • "),
@@ -301,6 +304,7 @@ private fun DetectedMediaCard(
                 }
             }
 
+            if (media.isDownloadable) {
             // Quality Selector Chips
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -405,6 +409,18 @@ private fun DetectedMediaCard(
                 Text(
                     text = String.format(s.downloadWithQualityFormat, selectedQuality?.label.orEmpty()),
                     fontWeight = FontWeight.Bold,
+                )
+            }
+            } else {
+                val notice = when (media.captureStatus) {
+                    com.example.ui.MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY -> s.mseReferenceNotice
+                    com.example.ui.MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY -> s.liveMediaReferenceNotice
+                    com.example.ui.MediaCaptureStatus.DOWNLOADABLE -> s.unavailableMediaSourceNotice
+                }
+                Text(
+                    text = notice,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
