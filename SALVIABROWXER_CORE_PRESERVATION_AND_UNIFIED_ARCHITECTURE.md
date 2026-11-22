@@ -459,7 +459,7 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 - پیاده‌سازی اصلی Persistent Download Engine اکنون در `main` وجود دارد.
 - مسیر ادغام کد: PR #5 با merge commit `4bb013c0e042c8e8afedb9ca9d629e77d99e5727`؛ این ادغام شامل `DownloadCoordinator`، `DownloadRuntime`، WorkManager، UIDT JobService و تغییرات Room v4 است.
 - PR #6 با merge commit `da8bbfb534cca7df361f550cbfa25c9c30fad10c`، اصلاحات CI و fixture تست Media Candidate را تکمیل کرد.
-- PR #3 با عنوان `feat(download): add persistent Room-first download execution` هنوز Open/Draft و به‌علت واگرایی شاخه غیرقابل‌ادغام است؛ محتوای اصلی آن در `main` superseded شده و نباید دوباره merge شود.
+- PR #3 با عنوان `feat(download): add persistent Room-first download execution` در حالت Closed و بدون Merge باقی مانده است؛ پیاده‌سازی اصلی آن از طریق PR #5 وارد `main` شده و PR #3 نباید دوباره باز یا merge شود.
 - Room schema فعلی: نسخه 4؛ مسیر migration پشتیبانی‌شده: v2 → v3 → v4.
 - WorkManager: 2.12.0
 - API 24–33: WorkManager foreground worker
@@ -494,9 +494,9 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 
 | مرحله | وضعیت | پیش‌شرط |
 |---|---|---|
-| Advanced Media Intelligence | شروع نشده | PR #3 باید CI سبز و merge شود |
-| Main-content ranking و Site adapters | شروع نشده | fixture corpus و benchmark baseline |
-| HLS/DASH parser و resolver ارتقایافته | شروع نشده | تست manifest/segment/key و محدودیت DRM |
+| Advanced Media Intelligence | PR #8 باز، اعتبارسنجی CI در جریان | CI سبز روی آخرین SHA و بررسی تغییرات |
+| Main-content ranking و Site adapters | مرحلهٔ بعد | fixture corpus و benchmark baseline |
+| HLS/DASH parser و resolver ارتقایافته | مرحلهٔ بعد | تست manifest/segment/key و محدودیت DRM |
 | Media3 Player و Media Library | شروع نشده | Download output validation و lifecycle contract |
 | Benchmark و Release hardening | شروع نشده | اجرای matrix روی دستگاه واقعی و سنجش منابع |
 
@@ -509,3 +509,43 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 - تست واقعی دستگاه جدا از CI گزارش شود.
 - قابلیت‌های هسته‌ای که تغییر کرده‌اند و آزمون رگرسیون مرتبط مشخص شوند.
 - محدودیت جدید یا پشتیبانی تأییدنشده پنهان نشود.
+
+
+### 13.7 مرحله 4 — Evidence-aware Media Intelligence (PR #8)
+
+**وضعیت:** تغییرات در شاخهٔ `feat/media-evidence-mse-reference-safety` و PR #8 قرار دارند؛ تا پایان CI روی آخرین commit و Merge، بخشی از `main` محسوب نمی‌شوند.
+
+دامنهٔ تغییرات:
+- اتصال `MediaDetectionSource`، `MediaCaptureStatus`، `confidenceScore` و `platformLabel` به مسیر واقعی تشخیص DOM و Network.
+- استفاده از `MediaPlatformDetector` موجود، با تطبیق exact-host و بدون تشخیص مبتنی بر substring.
+- نرمال‌سازی آدرس‌های نسبی و protocol-relative نسبت به URL صفحه، پیش از اعتبارسنجی HTTP(S).
+- نگهداری Blob/MSE و MediaStream به‌عنوان مرجع غیرقابل‌دانلود، بدون تولید گزینهٔ دانلود جعلی.
+- پشتیبانی از Live MediaStream بدون `src` یا `currentSrc` با شناسهٔ تشخیصی داخلی و بدون درخواست شبکه.
+- فعال‌سازی کنترل دانلود فقط برای quality URL مطلق HTTP(S)؛ اگر quality دارای audio sidecar جداگانه باشد، آن URL نیز باید HTTP(S) معتبر باشد.
+- اشتراک یک policy واحد برای اعتبارسنجی URL در مدل، Media Probe و DownloadCoordinator؛ رد ورودی نامعتبر پیش از ایجاد رکورد Room و schedule.
+- حفظ اولویت Main Video برای candidateهای قوی حاصل از Network Hook.
+- استفاده از User-Agent واقعی تب (mobile/desktop) در Media Probe.
+- پیام محدودیت فارسی و انگلیسی برای مرجع MSE/Blob، Live و منبع غیرقابل‌اعتبارسنجی.
+
+حفظ هسته:
+- بدون تغییر Room schema و migration.
+- منطق schedule و اجرای DownloadCoordinator، WorkManager، UIDT، recovery و notification actions تغییر نکرده است؛ تنها guard اعتبارسنجی URLهای اصلی و audio sidecar پیش از ایجاد رکورد دانلود به DownloadCoordinator اضافه شده است.
+- private-profile isolation و انتقال cookie/session تغییر نکرده‌اند.
+- بدون حذف قابلیت‌های موجود مرورگر، DevTools، Extensions، AdBlock یا media ranking.
+
+محدودیت‌ها:
+- بازسازی bufferهای MediaSource، ضبط Live Stream و دور زدن DRM در این مرحله پیاده‌سازی نشده‌اند.
+- وجود Blob/MSE reference به‌معنای دسترسی به فایل یا قطعات استریم نیست؛ دانلود فقط زمانی ارائه می‌شود که URL مستقیم HTTP(S) به‌طور مستقل کشف شده باشد.
+- CI فقط صحت compile/test/build را اثبات می‌کند؛ رفتار واقعی پلیرها باید روی دستگاه و سایت‌های مجاز آزمایش شود.
+
+آزمون‌های افزوده:
+- Blob/MSE بدون quality قابل دانلود.
+- Live MediaStream با و بدون URL مستقیم.
+- URL نسبی و protocol-relative.
+- جلوگیری از schemeهای `file:`، `javascript:`، `blob:` و سایر منابع غیر HTTP(S).
+- مرزبندی exact-host برای تشخیص پلتفرم.
+- حفظ نقش Main برای candidate معتبر Network Hook.
+- اعتبارسنجی policy مشترک HTTP(S)، فیلتر qualityهای نامعتبر و رد audio sidecar نامعتبر.
+- اعتبارسنجی `DetectedMedia.isDownloadable` و guard پیش از enqueue.
+
+**CI:** فقط Run مربوط به آخرین SHA این PR ملاک پذیرش است؛ نتیجه و Artifact پس از پایان workflow باید ثبت شوند.

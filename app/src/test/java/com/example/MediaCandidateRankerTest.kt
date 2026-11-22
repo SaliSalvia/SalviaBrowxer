@@ -2,6 +2,8 @@ package com.example
 
 import com.example.engine.MediaCandidateRanker
 import com.example.ui.DetectedMedia
+import com.example.ui.MediaCaptureStatus
+import com.example.ui.MediaDetectionSource
 import com.example.ui.MediaQualityOption
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -128,6 +130,55 @@ class MediaCandidateRankerTest {
         assertEquals(first.title, ranked[0].title)
         assertTrue(ranked[0].isMainVideo)
         assertFalse(ranked[1].isMainVideo)
+    }
+
+
+    @Test
+    fun `high confidence direct network media remains eligible for main video ranking`() {
+        val networkVideo = media(
+            id = "network-main",
+            title = "Network main video",
+            url = "https://cdn.example.com/watch/main.mp4",
+            score = 92,
+            height = 1080,
+            area = 180_000L,
+            isMain = true,
+        ).copy(
+            detectionSource = MediaDetectionSource.NETWORK_HOOK,
+            confidenceScore = 82,
+        )
+
+        val ranked = MediaCandidateRanker.rankCandidates(listOf(networkVideo))
+
+        assertEquals(MediaCandidateRanker.Role.MAIN, ranked.single().role)
+        assertTrue(MediaCandidateRanker.prioritize(listOf(networkVideo)).single().isMainVideo)
+    }
+
+
+    @Test
+    fun `MSE element with independent direct HTTP source can remain main video`() {
+        val mseWithDirectSource = media(
+            id = "mse-with-direct-source",
+            title = "Main player",
+            url = "https://cdn.example.com/video/direct.mp4",
+            score = 120,
+            height = 1080,
+            area = 180_000L,
+            isMain = true,
+        ).copy(
+            detectionSource = MediaDetectionSource.MSE_REFERENCE,
+            captureStatus = MediaCaptureStatus.DOWNLOADABLE,
+            durationSeconds = 240.0,
+            width = 1920,
+            confidenceScore = 72,
+        )
+
+        assertTrue(mseWithDirectSource.isDownloadable)
+        assertEquals(
+            MediaCandidateRanker.Role.MAIN,
+            MediaCandidateRanker.rankCandidates(listOf(mseWithDirectSource)).single().role,
+        )
+        assertTrue(MediaCandidateRanker.prioritize(listOf(mseWithDirectSource)).single().isMainVideo)
     }
 
     private fun media(

@@ -667,8 +667,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun onHookedMediaUrl(tabId: String, mediaUrl: String, titleHint: String) {
         val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
-        if (!mediaSniffer.isCandidateMediaUrl(mediaUrl)) return
-        probeAndAttachNetworkMedia(tabId, mediaUrl, tab.url, titleHint.ifBlank { tab.title })
+        val resolvedMediaUrl = mediaSniffer.resolveMediaUrl(tab.url, mediaUrl)
+        if (!mediaSniffer.isCandidateMediaUrl(resolvedMediaUrl)) return
+        probeAndAttachNetworkMedia(
+            tabId,
+            resolvedMediaUrl,
+            tab.url,
+            titleHint.ifBlank { tab.title },
+        )
     }
 
     private fun probeAndAttachNetworkMedia(
@@ -679,8 +685,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     ) {
         val cacheKey = "$tabId|$mediaUrl"
         if (!pendingProbedUrls.add(cacheKey)) return
-        val ua = WebViewConfigurator.resolveUserAgent(getApplication(), desktopMode = false)
         val sourceTab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val ua = WebViewConfigurator.resolveUserAgent(
+            getApplication(),
+            desktopMode = sourceTab.isDesktopMode,
+        )
         val cookieHeader = cookieHeaderForTab(sourceTab, mediaUrl)
         viewModelScope.launch(Dispatchers.IO) {
             val detected = mediaSniffer.probeNetworkMedia(
@@ -721,6 +730,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // --- Media Download Action ---
 
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
+        if (!quality.isVerifiedDownloadSource) {
+            _statusToast.value = s().unavailableMediaSourceNotice
+            return
+        }
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         val sessionCookieManager = cookieManagerForTab(tab)
@@ -747,6 +760,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun downloadGenericUrl(url: String, mimeType: String, contentDisposition: String?) {
+        if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(url)) {
+            _statusToast.value = s().unavailableMediaSourceNotice
+            return
+        }
         val guessedName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)

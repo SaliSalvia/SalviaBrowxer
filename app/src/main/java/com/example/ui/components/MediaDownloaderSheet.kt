@@ -205,8 +205,9 @@ private fun DetectedMediaCard(
     onDownload: (String, MediaQualityOption) -> Unit,
 ) {
     val s = LocalAppStrings.current
-    var selectedQuality by remember(media.id, media.qualities) {
-        mutableStateOf(media.qualities.firstOrNull())
+    val downloadableQualities = media.downloadableQualities
+    var selectedQuality by remember(media.id, downloadableQualities) {
+        mutableStateOf(downloadableQualities.firstOrNull())
     }
     var customFileName by remember(media.id) {
         mutableStateOf(media.title.take(48))
@@ -291,7 +292,10 @@ private fun DetectedMediaCard(
                     val metaParts = buildList {
                         if (media.durationSeconds > 0) add(formatDuration(media.durationSeconds))
                         if (media.height > 0) add("${media.width}x${media.height}")
-                        add(String.format(s.qualitiesCountFormat, media.qualities.size))
+                        add(String.format(s.qualitiesCountFormat, downloadableQualities.size))
+                        if (media.platformLabel.isNotBlank() && media.platformLabel != "Web") {
+                            add(media.platformLabel)
+                        }
                     }
                     Text(
                         text = metaParts.joinToString(" • "),
@@ -301,110 +305,123 @@ private fun DetectedMediaCard(
                 }
             }
 
-            // Quality Selector Chips
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.HighQuality,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = s.selectQualityLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            if (media.isDownloadable) {
+                // Quality Selector Chips
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.HighQuality,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = s.selectQualityLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                media.qualities.forEach { quality ->
-                    val isSelected = selectedQuality?.id == quality.id
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surface,
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                                shape = RoundedCornerShape(12.dp),
-                            )
-                            .clickable { selectedQuality = quality }
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
-                            .testTag("quality_chip_${quality.resolutionHeight}"),
-                    ) {
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = s.selectedDesc,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        Column {
-                            Text(
-                                text = quality.label,
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                            )
-                            val sizeLabel = if (quality.sizeBytes > 0) {
-                                formatBytes(quality.sizeBytes, s.unknownSize)
-                            } else if (quality.bandwidthBps > 0) {
-                                "${quality.bandwidthBps / 1000} kbps"
-                            } else {
-                                quality.format
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    downloadableQualities.forEach { quality ->
+                        val isSelected = selectedQuality?.id == quality.id
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surface,
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(12.dp),
+                                )
+                                .clickable { selectedQuality = quality }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .testTag("quality_chip_${quality.resolutionHeight}"),
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = s.selectedDesc,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                             }
-                            Text(
-                                text = sizeLabel,
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Column {
+                                Text(
+                                    text = quality.label,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                )
+                                val sizeLabel = if (quality.sizeBytes > 0) {
+                                    formatBytes(quality.sizeBytes, s.unknownSize)
+                                } else if (quality.bandwidthBps > 0) {
+                                    "${quality.bandwidthBps / 1000} kbps"
+                                } else {
+                                    quality.format
+                                }
+                                Text(
+                                    text = sizeLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMonoFontFamily),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            OutlinedTextField(
-                value = customFileName,
-                onValueChange = { customFileName = it },
-                label = { Text(s.outputFileNameLabel) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+                OutlinedTextField(
+                    value = customFileName,
+                    onValueChange = { customFileName = it },
+                    label = { Text(s.outputFileNameLabel) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
 
-            Button(
-                onClick = {
-                    val chosen = selectedQuality ?: media.qualities.firstOrNull()
-                    if (chosen != null) {
-                        onDownload(customFileName.ifBlank { media.title }, chosen)
-                    }
-                },
-                enabled = selectedQuality != null,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = EmeraldShield,
-                    contentColor = Color(0xFF031C18),
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("confirm_media_download_button"),
-            ) {
-                Icon(Icons.Default.Download, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        val chosen = selectedQuality ?: downloadableQualities.firstOrNull()
+                        if (chosen != null) {
+                            onDownload(customFileName.ifBlank { media.title }, chosen)
+                        }
+                    },
+                    enabled = selectedQuality != null,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldShield,
+                        contentColor = Color(0xFF031C18),
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("confirm_media_download_button"),
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = String.format(s.downloadWithQualityFormat, selectedQuality?.label.orEmpty()),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            } else {
+                val notice = when (media.captureStatus) {
+                    com.example.ui.MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY -> s.mseReferenceNotice
+                    com.example.ui.MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY -> s.liveMediaReferenceNotice
+                    com.example.ui.MediaCaptureStatus.DOWNLOADABLE -> s.unavailableMediaSourceNotice
+                }
                 Text(
-                    text = String.format(s.downloadWithQualityFormat, selectedQuality?.label.orEmpty()),
-                    fontWeight = FontWeight.Bold,
+                    text = notice,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

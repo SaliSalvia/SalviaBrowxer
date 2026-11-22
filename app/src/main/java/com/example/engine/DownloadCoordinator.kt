@@ -47,6 +47,9 @@ class DownloadCoordinator(context: Context) {
         isIncognito: Boolean,
         isDesktopMode: Boolean,
     ): Long = withContext(Dispatchers.IO) {
+        require(quality.isVerifiedDownloadSource) {
+            "Download sources must use absolute HTTP(S) URLs"
+        }
         val id = manager.createDownloadRecord(
             fileName = fileName,
             quality = quality,

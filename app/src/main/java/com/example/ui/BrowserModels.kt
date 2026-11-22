@@ -2,6 +2,14 @@ package com.example.ui
 
 import java.util.UUID
 
+internal object MediaSourceUrlPolicy {
+    fun isVerifiedHttpUrl(value: String): Boolean {
+        val uri = runCatching { java.net.URI(value) }.getOrNull() ?: return false
+        return uri.scheme?.lowercase() in setOf("http", "https") &&
+            !uri.host.isNullOrBlank()
+    }
+}
+
 data class MediaQualityOption(
     val id: String = UUID.randomUUID().toString(),
     val label: String,        // e.g. "1080p Full HD", "720p HD", "480p", "Audio Only (M4A)"
@@ -14,7 +22,11 @@ data class MediaQualityOption(
     val bandwidthBps: Long = 0L,
     val isHls: Boolean = false,
     val isDash: Boolean = false,
-)
+) {
+    val isVerifiedDownloadSource: Boolean
+        get() = MediaSourceUrlPolicy.isVerifiedHttpUrl(url) &&
+            (audioUrl.isBlank() || MediaSourceUrlPolicy.isVerifiedHttpUrl(audioUrl))
+}
 
 enum class MediaDetectionSource {
     NETWORK_HOOK,
@@ -52,13 +64,15 @@ data class DetectedMedia(
     val mimeType: String = "",
     val detectedAt: Long = System.currentTimeMillis(),
 ) {
+    val downloadableQualities: List<MediaQualityOption>
+        get() = if (captureStatus != MediaCaptureStatus.DOWNLOADABLE) {
+            emptyList()
+        } else {
+            qualities.filter { quality -> quality.isVerifiedDownloadSource }
+        }
+
     val isDownloadable: Boolean
-        get() = captureStatus == MediaCaptureStatus.DOWNLOADABLE &&
-            qualities.any { quality ->
-                quality.url.isNotBlank() &&
-                    !quality.url.startsWith("blob:", ignoreCase = true) &&
-                    !quality.url.startsWith("data:", ignoreCase = true)
-            }
+        get() = downloadableQualities.isNotEmpty()
 }
 
 data class ConsoleLogEntry(
