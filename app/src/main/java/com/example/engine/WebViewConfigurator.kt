@@ -140,14 +140,16 @@ object WebViewConfigurator {
             val allowThirdParty = if (isIncognito) !blockThirdPartyCookiesIncognito else true
             cookieManager.setAcceptThirdPartyCookies(webView, allowThirdParty)
         }
+        val isolationReady = !isIncognito || (isolated && cookieManager != null)
         synchronized(lastAppliedConfigs) {
+            isolatedIncognitoWebViews[webView] = isolationReady
             if (cookieManager != null) {
                 profileCookieManagers[webView] = cookieManager
             } else {
                 profileCookieManagers.remove(webView)
             }
         }
-        return isolated
+        return isolationReady
     }
 
     /**
