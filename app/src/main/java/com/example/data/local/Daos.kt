@@ -84,6 +84,15 @@ interface DownloadDao {
     @Query("DELETE FROM downloads WHERE isIncognito = 1")
     suspend fun deleteIncognitoDownloads()
 
+    @Query("SELECT * FROM downloads WHERE isIncognito = 0 AND status IN ('QUEUED', 'DOWNLOADING') ORDER BY createdAt ASC")
+    suspend fun getPendingNormalDownloads(): List<DownloadEntity>
+
+    @Query("UPDATE downloads SET status = 'QUEUED', speedBytesPerSec = 0 WHERE id = :id AND status = 'DOWNLOADING'")
+    suspend fun markInterruptedQueued(id: Long): Int
+
+    @Query("UPDATE downloads SET status = :status, speedBytesPerSec = 0 WHERE id = :id AND status NOT IN ('COMPLETED', 'CANCELLED')")
+    suspend fun updateNonTerminalStatus(id: Long, status: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(download: DownloadEntity): Long
 
