@@ -679,8 +679,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     ) {
         val cacheKey = "$tabId|$mediaUrl"
         if (!pendingProbedUrls.add(cacheKey)) return
-        val ua = WebViewConfigurator.resolveUserAgent(getApplication(), desktopMode = false)
         val sourceTab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val ua = WebViewConfigurator.resolveUserAgent(
+            getApplication(),
+            desktopMode = sourceTab.isDesktopMode,
+        )
         val cookieHeader = cookieHeaderForTab(sourceTab, mediaUrl)
         viewModelScope.launch(Dispatchers.IO) {
             val detected = mediaSniffer.probeNetworkMedia(
