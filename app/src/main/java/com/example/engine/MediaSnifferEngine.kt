@@ -321,18 +321,8 @@ class MediaSnifferEngine {
         return prioritizeMedia(map.values.toList())
     }
 
-    fun prioritizeMedia(items: List<DetectedMedia>): List<DetectedMedia> {
-        val sorted = items.sortedWith(
-            compareByDescending<DetectedMedia> { !it.isAudioOnly }
-                .thenByDescending { it.priorityScore }
-                .thenByDescending { it.domAreaPx }
-                .thenByDescending { it.durationSeconds }
-                .thenByDescending { it.height },
-        )
-        return sorted.mapIndexed { index, item ->
-            item.copy(isMainVideo = index == 0 && !item.isAudioOnly)
-        }
-    }
+    fun prioritizeMedia(items: List<DetectedMedia>): List<DetectedMedia> =
+        MediaCandidateRanker.prioritize(items)
 
     private fun parseHlsPlaylist(
         masterUrl: String,
