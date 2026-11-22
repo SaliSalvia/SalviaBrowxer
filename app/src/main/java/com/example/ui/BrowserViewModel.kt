@@ -729,7 +729,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     // --- Media Download Action ---
 
+    private fun isVerifiedHttpDownloadUrl(url: String): Boolean {
+        val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+        return uri.scheme?.lowercase() in setOf("http", "https") &&
+            !uri.host.isNullOrBlank()
+    }
+
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
+        if (!isVerifiedHttpDownloadUrl(quality.url)) {
+            _statusToast.value = s().unavailableMediaSourceNotice
+            return
+        }
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         val sessionCookieManager = cookieManagerForTab(tab)
@@ -756,6 +766,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun downloadGenericUrl(url: String, mimeType: String, contentDisposition: String?) {
+        if (!isVerifiedHttpDownloadUrl(url)) {
+            _statusToast.value = s().unavailableMediaSourceNotice
+            return
+        }
         val guessedName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
