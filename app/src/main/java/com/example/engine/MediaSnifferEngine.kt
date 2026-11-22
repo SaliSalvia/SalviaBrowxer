@@ -694,7 +694,7 @@ class MediaSnifferEngine {
     private fun resolveRelativeUrl(base: Uri, relative: String): String {
         if (relative.startsWith("http://") || relative.startsWith("https://")) return relative
         return runCatching {
-            java.net.URI(base.toString()).resolve(relative).toString()
+            java.net.URI(base.toString()).resolve(relative).normalize().toString()
         }.getOrDefault(relative)
     }
 
