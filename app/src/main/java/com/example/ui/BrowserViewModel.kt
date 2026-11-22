@@ -739,6 +739,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             userAgent = ua,
             sessionCookieManager = cookieManagerForTab(tab),
             allowGlobalCookieFallback = !tab.isIncognito,
+            isIncognito = tab.isIncognito,
         )
         _statusToast.value = String.format(strings.toastDownloadingFileFormat, guessedName)
     }
