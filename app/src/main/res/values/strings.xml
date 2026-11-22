@@ -15,6 +15,6 @@
     <string name="web_permission_allow">Allow</string>
     <string name="web_permission_deny">Deny</string>
     <string name="incognito_isolation_unavailable">This WebView version does not support isolated private profiles. Private tabs have limited isolation; avoid entering sensitive information.</string>
-    <string name="incognito_profile_cleared">Private profile cookies, website storage, and location grants were cleared. Profile-cache data may remain in WebView-managed storage.</string>
+    <string name="incognito_profile_cleared">The isolated private browsing profile was deleted. WebView may finish removing its data asynchronously.</string>
     <string name="incognito_cleanup_failed">Private profile cleanup could not be confirmed. Close all private tabs and retry before using sensitive sites.</string>
 </resources>
