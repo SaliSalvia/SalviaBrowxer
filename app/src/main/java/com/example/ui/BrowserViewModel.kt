@@ -998,6 +998,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleBookmarkActiveTab() {
         val tab = getCurrentTab()
+        if (tab.isIncognito) {
+            _statusToast.value = getApplication<Application>().getString(
+                com.example.R.string.incognito_bookmark_blocked,
+            )
+            return
+        }
         if (tab.isStartPage || tab.url.isBlank()) return
         val exists = bookmarks.value.any { it.url == tab.url }
         viewModelScope.launch(Dispatchers.IO) {
