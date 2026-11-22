@@ -30,6 +30,9 @@ object DownloadNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val text = context.getString(R.string.download_notification_text, fileName)
+        val pauseIntent = actionPendingIntent(context, downloadId, DownloadActionReceiver.ACTION_PAUSE)
+        val cancelIntent = actionPendingIntent(context, downloadId, DownloadActionReceiver.ACTION_CANCEL)
+
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(context.getString(R.string.download_notification_title))
@@ -40,7 +43,34 @@ object DownloadNotificationHelper {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setProgress(0, 0, true)
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    android.R.drawable.ic_media_pause,
+                    context.getString(R.string.download_notification_pause),
+                    pauseIntent,
+                ).build(),
+            )
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    context.getString(R.string.download_notification_cancel),
+                    cancelIntent,
+                ).build(),
+            )
             .build()
+    }
+
+    private fun actionPendingIntent(context: Context, downloadId: Long, action: String): PendingIntent {
+        val intent = Intent(context, DownloadActionReceiver::class.java).apply {
+            this.action = action
+            putExtra(DownloadActionReceiver.EXTRA_DOWNLOAD_ID, downloadId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            notificationId(downloadId) + if (action == DownloadActionReceiver.ACTION_PAUSE) 1 else 2,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     private fun ensureChannel(context: Context) {
