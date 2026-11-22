@@ -762,7 +762,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isDash = lower.contains(".mpd"),
         )
         val sessionCookieManager = cookieManagerForTab(tab)
-        viewModelScope.launch(Dispatchers.IO) {
+        DownloadRuntime.launchMaintenance {
             runCatching {
                 downloadCoordinator.enqueue(
                     fileName = guessedName,
