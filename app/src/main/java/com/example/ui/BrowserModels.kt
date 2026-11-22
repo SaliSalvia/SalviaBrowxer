@@ -55,9 +55,9 @@ data class DetectedMedia(
     val isDownloadable: Boolean
         get() = captureStatus == MediaCaptureStatus.DOWNLOADABLE &&
             qualities.any { quality ->
-                quality.url.isNotBlank() &&
-                    !quality.url.startsWith("blob:", ignoreCase = true) &&
-                    !quality.url.startsWith("data:", ignoreCase = true)
+                val uri = runCatching { java.net.URI(quality.url) }.getOrNull()
+                uri?.scheme?.lowercase() in setOf("http", "https") &&
+                    !uri.host.isNullOrBlank()
             }
 }
 
