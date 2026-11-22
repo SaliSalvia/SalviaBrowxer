@@ -127,6 +127,10 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
     val isBookmarked = !activeTab.isStartPage && bookmarks.any { it.url == activeTab.url }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    LaunchedEffect(Unit) {
+        viewModel.recoverPendingDownloads()
+    }
+
     LaunchedEffect(toastMessage) {
         val msg = toastMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(msg)
