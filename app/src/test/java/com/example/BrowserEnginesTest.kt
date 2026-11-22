@@ -221,6 +221,8 @@ class BrowserEnginesTest {
         assertTrue(sniffer.earlyMediaHookScript().contains("XMLHttpRequest"))
         assertTrue(sniffer.earlyMediaHookScript().contains("window.fetch"))
         assertTrue(sniffer.domSnifferScript().contains("MutationObserver"))
+        assertTrue(sniffer.domSnifferScript().contains("mediastream:"))
+        assertTrue(sniffer.domSnifferScript().contains("isLive"))
     }
 
     @Test
@@ -309,8 +311,8 @@ class BrowserEnginesTest {
         val sniffer = MediaSnifferEngine()
         val payload = """
             [{
-              "src": "https://cdn.example.com/live/master.m3u8",
-              "sources": [{"url": "https://cdn.example.com/live/master.m3u8", "height": 720}],
+              "src": "mediastream:https://example.com/live#element-0",
+              "sources": [],
               "source": "HTML5_ELEMENT",
               "duration": 0,
               "width": 1280,
@@ -331,6 +333,7 @@ class BrowserEnginesTest {
         ).single()
 
         assertEquals(MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY, result.captureStatus)
+        assertTrue(result.primaryUrl.startsWith("mediastream:"))
         assertTrue(result.qualities.isEmpty())
         assertFalse(result.isDownloadable)
     }
