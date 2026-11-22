@@ -82,7 +82,6 @@ class DownloadUidtJobService : JobService() {
                             userAgent = userAgent,
                             sessionCookieManager = CookieManager.getInstance(),
                             allowGlobalCookieFallback = true,
-                            cancelTransferWhenCallerCancelled = false,
                         )
                     }
                 } finally {
