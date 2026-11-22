@@ -57,7 +57,6 @@ abstract class BrowserDatabase : RoomDatabase() {
                     "salvia_browser_db",
                 )
                     .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
-                    .fallbackToDestructiveMigration(true)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
