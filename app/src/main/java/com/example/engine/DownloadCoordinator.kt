@@ -132,10 +132,11 @@ class DownloadCoordinator(context: Context) {
         val download = repository.getDownloadById(downloadId) ?: return
         if (download.isIncognito) return
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            scheduleUserInitiatedTransfer(download, replaceExisting)
-        } else {
-            scheduleWorkManager(download, replaceExisting)
+        when (DownloadSchedulerPolicy.backendForSdk(Build.VERSION.SDK_INT)) {
+            DownloadSchedulerBackend.USER_INITIATED_JOB ->
+                scheduleUserInitiatedTransfer(download, replaceExisting)
+            DownloadSchedulerBackend.WORK_MANAGER ->
+                scheduleWorkManager(download, replaceExisting)
         }
     }
 
@@ -185,7 +186,7 @@ class DownloadCoordinator(context: Context) {
             .build()
 
         workManager.enqueueUniqueWork(
-            DownloadWorker.uniqueWorkName(download.id),
+            DownloadSchedulerPolicy.uniqueWorkName(download.id),
             if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             request,
         )
@@ -196,7 +197,7 @@ class DownloadCoordinator(context: Context) {
             jobScheduler?.getPendingJob(jobIdFor(downloadId)) != null
         } else {
             runCatching {
-                workManager.getWorkInfosForUniqueWork(DownloadWorker.uniqueWorkName(downloadId))
+                workManager.getWorkInfosForUniqueWork(DownloadSchedulerPolicy.uniqueWorkName(downloadId))
                     .get(5, TimeUnit.SECONDS)
                     .any { !it.state.isFinished }
             }.getOrDefault(false)
@@ -212,5 +213,5 @@ class DownloadCoordinator(context: Context) {
     }
 
     private fun jobIdFor(downloadId: Long): Int =
-        (downloadId % 1_000_000_000L).toInt().coerceAtLeast(1)
+        DownloadSchedulerPolicy.jobIdFor(downloadId)
 }
