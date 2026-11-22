@@ -16,6 +16,21 @@ data class MediaQualityOption(
     val isDash: Boolean = false,
 )
 
+enum class MediaDetectionSource {
+    NETWORK_HOOK,
+    HTML5_ELEMENT,
+    JSON_LD,
+    OPEN_GRAPH,
+    MSE_REFERENCE,
+    UNKNOWN,
+}
+
+enum class MediaCaptureStatus {
+    DOWNLOADABLE,
+    BLOB_OR_MSE_REFERENCE_ONLY,
+    LIVE_MEDIA_STREAM_REFERENCE_ONLY,
+}
+
 data class DetectedMedia(
     val id: String,
     val title: String,
@@ -30,8 +45,21 @@ data class DetectedMedia(
     val isMainVideo: Boolean = false,
     val isAudioOnly: Boolean = false,
     val qualities: List<MediaQualityOption> = emptyList(),
+    val detectionSource: MediaDetectionSource = MediaDetectionSource.UNKNOWN,
+    val captureStatus: MediaCaptureStatus = MediaCaptureStatus.DOWNLOADABLE,
+    val confidenceScore: Int = 50,
+    val platformLabel: String = "Web",
+    val mimeType: String = "",
     val detectedAt: Long = System.currentTimeMillis(),
-)
+) {
+    val isDownloadable: Boolean
+        get() = captureStatus == MediaCaptureStatus.DOWNLOADABLE &&
+            qualities.any { quality ->
+                quality.url.isNotBlank() &&
+                    !quality.url.startsWith("blob:", ignoreCase = true) &&
+                    !quality.url.startsWith("data:", ignoreCase = true)
+            }
+}
 
 data class ConsoleLogEntry(
     val id: String = UUID.randomUUID().toString(),
