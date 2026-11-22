@@ -149,5 +149,14 @@ class MediaCandidateRankerTest {
         priorityScore = score,
         isMainVideo = isMain,
         isAudioOnly = audioOnly,
+        qualities = listOf(
+            MediaQualityOption(
+                label = if (audioOnly) "Audio" else "${height}p MP4",
+                resolutionHeight = height,
+                url = url,
+                format = if (audioOnly) "M4A" else "MP4",
+                mimeType = if (audioOnly) "audio/mp4" else "video/mp4",
+            ),
+        ),
     )
 }
