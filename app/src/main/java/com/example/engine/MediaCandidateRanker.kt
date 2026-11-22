@@ -93,10 +93,15 @@ internal object MediaCandidateRanker {
         if (media.isAudioOnly) return Role.AUDIO
         if (looksLikeSuggested(media)) return Role.SUGGESTED
 
-        val strongDomEvidence = media.detectionSource == MediaDetectionSource.HTML5_ELEMENT &&
-            (media.domAreaPx >= 40_000L ||
-                media.durationSeconds >= 20.0 ||
-                (media.width >= 640 && media.height >= 360))
+        val strongDomEvidence =
+            media.detectionSource in setOf(
+                MediaDetectionSource.HTML5_ELEMENT,
+                MediaDetectionSource.MSE_REFERENCE,
+            ) &&
+                media.isDownloadable &&
+                (media.domAreaPx >= 40_000L ||
+                    media.durationSeconds >= 20.0 ||
+                    (media.width >= 640 && media.height >= 360))
         val structuredMetadataEvidence = media.detectionSource in setOf(
             MediaDetectionSource.JSON_LD,
             MediaDetectionSource.OPEN_GRAPH,
