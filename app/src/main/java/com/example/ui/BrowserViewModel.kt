@@ -146,6 +146,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun getWebView(tabId: String): WebView? = webViews[tabId]
 
+    fun onIncognitoIsolationUnavailable() {
+        _statusToast.value = getApplication<Application>().getString(
+            com.example.R.string.incognito_isolation_unavailable,
+        )
+    }
+
     fun consumeSavedTabState(tabId: String): Bundle? {
         val state = savedTabStates.remove(tabId)
         updateTab(tabId) { it.copy(isHibernated = false) }
@@ -258,11 +264,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _activeSheet.value = ActiveSheet.NONE
         touchTabMru(newTab.id)
         syncWebViewLifecycleAndMemory(newTab.id)
-        if (isIncognito && !WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
-            _statusToast.value = getApplication<Application>().getString(
-                com.example.R.string.incognito_isolation_unavailable,
-            )
-        }
     }
 
     fun selectTab(tabId: String) {
