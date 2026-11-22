@@ -295,206 +295,293 @@ class MediaDownloadManager(
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
     ) {
-        try {
-            repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
-            val probe = probeRangeSupport(url, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-            val totalBytes = probe.first
-            val supportsRanges = probe.second
+        val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
 
-            val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
+        try {
+            repository.updateDownloadProgress(
+                downloadId = downloadId,
+                downloaded = 0L,
+                total = -1L,
+                speedBytesPerSec = 0L,
+                status = "DOWNLOADING",
+                supportsResume = true,
+            )
+
+            val rangeProbe = probeRangeSupport(
+                url = url,
+                referer = referer,
+                userAgent = userAgent,
+                sessionCookieManager = sessionCookieManager,
+                allowGlobalCookieFallback = allowGlobalCookieFallback,
+            )
+            val totalBytes = rangeProbe.first
+            val supportsRanges = rangeProbe.second
 
             if (supportsRanges && totalBytes >= 1_500_000L) {
                 val threadCount = 4
                 val partSize = totalBytes / threadCount
                 val downloadedCounter = AtomicLong(0L)
-                var lastTickTime = System.currentTimeMillis()
-                var lastTickBytes = 0L
-
-                val partFiles = (0 until threadCount).map { idx ->
-                    val f = File(tempDir, "part_$idx.bin")
-                    if (f.exists()) downloadedCounter.addAndGet(f.length())
-                    f
+                val partFiles = (0 until threadCount).map { index ->
+                    File(tempDir, "part_$index.bin")
                 }
 
-                val latestProgressJob = java.util.concurrent.atomic.AtomicReference<Job?>(null)
-                coroutineScope {
-                    val tasks = (0 until threadCount).map { idx ->
-                        async(Dispatchers.IO) {
-                            val start = idx * partSize
-                            val end = if (idx == threadCount - 1) totalBytes - 1L else ((idx + 1) * partSize) - 1L
-                            val partFile = partFiles[idx]
-                            var alreadyHave = if (partFile.exists()) partFile.length() else 0L
-                            val expectedPartLength = end - start + 1L
-                            if (alreadyHave > expectedPartLength) {
-                                partFile.delete()
-                                alreadyHave = 0L
-                            }
-                            val reqStart = start + alreadyHave
-                            if (reqStart > end) return@async
+                partFiles.forEach { part ->
+                    if (part.exists()) {
+                        downloadedCounter.addAndGet(part.length())
+                    }
+                }
 
-                            val req = Request.Builder()
+                coroutineScope {
+                    val tasks = (0 until threadCount).map { index ->
+                        async(Dispatchers.IO) {
+                            val rangeStart = index * partSize
+                            val rangeEnd = if (index == threadCount - 1) {
+                                totalBytes - 1L
+                            } else {
+                                ((index + 1) * partSize) - 1L
+                            }
+                            val partFile = partFiles[index]
+                            val expectedPartLength = rangeEnd - rangeStart + 1L
+                            var existingBytes = if (partFile.exists()) partFile.length() else 0L
+
+                            if (existingBytes > expectedPartLength) {
+                                partFile.delete()
+                                existingBytes = 0L
+                                downloadedCounter.addAndGet(-expectedPartLength.coerceAtMost(existingBytes))
+                            }
+                            if (existingBytes == expectedPartLength) {
+                                return@async
+                            }
+
+                            val requestStart = rangeStart + existingBytes
+                            val request = Request.Builder()
                                 .url(url)
                                 .header("User-Agent", userAgent)
-                                .header("Range", "bytes=$reqStart-$end")
+                                .header("Range", "bytes=$requestStart-$rangeEnd")
                                 .apply {
                                     if (referer.isNotBlank()) header("Referer", referer)
-                                               }
+                                }
                                 .build()
 
-                            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
-                                if (resp.code != 206) {
-                                    throw IOException("Range request was not honored (HTTP ${resp.code})")
+                            executeWithProfileCookies(
+                                request,
+                                sessionCookieManager,
+                                allowGlobalCookieFallback,
+                            ).use { response ->
+                                if (response.code != 206) {
+                                    throw IOException("Range request was not honored (HTTP ${response.code})")
                                 }
-                                val rangeMatch = Regex("^bytes\\\\s+(\\\\d+)-(\\\\d+)/(\\\\d+)$", RegexOption.IGNORE_CASE)
-                                    .matchEntire(resp.header("Content-Range").orEmpty())
+
+                                val rangeMatch = Regex(
+                                    "^bytes\\s+(\\d+)-(\\d+)/(\\d+)$",
+                                    RegexOption.IGNORE_CASE,
+                                ).matchEntire(response.header("Content-Range").orEmpty())
                                     ?: throw IOException("Missing or invalid Content-Range")
-                                if (rangeMatch.groupValues[1].toLong() != reqStart ||
-                                    rangeMatch.groupValues[2].toLong() != end ||
-                                    rangeMatch.groupValues[3].toLong() != totalBytes
-                                ) throw IOException("Unexpected Content-Range")
-                                val stream = resp.body?.byteStream() ?: throw IllegalStateException("Empty body")
+
+                                val actualStart = rangeMatch.groupValues[1].toLong()
+                                val actualEnd = rangeMatch.groupValues[2].toLong()
+                                val actualTotal = rangeMatch.groupValues[3].toLong()
+                                if (actualStart != requestStart ||
+                                    actualEnd != rangeEnd ||
+                                    actualTotal != totalBytes
+                                ) {
+                                    throw IOException("Unexpected Content-Range")
+                                }
+
+                                val input = response.body?.byteStream()
+                                    ?: throw IOException("Empty range response body")
                                 var receivedBytes = 0L
-                                FileOutputStream(partFile, alreadyHave > 0L).use { out ->
+                                var lastReportAt = System.currentTimeMillis()
+                                var lastReportBytes = downloadedCounter.get()
+
+                                FileOutputStream(partFile, existingBytes > 0L).use { output ->
                                     val buffer = ByteArray(16 * 1024)
                                     while (true) {
-                                        val read = stream.read(buffer)
-                                        if (read == -1) break
-                                        out.write(buffer, 0, read)
-                                        receivedBytes += read.toLong()
-                                        val totalNow = downloadedCounter.addAndGet(read.toLong())
+                                        val count = input.read(buffer)
+                                        if (count == -1) break
+                                        output.write(buffer, 0, count)
+                                        receivedBytes += count.toLong()
+                                        val overallDownloaded = downloadedCounter.addAndGet(count.toLong())
                                         val now = System.currentTimeMillis()
-                                        if (now - lastTickTime >= 500L) {
-                                            synchronized(this@MediaDownloadManager) {
-                                                val dt2 = System.currentTimeMillis() - lastTickTime
-                                                if (dt2 >= 500L) {
-                                                    val speed = ((totalNow - lastTickBytes) * 1000L) / dt2.coerceAtLeast(1L)
-                                                    lastTickTime = System.currentTimeMillis()
-                                                    lastTickBytes = totalNow
-                                                    latestProgressJob.set(
-                                                        launch(Dispatchers.IO) {
-                                                            repository.updateDownloadProgress(
-                                                                downloadId,
-                                                                totalNow,
-                                                                totalBytes,
-                                                                speed.coerceAtLeast(0L),
-                                                                "DOWNLOADING",
-                                                                supportsResume = true,
-                                                            )
-                                                        },
-                                                    )
-                                                }
-                                            }
+                                        val elapsed = now - lastReportAt
+
+                                        if (elapsed >= 500L) {
+                                            val speed = ((overallDownloaded - lastReportBytes) * 1000L) /
+                                                elapsed.coerceAtLeast(1L)
+                                            repository.updateDownloadProgress(
+                                                id = downloadId,
+                                                downloaded = overallDownloaded,
+                                                total = totalBytes,
+                                                speedBytesPerSec = speed.coerceAtLeast(0L),
+                                                status = "DOWNLOADING",
+                                                supportsResume = true,
+                                            )
+                                            lastReportAt = now
+                                            lastReportBytes = overallDownloaded
                                         }
                                     }
                                 }
-                                val expectedBytes = end - reqStart + 1L
-                                if (receivedBytes != expectedBytes) {
-                                    throw IOException("Incomplete range segment: ${receivedBytes} of ${expectedBytes} bytes")
+
+                                val expectedResponseBytes = rangeEnd - requestStart + 1L
+                                if (receivedBytes != expectedResponseBytes ||
+                                    partFile.length() != expectedPartLength
+                                ) {
+                                    throw IOException(
+                                        "Incomplete range part: ${partFile.length()} of ${expectedPartLength} bytes",
+                                    )
                                 }
                             }
                         }
                     }
                     tasks.awaitAll()
-                    latestProgressJob.get()?.join()
                 }
 
-                val assembledBytes = partFiles.sumOf { if (it.exists()) it.length() else 0L }
+                val assembledBytes = partFiles.sumOf { part ->
+                    if (part.exists()) part.length() else 0L
+                }
                 if (assembledBytes != totalBytes) {
                     throw IOException("Incomplete download: ${assembledBytes} of ${totalBytes} bytes")
                 }
-                // Merge chunks into final destination
-                val (destStream, destUri) = openOutputDestination(fileName, mimeType)
-                destStream.use { out ->
-                    val buf = ByteArray(32 * 1024)
+
+                val (destination, destinationUri) = openOutputDestination(fileName, mimeType)
+                destination.use { output ->
+                    val buffer = ByteArray(32 * 1024)
                     partFiles.forEach { part ->
                         FileInputStream(part).use { input ->
                             while (true) {
-                                val r = input.read(buf)
-                                if (r == -1) break
-                                out.write(buf, 0, r)
+                                val count = input.read(buffer)
+                                if (count == -1) break
+                                output.write(buffer, 0, count)
                             }
                         }
                     }
                 }
+
                 tempDir.deleteRecursively()
-                repository.updateDownloadProgress(downloadId, totalBytes, totalBytes, 0L, "COMPLETED", destUri, true)
+                repository.updateDownloadProgress(
+                    id = downloadId,
+                    downloaded = totalBytes,
+                    total = totalBytes,
+                    speedBytesPerSec = 0L,
+                    status = "COMPLETED",
+                    localUri = destinationUri,
+                    supportsResume = true,
+                )
                 return
             }
 
-            // Single-stream fallback (also supports single-file resume if Accept-Ranges is true)
+            // Single stream fallback. Resume is attempted only when the server
+            // advertised byte ranges and an existing, verified staging file exists.
             val singleFile = File(tempDir, "single.bin")
-            val existingLen = if (supportsRanges && singleFile.exists()) singleFile.length() else 0L
-            val req = Request.Builder()
+            val existingBytes = if (supportsRanges && singleFile.exists()) singleFile.length() else 0L
+            if (!supportsRanges && singleFile.exists()) singleFile.delete()
+
+            val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgent)
                 .apply {
                     if (referer.isNotBlank()) header("Referer", referer)
-                    if (existingLen > 0L) header("Range", "bytes=$existingLen-")
+                    if (existingBytes > 0L) header("Range", "bytes=$existingBytes-")
                 }
                 .build()
 
-            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
-                if (!resp.isSuccessful || (existingLen > 0L && resp.code != 206)) {
-                    throw IOException("Resume range was not honored (HTTP ${resp.code})")
+            executeWithProfileCookies(
+                request,
+                sessionCookieManager,
+                allowGlobalCookieFallback,
+            ).use { response ->
+                val validResponse = if (existingBytes > 0L) {
+                    response.code == 206
+                } else {
+                    response.isSuccessful
                 }
-                if (existingLen > 0L &&
-                    !resp.header("Content-Range").orEmpty().startsWith("bytes ${existingLen}-", ignoreCase = true)
-                ) throw IOException("Unexpected resume Content-Range")
-                val body = resp.body ?: run {
-                    repository.updateDownloadStatus(downloadId, "FAILED")
-                    return
+                if (!validResponse) {
+                    throw IOException("Download request failed (HTTP ${response.code})")
                 }
-                val respLen = body.contentLength()
-                val resolvedTotal = if (totalBytes > 0) totalBytes else if (respLen > 0) existingLen + respLen else -1L
-                var downloaded = existingLen
-                var lastReport = System.currentTimeMillis()
-                var lastBytes = downloaded
 
-                FileOutputStream(singleFile, existingLen > 0L).use { out ->
-                    val buffer = ByteArray(16 * 1024)
+                if (existingBytes > 0L) {
+                    val contentRange = response.header("Content-Range").orEmpty()
+                    if (!contentRange.startsWith("bytes $existingBytes-", ignoreCase = true)) {
+                        throw IOException("Unexpected resume Content-Range")
+                    }
+                }
+
+                val body = response.body ?: throw IOException("Empty download response body")
+                val responseLength = body.contentLength()
+                val expectedTotal = if (totalBytes > 0L) {
+                    totalBytes
+                } else if (responseLength > 0L) {
+                    existingBytes + responseLength
+                } else {
+                    -1L
+                }
+
+                var downloaded = existingBytes
+                var lastReportAt = System.currentTimeMillis()
+                var lastReportBytes = downloaded
+
+                FileOutputStream(singleFile, existingBytes > 0L).use { output ->
                     body.byteStream().use { input ->
+                        val buffer = ByteArray(16 * 1024)
                         while (true) {
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            out.write(buffer, 0, read)
-                            downloaded += read
+                            val count = input.read(buffer)
+                            if (count == -1) break
+                            output.write(buffer, 0, count)
+                            downloaded += count.toLong()
+
                             val now = System.currentTimeMillis()
-                            val dt = now - lastReport
-                            if (dt >= 450L) {
-                                val speed = ((downloaded - lastBytes) * 1000L) / dt.coerceAtLeast(1L)
-                                lastReport = now
-                                lastBytes = downloaded
+                            val elapsed = now - lastReportAt
+                            if (elapsed >= 450L) {
+                                val speed = ((downloaded - lastReportBytes) * 1000L) /
+                                    elapsed.coerceAtLeast(1L)
                                 repository.updateDownloadProgress(
-                                    downloadId,
-                                    downloaded,
-                                    resolvedTotal,
-                                    speed.coerceAtLeast(0L),
-                                    "DOWNLOADING",
+                                    id = downloadId,
+                                    downloaded = downloaded,
+                                    total = expectedTotal,
+                                    speedBytesPerSec = speed.coerceAtLeast(0L),
+                                    status = "DOWNLOADING",
                                     supportsResume = supportsRanges,
                                 )
+                                lastReportAt = now
+                                lastReportBytes = downloaded
                             }
                         }
                     }
                 }
 
-                val (destStream, destUri) = openOutputDestination(fileName, mimeType)
-                destStream.use { out ->
-                    FileInputStream(singleFile).use { it.copyTo(out) }
+                if (expectedTotal > 0L && singleFile.length() != expectedTotal) {
+                    throw IOException(
+                        "Incomplete download: ${singleFile.length()} of ${expectedTotal} bytes",
+                    )
+                }
+
+                val (destination, destinationUri) = openOutputDestination(fileName, mimeType)
+                destination.use { output ->
+                    FileInputStream(singleFile).use { input -> input.copyTo(output) }
                 }
                 tempDir.deleteRecursively()
-                repository.updateDownloadProgress(downloadId, downloaded, downloaded, 0L, "COMPLETED", destUri, supportsRanges)
+                val completedBytes = singleFile.length()
+                repository.updateDownloadProgress(
+                    id = downloadId,
+                    downloaded = completedBytes,
+                    total = completedBytes,
+                    speedBytesPerSec = 0L,
+                    status = "COMPLETED",
+                    localUri = destinationUri,
+                    supportsResume = supportsRanges,
+                )
             }
         } catch (_: CancellationException) {
             if (pausedIds.remove(downloadId)) {
                 repository.updateDownloadStatus(downloadId, "PAUSED")
             } else {
-                chunkDir(downloadId).deleteRecursively()
+                tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
         } catch (_: Exception) {
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
-            // The job completion handler removes this execution from activeJobs.
+            // activeJobs is cleared by the central Job completion handler.
         }
     }
 
