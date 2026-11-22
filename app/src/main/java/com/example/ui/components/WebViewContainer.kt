@@ -494,13 +494,16 @@ private fun createConfiguredWebView(
     return WebView(context).apply {
         val hostWebView = this
         // AndroidX MULTI_PROFILE must be applied before any WebView API is touched.
-        WebViewConfigurator.configure(
+        val privateProfileReady = WebViewConfigurator.configure(
             webView = this,
             isIncognito = tab.isIncognito,
             desktopMode = tab.isDesktopMode,
             javaScriptEnabled = settings.javaScriptEnabled,
             blockThirdPartyCookiesIncognito = settings.blockThirdPartyCookiesIncognito,
         )
+        if (tab.isIncognito && !privateProfileReady) {
+            viewModel.onIncognitoIsolationUnavailable()
+        }
         layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -693,13 +696,16 @@ private fun createPopupWebView(
 ): WebView {
     val parentHost = runCatching { Uri.parse(tab.url).host }.getOrNull()
     return WebView(context).apply {
-        WebViewConfigurator.configure(
+        val privateProfileReady = WebViewConfigurator.configure(
             webView = this,
             isIncognito = tab.isIncognito,
             desktopMode = tab.isDesktopMode,
             javaScriptEnabled = settings.javaScriptEnabled,
             blockThirdPartyCookiesIncognito = settings.blockThirdPartyCookiesIncognito,
         )
+        if (tab.isIncognito && !privateProfileReady) {
+            viewModel.onIncognitoIsolationUnavailable()
+        }
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
