@@ -145,15 +145,24 @@ object WebViewConfigurator {
      * This is required for authenticated media requests in isolated private tabs.
      */
     fun cookieHeader(webView: WebView?, url: String): String {
-        if (webView == null) return CookieManager.getInstance().getCookie(url).orEmpty()
+        val manager = cookieManagerForTab(webView, isIncognito = false) ?: return ""
+        return runCatching { manager.getCookie(url).orEmpty() }.getOrDefault("")
+    }
+
+    /**
+     * Returns the CookieManager bound to the requested browsing profile.
+     * Incognito never falls back to the default CookieManager, including when
+     * its WebView is hibernated or multi-profile is unsupported.
+     */
+    fun cookieManagerForTab(webView: WebView?, isIncognito: Boolean): CookieManager? {
+        if (!isIncognito) return CookieManager.getInstance()
+        if (webView == null) return null
         val privateProfileIsolated = synchronized(lastAppliedConfigs) {
-            val isPrivate = lastAppliedConfigs[webView]?.startsWith("true|") == true
-            !isPrivate || isolatedIncognitoWebViews[webView] == true
+            isolatedIncognitoWebViews[webView] == true &&
+                lastAppliedConfigs[webView]?.startsWith("true|") == true
         }
-        // Never let a private tab's native probe/downloader inherit normal-profile cookies.
-        if (!privateProfileIsolated) return ""
-        return runCatching { cookieManagerFor(webView).getCookie(url).orEmpty() }
-            .getOrDefault("")
+        if (!privateProfileIsolated) return null
+        return runCatching { WebViewCompat.getProfile(webView).cookieManager }.getOrNull()
     }
 
     private fun cookieManagerFor(webView: WebView): CookieManager {
