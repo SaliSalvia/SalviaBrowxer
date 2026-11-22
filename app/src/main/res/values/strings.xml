@@ -18,4 +18,7 @@
     <string name="incognito_profile_cleared">The isolated private browsing profile was deleted. WebView may finish removing its data asynchronously.</string>
     <string name="incognito_cleanup_failed">Private profile cleanup could not be confirmed. Close all private tabs and retry before using sensitive sites.</string>
     <string name="incognito_bookmark_blocked">Bookmarks are not saved from private tabs.</string>
+    <string name="download_notification_channel">Downloads</string>
+    <string name="download_notification_title">SalviaBrowxer download</string>
+    <string name="download_notification_text">Downloading %1$s</string>
 </resources>
