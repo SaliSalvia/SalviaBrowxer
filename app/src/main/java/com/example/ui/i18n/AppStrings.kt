@@ -102,6 +102,9 @@ data class AppStrings(
     val downloadWithQualityFormat: String,
     val unknownSize: String,
     val qualitiesCountFormat: String,
+    val mseReferenceNotice: String,
+    val liveMediaReferenceNotice: String,
+    val unavailableMediaSourceNotice: String,
 
     // Extensions Sheet
     val extensionsTitle: String,
@@ -402,6 +405,9 @@ val EnglishStrings = AppStrings(
     downloadWithQualityFormat = "Download (%s)",
     unknownSize = "Unknown",
     qualitiesCountFormat = "%d qualities",
+    mseReferenceNotice = "This player exposes a browser-managed MSE/blob reference, not a direct media URL. Download is unavailable for this item.",
+    liveMediaReferenceNotice = "A live media reference was detected. Live-stream capture is not supported by this download path yet.",
+    unavailableMediaSourceNotice = "A downloadable HTTP(S) media source could not be verified for this item.",
 
     extensionsTitle = "Extensions (Add-ons)",
     extensionsSubtitle = "Firefox-style WebExtensions • UserScript & CSS injection",
@@ -631,6 +637,9 @@ val PersianStrings = AppStrings(
     downloadWithQualityFormat = "دانلود (%s)",
     unknownSize = "نامشخص",
     qualitiesCountFormat = "%d کیفیت",
+    mseReferenceNotice = "این پخش‌کننده فقط یک ارجاع داخلی MSE/Blob ارائه کرده و نشانی مستقیم فایل در دسترس نیست؛ دانلود این مورد ممکن نیست.",
+    liveMediaReferenceNotice = "ارجاع به جریان زنده شناسایی شد؛ دریافت جریان زنده در مسیر دانلود فعلی پشتیبانی نمی‌شود.",
+    unavailableMediaSourceNotice = "نشانی قابل‌تأیید HTTP(S) برای دانلود این مدیا در دسترس نیست.",
 
     extensionsTitle = "افزونه‌ها (Add-ons)",
     extensionsSubtitle = "پشتیبانی به سبک فایرفاکس • اسکریپت و استایل وب‌اکستنشن",
