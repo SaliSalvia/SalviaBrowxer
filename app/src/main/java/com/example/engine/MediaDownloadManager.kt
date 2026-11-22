@@ -169,6 +169,19 @@ class MediaDownloadManager(
     fun isDownloadExecuting(downloadId: Long): Boolean =
         activeJobs[downloadId]?.isActive == true
 
+    suspend fun pauseDownloadAndWait(download: DownloadEntity) {
+        pausedIds.add(download.id)
+        activeJobs[download.id]?.cancelAndJoin()
+        repository.updateDownloadStatus(download.id, "PAUSED")
+    }
+
+    suspend fun cancelDownloadAndWait(download: DownloadEntity) {
+        pausedIds.remove(download.id)
+        activeJobs[download.id]?.cancelAndJoin()
+        chunkDir(download.id).deleteRecursively()
+        repository.updateDownloadStatus(download.id, "CANCELLED")
+    }
+
     fun pauseDownload(download: DownloadEntity) {
         pausedIds.add(download.id)
         activeJobs.remove(download.id)?.cancel()
