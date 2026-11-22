@@ -367,14 +367,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    override fun onCleared() {
-        webViews.keys.toList().forEach(::destroyWebView)
-        if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
-            WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
-        }
-        super.onCleared()
-    }
-
     private fun destroyWebView(tabId: String) {
         webViews.remove(tabId)?.apply {
             onPause()
@@ -1179,7 +1171,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     """.trimIndent()
 
     override fun onCleared() {
-        super.onCleared()
+        // Release all live/hibernated WebViews before deleting the private profile.
+        webViews.keys.toList().forEach(::destroyWebView)
+        if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+            WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
+        }
+
         val remainingAds = pendingAdsDelta.getAndSet(0L)
         val remainingTrackers = pendingTrackersDelta.getAndSet(0L)
         if (remainingAds > 0L || remainingTrackers > 0L) {
@@ -1187,11 +1184,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 prefsRepository.incrementBlockedStats(remainingAds, remainingTrackers)
             }
         }
-        webViews.values.forEach { runCatching { it.destroy() } }
-        webViews.clear()
         savedTabStates.clear()
         networkBuffers.clear()
         consoleBuffers.clear()
         pendingProbedUrls.clear()
+        super.onCleared()
     }
 }
