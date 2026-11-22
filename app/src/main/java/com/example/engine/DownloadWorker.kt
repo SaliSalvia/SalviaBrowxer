@@ -64,7 +64,6 @@ class DownloadWorker(
                     userAgent = userAgent,
                     sessionCookieManager = CookieManager.getInstance(),
                     allowGlobalCookieFallback = true,
-                    cancelTransferWhenCallerCancelled = false,
                 )
                 return when (result?.status) {
                     "COMPLETED" -> Result.success()
