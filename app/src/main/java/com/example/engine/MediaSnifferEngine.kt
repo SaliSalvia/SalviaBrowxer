@@ -701,7 +701,7 @@ class MediaSnifferEngine {
             // java.net.URI.normalize() intentionally preserves leading parent segments on
             // absolute paths (for example /../video.mp4). Clamp those at the origin root.
             val normalizedPath = resolved.rawPath.orEmpty()
-                .replace(Regex("^(?:/\\.\\./)+"), "/")
+                .replace(Regex("^/(?:\\.\\./)+"), "/")
             buildString {
                 append(resolved.scheme)
                 append("://")
