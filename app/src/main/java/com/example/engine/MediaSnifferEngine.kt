@@ -69,31 +69,45 @@ class MediaSnifferEngine {
         return hasVideoExt || hasAudioExt || hasStreamingHint
     }
 
-    suspend fun probeNetworkMedia(
-        mediaUrl: String,
-        pageUrl: String,
-        pageTitle: String,
-        userAgent: String,
-        cookieHeader: String? = null,
-    ): DetectedMedia? = withContext(Dispatchers.IO) {
-        if (!isCandidateMediaUrl(mediaUrl)) return@withContext null
+    /**
+     * Converts page-relative media references to absolute HTTP(S) URLs before validation.
+     * Opaque browser-managed references are preserved for the DOM parser, never as downloads.
+     */
+    fun resolveMediaUrl(pageUrl: String, candidateUrl: String): String {
+        val candidate = candidateUrl.trim()
+        if (
+            candidate.isBlank() ||
+            candidate.startsWith("blob:", ignoreCase = true) ||
+            candidate.startsWith("data:", ignoreCase = true) ||
+            candidate.startsWith("mediastream:", ignoreCase = true)
+        ) {
+            return candidate
+        }
+        if (isHttpMediaUrl(candidate)) return candidate
+        if (!isHttpMediaUrl(pageUrl)) return candidate
+        return resolveRelativeUrl(Uri.parse(pageUrl), candidate)
+    }
 
-        val lower = mediaUrl.lowercase()
+    ): DetectedMedia? = withContext(Dispatchers.IO) {
+        val normalizedUrl = resolveMediaUrl(pageUrl, mediaUrl)
+        if (!isCandidateMediaUrl(normalizedUrl)) return@withContext null
+
+        val lower = normalizedUrl.lowercase()
         val isHls = lower.contains(".m3u8")
         val isDash = lower.contains(".mpd")
         val isAudio = audioExtensions.any { lower.contains(it) }
-        val cleanTitle = sanitizeTitle(pageTitle, mediaUrl)
-        val platform = MediaPlatformDetector.detect(pageUrl, mediaUrl)
-        val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(mediaUrl) }.getOrNull().orEmpty()
+        val cleanTitle = sanitizeTitle(pageTitle, normalizedUrl)
+        val platform = MediaPlatformDetector.detect(pageUrl, normalizedUrl)
+        val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(normalizedUrl) }.getOrNull().orEmpty()
 
         if (isHls) {
-            val qualities = parseHlsPlaylist(mediaUrl, pageUrl, userAgent, cookies)
+            val qualities = parseHlsPlaylist(normalizedUrl, pageUrl, userAgent, cookies)
             if (qualities.isEmpty()) {
                 return@withContext DetectedMedia(
-                    id = normalizeMediaKey(mediaUrl),
+                    id = normalizeMediaKey(normalizedUrl),
                     title = cleanTitle,
                     sourcePageUrl = pageUrl,
-                    primaryUrl = mediaUrl,
+                    primaryUrl = normalizedUrl,
                     priorityScore = 88,
                     isMainVideo = true,
                     detectionSource = MediaDetectionSource.NETWORK_HOOK,
@@ -104,7 +118,7 @@ class MediaSnifferEngine {
                         MediaQualityOption(
                             label = "Auto Quality (HLS -> MP4)",
                             resolutionHeight = 720,
-                            url = mediaUrl,
+                            url = normalizedUrl,
                             format = "HLS",
                             mimeType = "video/mp4",
                             isHls = true,
@@ -114,10 +128,10 @@ class MediaSnifferEngine {
             }
             val topRes = qualities.maxOfOrNull { it.resolutionHeight } ?: 720
             return@withContext DetectedMedia(
-                id = normalizeMediaKey(mediaUrl),
+                id = normalizeMediaKey(normalizedUrl),
                 title = cleanTitle,
                 sourcePageUrl = pageUrl,
-                primaryUrl = mediaUrl,
+                primaryUrl = normalizedUrl,
                 height = topRes,
                 priorityScore = 100 + (topRes / 100),
                 isMainVideo = true,
@@ -130,14 +144,14 @@ class MediaSnifferEngine {
         }
 
         if (isDash) {
-            val qualities = parseDashManifest(mediaUrl, pageUrl, userAgent, cookies)
+            val qualities = parseDashManifest(normalizedUrl, pageUrl, userAgent, cookies)
             if (qualities.isNotEmpty()) {
                 val topRes = qualities.maxOfOrNull { it.resolutionHeight } ?: 720
                 return@withContext DetectedMedia(
-                    id = normalizeMediaKey(mediaUrl),
+                    id = normalizeMediaKey(normalizedUrl),
                     title = cleanTitle,
                     sourcePageUrl = pageUrl,
-                    primaryUrl = mediaUrl,
+                    primaryUrl = normalizedUrl,
                     height = topRes,
                     priorityScore = 98 + (topRes / 100),
                     isMainVideo = true,
@@ -150,7 +164,7 @@ class MediaSnifferEngine {
             }
         }
 
-        val probe = headProbe(mediaUrl, pageUrl, userAgent, cookies)
+        val probe = headProbe(normalizedUrl, pageUrl, userAgent, cookies)
         val contentLength = probe.first
         val contentType = probe.second
 
@@ -161,8 +175,8 @@ class MediaSnifferEngine {
             return@withContext null
         }
 
-        val format = inferFormat(mediaUrl, contentType)
-        val guessedHeight = inferHeightFromUrl(mediaUrl)
+        val format = inferFormat(normalizedUrl, contentType)
+        val guessedHeight = inferHeightFromUrl(normalizedUrl)
         val qualityLabel = when {
             isAudio -> "Audio ($format)"
             guessedHeight >= 2160 -> "4K Ultra HD ($format)"
@@ -174,10 +188,10 @@ class MediaSnifferEngine {
         }
 
         DetectedMedia(
-            id = normalizeMediaKey(mediaUrl),
+            id = normalizeMediaKey(normalizedUrl),
             title = cleanTitle,
             sourcePageUrl = pageUrl,
-            primaryUrl = mediaUrl,
+            primaryUrl = normalizedUrl,
             height = guessedHeight,
             priorityScore = if (isAudio) 40 else 85 + (guessedHeight / 100),
             isMainVideo = !isAudio,
@@ -195,7 +209,7 @@ class MediaSnifferEngine {
                 MediaQualityOption(
                     label = qualityLabel,
                     resolutionHeight = guessedHeight,
-                    url = mediaUrl,
+                    url = normalizedUrl,
                     format = format,
                     mimeType = contentType.ifBlank { if (isAudio) "audio/mpeg" else "video/mp4" },
                     sizeBytes = contentLength,
@@ -215,13 +229,18 @@ class MediaSnifferEngine {
 
         for (i in 0 until array.length()) {
             val obj = array.optJSONObject(i) ?: continue
-            val src = obj.optString("src", "").trim()
-            if (src.isBlank() || src.startsWith("data:", ignoreCase = true)) continue
+            val rawSrc = obj.optString("src", "").trim()
+            if (rawSrc.isBlank() || rawSrc.startsWith("data:", ignoreCase = true)) continue
 
-            val isBlobReference = src.startsWith("blob:", ignoreCase = true)
+            val isBlobReference = rawSrc.startsWith("blob:", ignoreCase = true)
             val isLive = obj.optBoolean("isLive", false)
-            val isMediaStreamReference = src.startsWith("mediastream:", ignoreCase = true)
+            val isMediaStreamReference = rawSrc.startsWith("mediastream:", ignoreCase = true)
             if (isMediaStreamReference && !isLive) continue
+            val src = if (isBlobReference || isMediaStreamReference) {
+                rawSrc
+            } else {
+                resolveMediaUrl(pageUrl, rawSrc)
+            }
             if (!isBlobReference && !isMediaStreamReference && !isHttpMediaUrl(src)) continue
             if (isHttpMediaUrl(src) && AdBlockerEngine.isAdOrPreRollMediaUrl(src)) continue
 
@@ -256,7 +275,8 @@ class MediaSnifferEngine {
                 if (sourcesArr != null) {
                     for (j in 0 until sourcesArr.length()) {
                         val sObj = sourcesArr.optJSONObject(j) ?: continue
-                        val sUrl = sObj.optString("url", "").trim()
+                        val rawSourceUrl = sObj.optString("url", "").trim()
+                        val sUrl = resolveMediaUrl(pageUrl, rawSourceUrl)
                         if (!isHttpMediaUrl(sUrl) || AdBlockerEngine.isAdOrPreRollMediaUrl(sUrl)) continue
 
                         val res = sObj.optInt("height", height)
