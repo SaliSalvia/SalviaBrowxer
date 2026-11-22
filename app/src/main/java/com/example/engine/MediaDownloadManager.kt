@@ -100,7 +100,12 @@ class MediaDownloadManager(
         }
     }
 
-    fun resumeDownload(download: DownloadEntity, userAgent: String) {
+    fun resumeDownload(
+        download: DownloadEntity,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ) {
         pausedIds.remove(download.id)
         scope.launch(Dispatchers.IO) {
             launchJobForEntity(
@@ -113,8 +118,8 @@ class MediaDownloadManager(
                 mimeType = download.mimeType,
                 isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
                 isDash = download.isDashStream,
-                sessionCookieManager = CookieManager.getInstance(),
-                allowGlobalCookieFallback = true,
+                sessionCookieManager = sessionCookieManager,
+                allowGlobalCookieFallback = allowGlobalCookieFallback,
             )
         }
     }
@@ -388,7 +393,8 @@ class MediaDownloadManager(
                     targetFile = audioTemp,
                     referer = referer,
                     userAgent = userAgent,
-                    cookie = cookie,
+                    sessionCookieManager = sessionCookieManager,
+                    allowGlobalCookieFallback = allowGlobalCookieFallback,
                 )
                 if (audioBytes > 0L) rawAudioFile = audioTemp
             }
