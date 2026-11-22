@@ -13,6 +13,8 @@ import com.example.engine.MediaPlatformDetector
 import com.example.engine.WebViewConfigurator
 import com.example.ui.MediaCaptureStatus
 import com.example.ui.MediaDetectionSource
+import com.example.ui.DetectedMedia
+import com.example.ui.MediaQualityOption
 import com.example.ui.i18n.stringsFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -390,6 +392,27 @@ class BrowserEnginesTest {
         assertFalse(sniffer.isCandidateMediaUrl("file:///sdcard/Movies/video.mp4"))
         assertFalse(sniffer.isCandidateMediaUrl("javascript:https://cdn.example.com/video.mp4"))
         assertFalse(sniffer.isCandidateMediaUrl("blob:https://example.com/video"))
+    }
+
+    @Test
+    fun `downloadability requires an absolute HTTP or HTTPS host`() {
+        val media = DetectedMedia(
+            id = "local-file",
+            title = "Local file",
+            sourcePageUrl = "https://example.com",
+            primaryUrl = "file:///sdcard/Movies/video.mp4",
+            qualities = listOf(
+                MediaQualityOption(
+                    label = "Local",
+                    resolutionHeight = 720,
+                    url = "file:///sdcard/Movies/video.mp4",
+                    format = "MP4",
+                    mimeType = "video/mp4",
+                ),
+            ),
+        )
+
+        assertFalse(media.isDownloadable)
     }
 
 }
