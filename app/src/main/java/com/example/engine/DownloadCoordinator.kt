@@ -128,6 +128,8 @@ class DownloadCoordinator(context: Context) {
         }
 
         pending.filter { it.status == "DOWNLOADING" }.forEach { download ->
+            // If neither this process nor the OS owns the task, leave its partial data
+            // intact and expose PAUSED. The user can explicitly resume it from Downloads.
             delay(1_500L)
             if (manager.isDownloadExecuting(download.id)) return@forEach
             if (hasPlatformWork(download.id)) return@forEach
