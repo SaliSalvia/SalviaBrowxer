@@ -299,7 +299,7 @@ class MediaDownloadManager(
 
         try {
             repository.updateDownloadProgress(
-                downloadId = downloadId,
+                id = downloadId,
                 downloaded = 0L,
                 total = -1L,
                 speedBytesPerSec = 0L,
