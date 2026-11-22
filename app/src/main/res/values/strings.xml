@@ -17,4 +17,5 @@
     <string name="incognito_isolation_unavailable">This WebView could not attach an isolated private profile. It may share cookies or website storage with normal tabs; do not sign in or enter sensitive data in this session.</string>
     <string name="incognito_profile_cleared">The isolated private browsing profile was deleted. WebView may finish removing its data asynchronously.</string>
     <string name="incognito_cleanup_failed">Private profile cleanup could not be confirmed. Close all private tabs and retry before using sensitive sites.</string>
+    <string name="incognito_bookmark_blocked">Bookmarks are not saved from private tabs.</string>
 </resources>
