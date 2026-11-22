@@ -714,6 +714,14 @@ class MediaSnifferEngine {
     }
 
     private fun normalizeMediaKey(url: String): String {
+        if (
+            url.startsWith("blob:", ignoreCase = true) ||
+            url.startsWith("mediastream:", ignoreCase = true)
+        ) {
+            // Opaque references do not have a conventional host/path pair. Keep the full
+            // synthetic/browser reference so distinct player elements cannot collapse to "".
+            return url
+        }
         return runCatching {
             val uri = Uri.parse(url)
             "${uri.host.orEmpty()}${uri.path.orEmpty()}"
