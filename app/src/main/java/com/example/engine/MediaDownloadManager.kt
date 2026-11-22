@@ -559,8 +559,8 @@ class MediaDownloadManager(
                 destination.use { output ->
                     FileInputStream(singleFile).use { input -> input.copyTo(output) }
                 }
-                tempDir.deleteRecursively()
                 val completedBytes = singleFile.length()
+                tempDir.deleteRecursively()
                 repository.updateDownloadProgress(
                     id = downloadId,
                     downloaded = completedBytes,
