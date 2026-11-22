@@ -345,9 +345,9 @@ class MediaDownloadManager(
                             var existingBytes = if (partFile.exists()) partFile.length() else 0L
 
                             if (existingBytes > expectedPartLength) {
+                                downloadedCounter.addAndGet(-existingBytes)
                                 partFile.delete()
                                 existingBytes = 0L
-                                downloadedCounter.addAndGet(-expectedPartLength.coerceAtMost(existingBytes))
                             }
                             if (existingBytes == expectedPartLength) {
                                 return@async
