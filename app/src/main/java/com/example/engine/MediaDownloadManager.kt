@@ -294,7 +294,6 @@ class MediaDownloadManager(
     ) {
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
-            val cookie = resolveCookieHeader(url, sessionCookieManager, allowGlobalCookieFallback)
             val probe = probeRangeSupport(url, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
             val totalBytes = probe.first
             val supportsRanges = probe.second
@@ -331,8 +330,7 @@ class MediaDownloadManager(
                                 .header("Range", "bytes=$reqStart-$end")
                                 .apply {
                                     if (referer.isNotBlank()) header("Referer", referer)
-                                    if (cookie.isNotBlank()) header("Cookie", cookie)
-                                }
+                                               }
                                 .build()
 
                             executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
@@ -843,15 +841,19 @@ class MediaDownloadManager(
         return runCatching {
             val req = Request.Builder()
                 .url(url)
-                .head()
+                .get()
                 .header("User-Agent", userAgent)
+                .header("Range", "bytes=0-0")
                 .apply { if (referer.isNotBlank()) header("Referer", referer) }
                 .build()
             executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
-                if (!resp.isSuccessful) return@use -1L to false
-                val len = resp.header("Content-Length")?.toLongOrNull() ?: -1L
-                val acceptRanges = resp.header("Accept-Ranges").orEmpty().equals("bytes", ignoreCase = true)
-                len to acceptRanges
+                if (resp.code != 206) return@use -1L to false
+                val match = Regex("^bytes\\\\s+0-0/(\\\\d+)$", RegexOption.IGNORE_CASE)
+                    .matchEntire(resp.header("Content-Range").orEmpty()) ?: return@use -1L to false
+                val total = match.groupValues[1].toLongOrNull() ?: return@use -1L to false
+                val bodySize = resp.body?.bytes()?.size ?: return@use -1L to false
+                if (bodySize != 1) return@use -1L to false
+                total to (total > 0L)
             }
         }.getOrDefault(-1L to false)
     }
@@ -1091,7 +1093,7 @@ class MediaDownloadManager(
     }
 
     private fun chunkDir(downloadId: Long): File =
-        File(context.cacheDir, "salvia_chunks/$downloadId")
+        File(context.filesDir, "salvia_download_staging/$downloadId")
 
     private fun sanitizeFileName(rawName: String, quality: MediaQualityOption): String {
         val base = rawName.replace(Regex("[^\\p{L}\\p{N}._\\- ]"), "_")
