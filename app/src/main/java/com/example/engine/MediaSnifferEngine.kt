@@ -7,6 +7,7 @@ import com.example.ui.DetectedMedia
 import com.example.ui.MediaCaptureStatus
 import com.example.ui.MediaDetectionSource
 import com.example.ui.MediaQualityOption
+import com.example.ui.MediaSourceUrlPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -747,10 +748,8 @@ class MediaSnifferEngine {
         return match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
     }
 
-    private fun isHttpMediaUrl(value: String): Boolean {
-        val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return false
-        return uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()
-    }
+    private fun isHttpMediaUrl(value: String): Boolean =
+        MediaSourceUrlPolicy.isVerifiedHttpUrl(value)
 
     private fun calculateDomConfidence(
         source: MediaDetectionSource,
