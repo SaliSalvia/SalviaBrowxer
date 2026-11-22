@@ -57,6 +57,10 @@ class BrowserRepository(private val db: BrowserDatabase) {
 
     suspend fun getDownloadById(id: Long): DownloadEntity? = downloadDao.getById(id)
 
+    suspend fun getIncognitoDownloads(): List<DownloadEntity> = downloadDao.getIncognitoDownloads()
+
+    suspend fun deleteIncognitoDownloads() = downloadDao.deleteIncognitoDownloads()
+
     suspend fun insertDownload(download: DownloadEntity): Long = downloadDao.insert(download)
 
     suspend fun updateDownloadProgress(

@@ -6,4 +6,16 @@
     <string name="media_detected_title">مدیای قابل دانلود شناسایی شد</string>
     <string name="no_media_detected">ویدیوی اصلی در این صفحه شناسایی نشد</string>
     <string name="adblock_shield_active">ضد تبلیغ</string>
+    <string name="web_permission_title">درخواست دسترسی وب‌سایت</string>
+    <string name="web_permission_body_format">وب‌سایت %2$s درخواست دسترسی به %1$s را دارد. فقط در صورت اعتماد به این وب‌سایت ادامه دهید.</string>
+    <string name="web_permission_camera">دوربین</string>
+    <string name="web_permission_microphone">میکروفون</string>
+    <string name="web_permission_camera_microphone">دوربین و میکروفون</string>
+    <string name="web_permission_location">موقعیت مکانی</string>
+    <string name="web_permission_allow">اجازه دادن</string>
+    <string name="web_permission_deny">رد کردن</string>
+    <string name="incognito_isolation_unavailable">این WebView نتوانست پروفایل خصوصی جداگانه را فعال کند و ممکن است کوکی‌ها یا فضای ذخیره‌سازی تب‌های عادی را به‌اشتراک بگذارد؛ در این نشست وارد حساب نشوید و اطلاعات حساس وارد نکنید.</string>
+    <string name="incognito_profile_cleared">پروفایل مستقل مرور خصوصی برای حذف ثبت شد؛ ممکن است WebView پاک‌سازی نهایی داده‌ها را به‌صورت ناهمگام تکمیل کند.</string>
+    <string name="incognito_cleanup_failed">پاک‌سازی پروفایل خصوصی تأیید نشد. پیش از استفاده از سایت‌های حساس، همه تب‌های خصوصی را ببندید و دوباره تلاش کنید.</string>
+    <string name="incognito_bookmark_blocked">بوکمارک‌ها از تب خصوصی ذخیره نمی‌شوند.</string>
 </resources>

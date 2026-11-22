@@ -32,6 +32,7 @@ import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.ArrayDeque
@@ -65,6 +67,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     @Volatile
     private var lastDevToolsSyncMs: Long = 0L
     private var devToolsTrailingSyncJob: kotlinx.coroutines.Job? = null
+    private var incognitoSessionGeneration: Long = 0L
+    private var incognitoCleanupJob: kotlinx.coroutines.Job? = null
 
     private val maxLiveWebViews: Int = runCatching {
         val am = application.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -109,12 +113,27 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
+        // Clear leftovers from a previous process before any private WebView is created.
+        if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+            WebViewConfigurator.clearIncognitoAndVolatileData(application, clearCookiesToo = false)
+        }
         viewModelScope.launch(Dispatchers.IO) {
+            downloadManager.clearIncognitoDownloads()
             repository.ensureSeeded()
         }
     }
 
     private fun s(): AppStrings = stringsFor(settings.value.appLanguage)
+
+    private fun cookieHeaderForTab(tab: BrowserTab, url: String): String {
+        val tabWebView = webViews[tab.id]
+        // A missing/hibernated private WebView must never fall back to normal-profile cookies.
+        if (tab.isIncognito && tabWebView == null) return ""
+        return WebViewConfigurator.cookieHeader(tabWebView, url, tab.isIncognito)
+    }
+
+    private fun cookieManagerForTab(tab: BrowserTab): CookieManager? =
+        WebViewConfigurator.cookieManagerForTab(webViews[tab.id], tab.isIncognito)
 
     fun getCurrentTab(): BrowserTab =
         _tabs.value.firstOrNull { it.id == _activeTabId.value } ?: _tabs.value.first()
@@ -126,6 +145,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun getWebView(tabId: String): WebView? = webViews[tabId]
+
+    fun onIncognitoIsolationUnavailable() {
+        _statusToast.value = getApplication<Application>().getString(
+            com.example.R.string.incognito_isolation_unavailable,
+        )
+    }
 
     fun consumeSavedTabState(tabId: String): Bundle? {
         val state = savedTabStates.remove(tabId)
@@ -221,6 +246,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // --- Tab Management ---
 
     fun createNewTab(isIncognito: Boolean = false, initialUrl: String? = null) {
+        if (isIncognito) {
+            incognitoSessionGeneration += 1L
+            incognitoCleanupJob?.cancel()
+            incognitoCleanupJob = null
+        }
         val resolved = initialUrl?.let { normalizeInputToUrl(it) }
         val strings = s()
         val newTab = BrowserTab(
@@ -268,9 +298,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             touchTabMru(_activeTabId.value)
             syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
-        if (tabToClose.isIncognito && _tabs.value.none { it.isIncognito }) {
-            WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
-        }
+
     }
 
     fun closeAllIncognitoTabs() {
@@ -297,8 +325,46 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             touchTabMru(_activeTabId.value)
             syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
-        WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
-        _statusToast.value = s().toastIncognitoCleared
+    }
+
+    /**
+     * Called after Compose has disposed the final private WebView and any popup
+     * WebView associated with it. Cleanup is profile-scoped and never touches
+     * the default browsing profile.
+     */
+    fun onIncognitoSessionClosed() {
+        val requestedGeneration = incognitoSessionGeneration
+        incognitoCleanupJob?.cancel()
+        incognitoCleanupJob = viewModelScope.launch {
+            // A short grace period prevents a close/open gesture from deleting the new session.
+            delay(750L)
+            if (requestedGeneration != incognitoSessionGeneration || _tabs.value.any { it.isIncognito }) {
+                return@launch
+            }
+
+            // Stop private transfers and remove their Room metadata before deleting the profile.
+            withContext(Dispatchers.IO) {
+                downloadManager.clearIncognitoDownloads()
+            }
+
+            // ProfileStore is a UI-thread API. Revalidate after returning to Main before deletion.
+            val profileCleanupSucceeded = withContext(Dispatchers.Main) {
+                if (requestedGeneration != incognitoSessionGeneration || _tabs.value.any { it.isIncognito }) {
+                    return@withContext null
+                }
+                WebViewConfigurator.clearIncognitoAndVolatileData(
+                    getApplication(),
+                    clearCookiesToo = false,
+                )
+            } ?: return@launch
+
+            val cleanupMessage = when {
+                profileCleanupSucceeded -> com.example.R.string.incognito_profile_cleared
+                !WebViewConfigurator.supportsIsolatedIncognitoProfiles() -> com.example.R.string.incognito_isolation_unavailable
+                else -> com.example.R.string.incognito_cleanup_failed
+            }
+            _statusToast.value = getApplication<Application>().getString(cleanupMessage)
+        }
     }
 
     private fun destroyWebView(tabId: String) {
@@ -613,8 +679,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val cacheKey = "$tabId|$mediaUrl"
         if (!pendingProbedUrls.add(cacheKey)) return
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), desktopMode = false)
+        val sourceTab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val cookieHeader = cookieHeaderForTab(sourceTab, mediaUrl)
         viewModelScope.launch(Dispatchers.IO) {
-            val detected = mediaSniffer.probeNetworkMedia(mediaUrl, pageUrl, pageTitle, ua)
+            val detected = mediaSniffer.probeNetworkMedia(
+                mediaUrl = mediaUrl,
+                pageUrl = pageUrl,
+                pageTitle = pageTitle,
+                userAgent = ua,
+                cookieHeader = cookieHeader,
+            )
             if (detected != null) {
                 updateTab(tabId) { current ->
                     current.copy(
@@ -648,7 +722,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
-        downloadManager.startDownload(fileName, quality, sourcePageUrl, ua)
+        downloadManager.startDownload(
+            fileName = fileName,
+            quality = quality,
+            sourcePageUrl = sourcePageUrl,
+            userAgent = ua,
+            sessionCookieManager = cookieManagerForTab(tab),
+            allowGlobalCookieFallback = !tab.isIncognito,
+            isIncognito = tab.isIncognito,
+        )
         _statusToast.value = String.format(s().toastDownloadStartedFormat, fileName)
     }
 
@@ -667,7 +749,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isHls = lower.contains(".m3u8"),
             isDash = lower.contains(".mpd"),
         )
-        downloadManager.startDownload(guessedName, opt, tab.url, ua)
+        downloadManager.startDownload(
+            fileName = guessedName,
+            quality = opt,
+            sourcePageUrl = tab.url,
+            userAgent = ua,
+            sessionCookieManager = cookieManagerForTab(tab),
+            allowGlobalCookieFallback = !tab.isIncognito,
+            isIncognito = tab.isIncognito,
+        )
         _statusToast.value = String.format(strings.toastDownloadingFileFormat, guessedName)
     }
 
@@ -676,9 +766,35 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun resumeDownload(download: DownloadEntity) {
-        val tab = getCurrentTab()
-        val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
-        downloadManager.resumeDownload(download, ua)
+        val sessionTab = if (download.isIncognito) {
+            _tabs.value.firstOrNull { it.isIncognito }
+        } else {
+            getCurrentTab()
+        }
+        if (sessionTab == null) {
+            _statusToast.value = getApplication<Application>().getString(
+                com.example.R.string.incognito_isolation_unavailable,
+            )
+            return
+        }
+        val ua = WebViewConfigurator.resolveUserAgent(getApplication(), sessionTab.isDesktopMode)
+        val sessionCookieManager = if (download.isIncognito) {
+            cookieManagerForTab(sessionTab)
+        } else {
+            CookieManager.getInstance()
+        }
+        if (download.isIncognito && sessionCookieManager == null) {
+            _statusToast.value = getApplication<Application>().getString(
+                com.example.R.string.incognito_isolation_unavailable,
+            )
+            return
+        }
+        downloadManager.resumeDownload(
+            download = download,
+            userAgent = ua,
+            sessionCookieManager = sessionCookieManager,
+            allowGlobalCookieFallback = !download.isIncognito,
+        )
     }
 
     fun cancelDownload(download: DownloadEntity) {
@@ -882,6 +998,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleBookmarkActiveTab() {
         val tab = getCurrentTab()
+        if (tab.isIncognito) {
+            _statusToast.value = getApplication<Application>().getString(
+                com.example.R.string.incognito_bookmark_blocked,
+            )
+            return
+        }
         if (tab.isStartPage || tab.url.isBlank()) return
         val exists = bookmarks.value.any { it.url == tab.url }
         viewModelScope.launch(Dispatchers.IO) {
@@ -1055,7 +1177,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     """.trimIndent()
 
     override fun onCleared() {
-        super.onCleared()
+        // Release all live/hibernated WebViews before deleting the private profile.
+        webViews.keys.toList().forEach(::destroyWebView)
+        if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+            WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
+        }
+
         val remainingAds = pendingAdsDelta.getAndSet(0L)
         val remainingTrackers = pendingTrackersDelta.getAndSet(0L)
         if (remainingAds > 0L || remainingTrackers > 0L) {
@@ -1063,11 +1190,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 prefsRepository.incrementBlockedStats(remainingAds, remainingTrackers)
             }
         }
-        webViews.values.forEach { runCatching { it.destroy() } }
-        webViews.clear()
         savedTabStates.clear()
         networkBuffers.clear()
         consoleBuffers.clear()
         pendingProbedUrls.clear()
+        super.onCleared()
     }
 }

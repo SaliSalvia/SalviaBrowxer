@@ -5,13 +5,23 @@ import android.content.Context
 import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.WebSettings
-import android.webkit.WebStorage
 import android.webkit.WebView
-import android.webkit.WebViewDatabase
-
+import androidx.webkit.ProfileStore
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import java.util.WeakHashMap
 
+/**
+ * Central WebView configuration.
+ *
+ * Private tabs use a dedicated AndroidX WebKit profile when the installed
+ * WebView implementation advertises MULTI_PROFILE. Unsupported implementations
+ * keep the legacy best-effort private mode, but are never globally cleared:
+ * clearing the default CookieManager/WebStorage would erase normal browsing data.
+ */
 object WebViewConfigurator {
+
+    private const val PRIVATE_PROFILE_NAME = "salvia_incognito"
 
     private const val DESKTOP_UA =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -19,9 +29,16 @@ object WebViewConfigurator {
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
     private val lastAppliedConfigs = WeakHashMap<WebView, String>()
+    private val isolatedIncognitoWebViews = WeakHashMap<WebView, Boolean>()
+    private val profileCookieManagers = WeakHashMap<WebView, CookieManager>()
 
     @Volatile
     private var cachedMobileUa: String? = null
+
+    fun supportsIsolatedIncognitoProfiles(): Boolean =
+        runCatching {
+            WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
+        }.getOrDefault(false)
 
     /**
      * Generates a clean Chromium Mobile or Desktop User-Agent without the `; wv)` token.
@@ -45,6 +62,11 @@ object WebViewConfigurator {
         return resolved
     }
 
+    /**
+     * Returns true when a private WebView was successfully attached to the
+     * dedicated private profile. On unsupported WebView versions this returns
+     * false and the caller should disclose that isolation is best-effort.
+     */
     @SuppressLint("SetJavaScriptEnabled")
     fun configure(
         webView: WebView,
@@ -52,11 +74,28 @@ object WebViewConfigurator {
         desktopMode: Boolean,
         javaScriptEnabled: Boolean,
         blockThirdPartyCookiesIncognito: Boolean,
-    ) {
+    ): Boolean {
         val signature = "$isIncognito|$desktopMode|$javaScriptEnabled|$blockThirdPartyCookiesIncognito"
-        synchronized(lastAppliedConfigs) {
-            if (lastAppliedConfigs[webView] == signature) return
+        val isolated = synchronized(lastAppliedConfigs) {
+            val previous = lastAppliedConfigs[webView]
+            if (previous == null && isIncognito) {
+                val profileApplied = if (supportsIsolatedIncognitoProfiles()) {
+                    runCatching {
+                        // Must happen before accessing WebSettings, evaluating JS or loading a URL.
+                        WebViewCompat.setProfile(webView, PRIVATE_PROFILE_NAME)
+                        true
+                    }.getOrDefault(false)
+                } else {
+                    false
+                }
+                isolatedIncognitoWebViews[webView] = profileApplied
+            }
+
+            if (previous == signature) {
+                return !isIncognito || isolatedIncognitoWebViews[webView] == true
+            }
             lastAppliedConfigs[webView] = signature
+            !isIncognito || isolatedIncognitoWebViews[webView] == true
         }
 
         val context = webView.context
@@ -66,6 +105,7 @@ object WebViewConfigurator {
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.setSupportMultipleWindows(true)
         settings.domStorageEnabled = true
+        settings.setGeolocationEnabled(true)
         @Suppress("DEPRECATION")
         settings.databaseEnabled = !isIncognito
         settings.loadsImagesAutomatically = true
@@ -94,29 +134,86 @@ object WebViewConfigurator {
             settings.saveFormData = true
         }
 
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        val allowThirdParty = if (isIncognito) !blockThirdPartyCookiesIncognito else true
-        cookieManager.setAcceptThirdPartyCookies(webView, allowThirdParty)
-    }
-
-    fun clearIncognitoAndVolatileData(context: Context, clearCookiesToo: Boolean) {
-        runCatching {
-            WebStorage.getInstance().deleteAllData()
-            WebViewDatabase.getInstance(context).clearHttpAuthUsernamePassword()
-            if (clearCookiesToo) {
-                CookieManager.getInstance().removeSessionCookies(null)
-                CookieManager.getInstance().flush()
+        val cookieManager = cookieManagerFor(webView, isIncognito, isolated)
+        if (cookieManager != null) {
+            cookieManager.setAcceptCookie(true)
+            val allowThirdParty = if (isIncognito) !blockThirdPartyCookiesIncognito else true
+            cookieManager.setAcceptThirdPartyCookies(webView, allowThirdParty)
+        }
+        val isolationReady = !isIncognito || (isolated && cookieManager != null)
+        synchronized(lastAppliedConfigs) {
+            isolatedIncognitoWebViews[webView] = isolationReady
+            if (cookieManager != null) {
+                profileCookieManagers[webView] = cookieManager
+            } else {
+                profileCookieManagers.remove(webView)
             }
         }
+        return isolationReady
+    }
+
+    /**
+     * Uses the CookieManager belonging to the WebView's current profile.
+     * This is required for authenticated media requests in isolated private tabs.
+     */
+    fun cookieHeader(webView: WebView?, url: String, isIncognito: Boolean = false): String {
+        val manager = cookieManagerForTab(webView, isIncognito) ?: return ""
+        return runCatching { manager.getCookie(url).orEmpty() }.getOrDefault("")
+    }
+
+    /**
+     * Returns the CookieManager bound to the requested browsing profile.
+     * Incognito never falls back to the default CookieManager, including when
+     * its WebView is hibernated or multi-profile is unsupported.
+     */
+    fun cookieManagerForTab(webView: WebView?, isIncognito: Boolean): CookieManager? {
+        if (!isIncognito) return CookieManager.getInstance()
+        if (webView == null) return null
+        return synchronized(lastAppliedConfigs) {
+            val privateProfileIsolated = isolatedIncognitoWebViews[webView] == true &&
+                lastAppliedConfigs[webView]?.startsWith("true|") == true
+            if (privateProfileIsolated) profileCookieManagers[webView] else null
+        }
+    }
+
+    private fun cookieManagerFor(
+        webView: WebView,
+        isIncognito: Boolean,
+        isolated: Boolean,
+    ): CookieManager? {
+        if (!isIncognito) return CookieManager.getInstance()
+        if (!isolated) return null
+        return runCatching { WebViewCompat.getProfile(webView).cookieManager }.getOrNull()
+    }
+
+    /**
+     * Clears data only inside the dedicated private profile. Never calls global
+     * WebStorage.deleteAllData/removeAllCookies, which would wipe normal browsing
+     * data. The installed WebView may complete storage deletion asynchronously.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun clearIncognitoAndVolatileData(context: Context, clearCookiesToo: Boolean): Boolean {
+        if (!supportsIsolatedIncognitoProfiles()) return false
+        return runCatching {
+            val store = ProfileStore.getInstance()
+            // Delete the dedicated profile itself rather than clearing only selected stores.
+            // Do not call getOrCreateProfile/getProfile here: ProfileStore rejects deletion
+            // while that API has an in-memory Profile handle. All private WebViews must
+            // already have been destroyed by the caller.
+            if (PRIVATE_PROFILE_NAME !in store.allProfileNames) {
+                true
+            } else {
+                store.deleteProfile(PRIVATE_PROFILE_NAME)
+            }
+        }.getOrDefault(false)
     }
 
     fun clearAllBrowsingData(context: Context, hadLiveWebViews: Boolean = false) {
         runCatching {
             CookieManager.getInstance().removeAllCookies(null)
             CookieManager.getInstance().flush()
-            WebStorage.getInstance().deleteAllData()
-            WebViewDatabase.getInstance(context).clearHttpAuthUsernamePassword()
+            android.webkit.WebStorage.getInstance().deleteAllData()
+            android.webkit.WebViewDatabase.getInstance(context).clearHttpAuthUsernamePassword()
             if (!hadLiveWebViews) {
                 WebView(context).apply {
                     clearCache(true)

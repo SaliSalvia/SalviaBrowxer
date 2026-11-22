@@ -67,6 +67,7 @@ class MediaSnifferEngine {
         pageUrl: String,
         pageTitle: String,
         userAgent: String,
+        cookieHeader: String? = null,
     ): DetectedMedia? = withContext(Dispatchers.IO) {
         if (!isCandidateMediaUrl(mediaUrl)) return@withContext null
 
@@ -75,7 +76,7 @@ class MediaSnifferEngine {
         val isDash = lower.contains(".mpd")
         val isAudio = audioExtensions.any { lower.contains(it) }
         val cleanTitle = sanitizeTitle(pageTitle, mediaUrl)
-        val cookies = runCatching { CookieManager.getInstance().getCookie(mediaUrl) }.getOrNull().orEmpty()
+        val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(mediaUrl) }.getOrNull().orEmpty()
 
         if (isHls) {
             val qualities = parseHlsPlaylist(mediaUrl, pageUrl, userAgent, cookies)

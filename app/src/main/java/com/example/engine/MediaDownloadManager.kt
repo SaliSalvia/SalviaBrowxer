@@ -15,6 +15,7 @@ import com.example.data.local.BrowserRepository
 import com.example.data.local.DownloadEntity
 import com.example.ui.MediaQualityOption
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +28,8 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
+import java.net.ProtocolException
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
@@ -47,7 +50,7 @@ class MediaDownloadManager(
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
-        .followRedirects(true)
+        .followRedirects(false)
         .build()
 
     fun startDownload(
@@ -55,6 +58,9 @@ class MediaDownloadManager(
         quality: MediaQualityOption,
         sourcePageUrl: String,
         userAgent: String,
+        sessionCookieManager: CookieManager? = null,
+        isIncognito: Boolean = false,
+        allowGlobalCookieFallback: Boolean = !isIncognito,
     ) {
         val safeFileName = sanitizeFileName(fileName, quality)
         scope.launch(Dispatchers.IO) {
@@ -72,6 +78,7 @@ class MediaDownloadManager(
                     isHlsStream = quality.isHls,
                     isDashStream = quality.isDash,
                     supportsResume = !quality.isHls && !quality.isDash,
+                    isIncognito = isIncognito,
                 ),
             )
             launchJobForEntity(
@@ -84,6 +91,8 @@ class MediaDownloadManager(
                 mimeType = quality.mimeType,
                 isHls = quality.isHls || quality.url.lowercase().contains(".m3u8"),
                 isDash = quality.isDash,
+                sessionCookieManager = sessionCookieManager,
+                allowGlobalCookieFallback = allowGlobalCookieFallback && !isIncognito,
             )
         }
     }
@@ -96,7 +105,12 @@ class MediaDownloadManager(
         }
     }
 
-    fun resumeDownload(download: DownloadEntity, userAgent: String) {
+    fun resumeDownload(
+        download: DownloadEntity,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ) {
         pausedIds.remove(download.id)
         scope.launch(Dispatchers.IO) {
             launchJobForEntity(
@@ -109,8 +123,27 @@ class MediaDownloadManager(
                 mimeType = download.mimeType,
                 isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
                 isDash = download.isDashStream,
+                sessionCookieManager = sessionCookieManager,
+                allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
             )
         }
+    }
+
+    /**
+     * Cancels all active private downloads, removes partial files, and deletes
+     * their Room metadata before the dedicated private WebView profile is removed.
+     * Completed files intentionally published to MediaStore are retained.
+     */
+    suspend fun clearIncognitoDownloads() {
+        val privateDownloads = repository.getIncognitoDownloads()
+        privateDownloads.forEach { download ->
+            pausedIds.remove(download.id)
+            activeJobs.remove(download.id)?.cancelAndJoin()
+            chunkDir(download.id).deleteRecursively()
+            repository.deleteDownload(download.id)
+        }
+        // Only records captured in this closing-session snapshot are removed.
+        // A new private session started during cleanup keeps its own queue entries.
     }
 
     fun cancelDownload(download: DownloadEntity) {
@@ -132,12 +165,14 @@ class MediaDownloadManager(
         mimeType: String,
         isHls: Boolean,
         isDash: Boolean,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
     ) {
         val job = scope.launch(Dispatchers.IO) {
             when {
-                isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent)
-                isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent)
-                else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType)
+                isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, sessionCookieManager, allowGlobalCookieFallback)
             }
         }
         activeJobs[downloadId] = job
@@ -153,11 +188,13 @@ class MediaDownloadManager(
         referer: String,
         userAgent: String,
         mimeType: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
     ) {
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
-            val cookie = runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull().orEmpty()
-            val probe = probeRangeSupport(url, referer, userAgent, cookie)
+            val cookie = resolveCookieHeader(url, sessionCookieManager, allowGlobalCookieFallback)
+            val probe = probeRangeSupport(url, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
             val totalBytes = probe.first
             val supportsRanges = probe.second
 
@@ -197,7 +234,7 @@ class MediaDownloadManager(
                                 }
                                 .build()
 
-                            client.newCall(req).execute().use { resp ->
+                            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                                 if (!resp.isSuccessful && resp.code != 206) {
                                     throw IllegalStateException("Range HTTP ${resp.code}")
                                 }
@@ -273,7 +310,7 @@ class MediaDownloadManager(
                 }
                 .build()
 
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (!resp.isSuccessful && resp.code != 206) {
                     repository.updateDownloadStatus(downloadId, "FAILED")
                     return
@@ -347,11 +384,12 @@ class MediaDownloadManager(
         audioPlaylistUrl: String,
         referer: String,
         userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
     ) {
         val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = false)
-            val cookie = runCatching { CookieManager.getInstance().getCookie(playlistUrl) }.getOrNull().orEmpty()
 
             val rawVideoFile = File(tempDir, "hls_video.raw")
             val totalWritten = downloadSingleHlsPlaylistToFile(
@@ -360,7 +398,8 @@ class MediaDownloadManager(
                 targetFile = rawVideoFile,
                 referer = referer,
                 userAgent = userAgent,
-                cookie = cookie,
+                sessionCookieManager = sessionCookieManager,
+                allowGlobalCookieFallback = allowGlobalCookieFallback,
             )
             if (totalWritten <= 0L) {
                 repository.updateDownloadStatus(downloadId, "FAILED")
@@ -376,7 +415,8 @@ class MediaDownloadManager(
                     targetFile = audioTemp,
                     referer = referer,
                     userAgent = userAgent,
-                    cookie = cookie,
+                    sessionCookieManager = sessionCookieManager,
+                    allowGlobalCookieFallback = allowGlobalCookieFallback,
                 )
                 if (audioBytes > 0L) rawAudioFile = audioTemp
             }
@@ -416,18 +456,19 @@ class MediaDownloadManager(
         audioUrl: String,
         referer: String,
         userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
     ) {
         val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = false)
-            val cookie = runCatching { CookieManager.getInstance().getCookie(videoUrl) }.getOrNull().orEmpty()
             val vFile = File(tempDir, "dash_video.mp4")
             val aFile = File(tempDir, "dash_audio.m4a")
 
-            downloadUrlToFile(videoUrl, vFile, referer, userAgent, cookie) { dl, total, spd ->
+            downloadUrlToFile(videoUrl, vFile, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) { dl, total, spd ->
                 repository.updateDownloadProgress(downloadId, dl, total, spd, "DOWNLOADING")
             }
-            downloadUrlToFile(audioUrl, aFile, referer, userAgent, cookie) { _, _, _ -> }
+            downloadUrlToFile(audioUrl, aFile, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) { _, _, _ -> }
 
             val mp4FileName = fileName.substringBeforeLast('.') + ".mp4"
             val muxedFile = File(tempDir, "dash_muxed.mp4")
@@ -456,15 +497,16 @@ class MediaDownloadManager(
         targetFile: File,
         referer: String,
         userAgent: String,
-        cookie: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
     ): Long {
         var mediaPlaylistUrl = playlistUrl
-        var playlistText = fetchText(mediaPlaylistUrl, referer, userAgent, cookie) ?: return 0L
+        var playlistText = fetchText(mediaPlaylistUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) ?: return 0L
         if (playlistText.contains("#EXT-X-STREAM-INF")) {
             val firstVariant = extractHighestVariantUrl(mediaPlaylistUrl, playlistText)
             if (firstVariant != null) {
                 mediaPlaylistUrl = firstVariant
-                playlistText = fetchText(mediaPlaylistUrl, referer, userAgent, cookie) ?: playlistText
+                playlistText = fetchText(mediaPlaylistUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) ?: playlistText
             }
         }
 
@@ -491,7 +533,7 @@ class MediaDownloadManager(
                         val keyUri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.getOrNull(1)
                         val ivHex = Regex("IV=0x([0-9a-fA-F]+)").find(line)?.groupValues?.getOrNull(1)
                         if (!keyUri.isNullOrBlank()) {
-                            aesKeyBytes = fetchBytes(resolveUrl(baseUri, keyUri), referer, userAgent, cookie)
+                            aesKeyBytes = fetchBytes(resolveUrl(baseUri, keyUri), referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                         }
                         if (!ivHex.isNullOrBlank()) {
                             explicitIv = hexToBytes(ivHex)
@@ -513,7 +555,7 @@ class MediaDownloadManager(
 
         FileOutputStream(targetFile).use { out ->
             if (!mapInitUrl.isNullOrBlank()) {
-                val initBytes = fetchBytes(mapInitUrl, referer, userAgent, cookie)
+                val initBytes = fetchBytes(mapInitUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 if (initBytes != null) {
                     out.write(initBytes)
                     totalWritten += initBytes.size
@@ -521,7 +563,7 @@ class MediaDownloadManager(
             }
 
             segments.forEachIndexed { idx, segUrl ->
-                val rawBytes = fetchBytes(segUrl, referer, userAgent, cookie)
+                val rawBytes = fetchBytes(segUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 if (rawBytes != null) {
                     val dataToWrite = if (aesKeyBytes != null) {
                         val iv = explicitIv ?: sequenceIv(mediaSequence + idx)
@@ -686,19 +728,18 @@ class MediaDownloadManager(
         url: String,
         referer: String,
         userAgent: String,
-        cookie: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
     ): Pair<Long, Boolean> {
         return runCatching {
             val req = Request.Builder()
                 .url(url)
                 .head()
                 .header("User-Agent", userAgent)
-                .apply {
-                    if (referer.isNotBlank()) header("Referer", referer)
-                    if (cookie.isNotBlank()) header("Cookie", cookie)
-                }
+                .apply { if (referer.isNotBlank()) header("Referer", referer) }
                 .build()
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
+                if (!resp.isSuccessful) return@use -1L to false
                 val len = resp.header("Content-Length")?.toLongOrNull() ?: -1L
                 val acceptRanges = resp.header("Accept-Ranges").orEmpty().equals("bytes", ignoreCase = true)
                 len to acceptRanges
@@ -711,18 +752,17 @@ class MediaDownloadManager(
         file: File,
         referer: String,
         userAgent: String,
-        cookie: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
         onProgress: suspend (Long, Long, Long) -> Unit,
     ) {
         val req = Request.Builder()
             .url(url)
             .header("User-Agent", userAgent)
-            .apply {
-                if (referer.isNotBlank()) header("Referer", referer)
-                if (cookie.isNotBlank()) header("Cookie", cookie)
-            }
+            .apply { if (referer.isNotBlank()) header("Referer", referer) }
             .build()
-        client.newCall(req).execute().use { resp ->
+        executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
+            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
             val body = resp.body ?: return
             val total = body.contentLength()
             var dl = 0L
@@ -794,8 +834,15 @@ class MediaDownloadManager(
         return FileOutputStream(file) to Uri.fromFile(file).toString()
     }
 
-    private fun fetchText(url: String, referer: String, userAgent: String, cookie: String): String? {
+    private fun fetchText(
+        url: String,
+        referer: String,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ): String? {
         return runCatching {
+            val cookie = resolveCookieHeader(url, sessionCookieManager, allowGlobalCookieFallback)
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgent)
@@ -804,14 +851,21 @@ class MediaDownloadManager(
                     if (cookie.isNotBlank()) header("Cookie", cookie)
                 }
                 .build()
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (resp.isSuccessful) resp.body?.string() else null
             }
         }.getOrNull()
     }
 
-    private fun fetchBytes(url: String, referer: String, userAgent: String, cookie: String): ByteArray? {
+    private fun fetchBytes(
+        url: String,
+        referer: String,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ): ByteArray? {
         return runCatching {
+            val cookie = resolveCookieHeader(url, sessionCookieManager, allowGlobalCookieFallback)
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgent)
@@ -820,7 +874,7 @@ class MediaDownloadManager(
                     if (cookie.isNotBlank()) header("Cookie", cookie)
                 }
                 .build()
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (resp.isSuccessful) resp.body?.bytes() else null
             }
         }.getOrNull()
@@ -852,6 +906,79 @@ class MediaDownloadManager(
     private fun resolveUrl(base: Uri, relative: String): String {
         if (relative.startsWith("http://") || relative.startsWith("https://")) return relative
         return runCatching { java.net.URI(base.toString()).resolve(relative).toString() }.getOrDefault(relative)
+    }
+
+    /**
+     * Resolve cookies from the selected browser profile for every redirect hop.
+     * OkHttp does not consistently strip a manually supplied Cookie header on
+     * cross-origin redirects, so redirects are followed explicitly here.
+     */
+    private fun executeWithProfileCookies(
+        initialRequest: Request,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ): okhttp3.Response {
+        var request = initialRequest.newBuilder().removeHeader("Cookie").build()
+        val redirectCodes = setOf(300, 301, 302, 303, 307, 308)
+
+        repeat(10) { redirectCount ->
+            val cookie = resolveCookieHeader(
+                request.url.toString(),
+                sessionCookieManager,
+                allowGlobalCookieFallback,
+            )
+            val requestWithCookies = request.newBuilder()
+                .removeHeader("Cookie")
+                .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
+                .build()
+
+            val response = client.newCall(requestWithCookies).execute()
+            val location = response.header("Location")
+            if (response.code !in redirectCodes || location.isNullOrBlank()) return response
+
+            val target = response.request.url.resolve(location)
+            if (target == null || (target.scheme != "http" && target.scheme != "https")) return response
+
+            val current = response.request.url
+            if (current.isHttps && !target.isHttps) return response
+
+            if (redirectCount == 9) {
+                response.close()
+                throw ProtocolException("Too many redirects")
+            }
+
+            val crossOrigin = current.scheme != target.scheme ||
+                current.host != target.host ||
+                current.port != target.port
+            val next = response.request.newBuilder()
+                .url(target)
+                .removeHeader("Cookie")
+
+            if (crossOrigin) {
+                next.removeHeader("Authorization")
+                next.removeHeader("Proxy-Authorization")
+                val safeReferer = current.newBuilder()
+                    .encodedPath("/")
+                    .query(null)
+                    .fragment(null)
+                    .build()
+                next.header("Referer", safeReferer.toString())
+            }
+
+            response.close()
+            request = next.build()
+        }
+
+        throw ProtocolException("Redirect limit exceeded")
+    }
+
+    private fun resolveCookieHeader(
+        url: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalFallback: Boolean,
+    ): String {
+        val manager = sessionCookieManager ?: if (allowGlobalFallback) CookieManager.getInstance() else return ""
+        return runCatching { manager.getCookie(url).orEmpty() }.getOrDefault("")
     }
 
     private fun chunkDir(downloadId: Long): File =

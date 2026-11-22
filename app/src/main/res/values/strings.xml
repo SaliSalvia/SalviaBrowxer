@@ -6,4 +6,16 @@
     <string name="media_detected_title">Downloadable media detected</string>
     <string name="no_media_detected">No main video detected on this page</string>
     <string name="adblock_shield_active">AdBlocker</string>
+    <string name="web_permission_title">Website permission request</string>
+    <string name="web_permission_body_format">%1$s access is requested by %2$s. Continue only if you trust this site.</string>
+    <string name="web_permission_camera">Camera</string>
+    <string name="web_permission_microphone">Microphone</string>
+    <string name="web_permission_camera_microphone">Camera and microphone</string>
+    <string name="web_permission_location">Location</string>
+    <string name="web_permission_allow">Allow</string>
+    <string name="web_permission_deny">Deny</string>
+    <string name="incognito_isolation_unavailable">This WebView could not attach an isolated private profile. It may share cookies or website storage with normal tabs; do not sign in or enter sensitive data in this session.</string>
+    <string name="incognito_profile_cleared">The isolated private browsing profile was deleted. WebView may finish removing its data asynchronously.</string>
+    <string name="incognito_cleanup_failed">Private profile cleanup could not be confirmed. Close all private tabs and retry before using sensitive sites.</string>
+    <string name="incognito_bookmark_blocked">Bookmarks are not saved from private tabs.</string>
 </resources>

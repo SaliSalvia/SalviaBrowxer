@@ -26,7 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -103,6 +105,19 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
     val findQuery by viewModel.findInPageQuery.collectAsStateWithLifecycle()
 
     val activeTab = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
+    var hadIncognitoTabs by remember { mutableStateOf(tabs.any { it.isIncognito }) }
+
+    LaunchedEffect(tabs.count { it.isIncognito }) {
+        val hasIncognitoTabs = tabs.any { it.isIncognito }
+        if (hasIncognitoTabs) {
+            hadIncognitoTabs = true
+        } else if (hadIncognitoTabs) {
+            // Runs after the outgoing WebViewContainer has disposed its popup and primary WebView.
+            viewModel.onIncognitoSessionClosed()
+            hadIncognitoTabs = false
+        }
+    }
+
     val isDarkTheme = when (settings.themePreference) {
         ThemePreference.DARK -> true
         ThemePreference.LIGHT -> false
@@ -280,7 +295,7 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                 )
 
                 ActiveSheet.DOWNLOADS -> DownloadsSheet(
-                    downloads = downloads,
+                    downloads = downloads.filter { it.isIncognito == activeTab.isIncognito },
                     onPause = { viewModel.pauseDownload(it) },
                     onResume = { viewModel.resumeDownload(it) },
                     onCancel = { viewModel.cancelDownload(it) },
