@@ -50,7 +50,10 @@ object DownloadNotificationHelper {
         )
         val hasKnownTotal = totalBytes > 0L
         val percent = if (hasKnownTotal) {
-            ((downloadedBytes.coerceAtLeast(0L) * 100L) / totalBytes).coerceIn(0L, 100L).toInt()
+            (
+                downloadedBytes.coerceAtLeast(0L).toDouble() /
+                    totalBytes.toDouble() * 100.0
+                ).toInt().coerceIn(0, 100)
         } else {
             0
         }
