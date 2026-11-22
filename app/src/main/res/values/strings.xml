@@ -6,4 +6,14 @@
     <string name="media_detected_title">Downloadable media detected</string>
     <string name="no_media_detected">No main video detected on this page</string>
     <string name="adblock_shield_active">AdBlocker</string>
+    <string name="web_permission_title">Website permission request</string>
+    <string name="web_permission_body_format">%1$s access is requested by %2$s. Continue only if you trust this site.</string>
+    <string name="web_permission_camera">Camera</string>
+    <string name="web_permission_microphone">Microphone</string>
+    <string name="web_permission_camera_microphone">Camera and microphone</string>
+    <string name="web_permission_location">Location</string>
+    <string name="web_permission_allow">Allow</string>
+    <string name="web_permission_deny">Deny</string>
+    <string name="incognito_isolation_unavailable">This WebView version does not support isolated private profiles. Private tabs have limited isolation; avoid entering sensitive information.</string>
+    <string name="incognito_profile_cleared">Private browsing session closed and its profile data scheduled for deletion.</string>
 </resources>
