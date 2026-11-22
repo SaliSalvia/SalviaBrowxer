@@ -68,10 +68,14 @@ class DownloadUidtJobService : JobService() {
                         userAgent = userAgent,
                         sessionCookieManager = CookieManager.getInstance(),
                         allowGlobalCookieFallback = true,
+                        cancelTransferWhenCallerCancelled = false,
                     )
                 }
                 jobFinished(params, false)
             } catch (cancelled: CancellationException) {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                    DownloadRuntime.manager(applicationContext).stopForSystemRetry(downloadId)
+                }
                 throw cancelled
             } catch (_: Exception) {
                 // The manager persists FAILED/QUEUED state; leave the OS job terminal.
