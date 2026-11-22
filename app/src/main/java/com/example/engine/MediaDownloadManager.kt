@@ -17,6 +17,7 @@ import com.example.ui.MediaQualityOption
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -60,42 +61,92 @@ class MediaDownloadManager(
         userAgent: String,
         sessionCookieManager: CookieManager? = null,
         isIncognito: Boolean = false,
+        isDesktopMode: Boolean = false,
         allowGlobalCookieFallback: Boolean = !isIncognito,
     ) {
-        val safeFileName = sanitizeFileName(fileName, quality)
         scope.launch(Dispatchers.IO) {
-            val downloadId = repository.insertDownload(
-                DownloadEntity(
-                    fileName = safeFileName,
-                    url = quality.url,
-                    audioUrl = quality.audioUrl,
-                    sourcePageUrl = sourcePageUrl,
-                    qualityLabel = quality.label,
-                    mimeType = quality.mimeType,
-                    totalBytes = quality.sizeBytes,
-                    downloadedBytes = 0L,
-                    status = "QUEUED",
-                    isHlsStream = quality.isHls,
-                    isDashStream = quality.isDash,
-                    supportsResume = !quality.isHls && !quality.isDash,
-                    isIncognito = isIncognito,
-                ),
+            val downloadId = createDownloadRecord(
+                fileName = fileName,
+                quality = quality,
+                sourcePageUrl = sourcePageUrl,
+                isIncognito = isIncognito,
+                isDesktopMode = isDesktopMode,
             )
-            launchJobForEntity(
+            val task = repository.getDownloadById(downloadId) ?: return@launch
+            executePersistedDownload(
                 downloadId = downloadId,
-                fileName = safeFileName,
-                url = quality.url,
-                audioUrl = quality.audioUrl,
-                referer = sourcePageUrl,
                 userAgent = userAgent,
-                mimeType = quality.mimeType,
-                isHls = quality.isHls || quality.url.lowercase().contains(".m3u8"),
-                isDash = quality.isDash,
                 sessionCookieManager = sessionCookieManager,
                 allowGlobalCookieFallback = allowGlobalCookieFallback && !isIncognito,
             )
         }
     }
+
+    suspend fun createDownloadRecord(
+        fileName: String,
+        quality: MediaQualityOption,
+        sourcePageUrl: String,
+        isIncognito: Boolean = false,
+        isDesktopMode: Boolean = false,
+    ): Long {
+        val safeFileName = sanitizeFileName(fileName, quality)
+        return repository.insertDownload(
+            DownloadEntity(
+                fileName = safeFileName,
+                url = quality.url,
+                audioUrl = quality.audioUrl,
+                sourcePageUrl = sourcePageUrl,
+                qualityLabel = quality.label,
+                mimeType = quality.mimeType,
+                totalBytes = quality.sizeBytes,
+                downloadedBytes = 0L,
+                status = "QUEUED",
+                isHlsStream = quality.isHls,
+                isDashStream = quality.isDash,
+                supportsResume = !quality.isHls && !quality.isDash,
+                isIncognito = isIncognito,
+                isDesktopMode = isDesktopMode,
+            ),
+        )
+    }
+
+    suspend fun executePersistedDownload(
+        downloadId: Long,
+        userAgent: String,
+        sessionCookieManager: CookieManager? = null,
+        allowGlobalCookieFallback: Boolean = true,
+    ): DownloadEntity? {
+        val download = repository.getDownloadById(downloadId) ?: return null
+        if (download.status in setOf("COMPLETED", "CANCELLED", "FAILED")) return download
+
+        val job = launchJobForEntity(
+            downloadId = download.id,
+            fileName = download.fileName,
+            url = download.url,
+            audioUrl = download.audioUrl,
+            referer = download.sourcePageUrl,
+            userAgent = userAgent,
+            mimeType = download.mimeType,
+            isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
+            isDash = download.isDashStream || download.url.lowercase().contains(".mpd"),
+            sessionCookieManager = sessionCookieManager,
+            allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
+        )
+        job.join()
+        return repository.getDownloadById(downloadId)
+    }
+
+    suspend fun stopForSystemRetry(downloadId: Long) {
+        pausedIds.add(downloadId)
+        activeJobs[downloadId]?.cancelAndJoin()
+        val current = repository.getDownloadById(downloadId) ?: return
+        if (current.status != "PAUSED") {
+            repository.updateDownloadStatus(downloadId, "QUEUED")
+        }
+    }
+
+    fun isDownloadExecuting(downloadId: Long): Boolean =
+        activeJobs[downloadId]?.isActive == true
 
     fun pauseDownload(download: DownloadEntity) {
         pausedIds.add(download.id)
@@ -167,8 +218,10 @@ class MediaDownloadManager(
         isDash: Boolean,
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
-    ) {
-        val job = scope.launch(Dispatchers.IO) {
+    ): Job = synchronized(activeJobs) {
+        activeJobs[downloadId]?.takeIf { it.isActive }?.let { return@synchronized it }
+
+        val job = scope.launch(context = Dispatchers.IO, start = CoroutineStart.LAZY) {
             when {
                 isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
@@ -176,6 +229,9 @@ class MediaDownloadManager(
             }
         }
         activeJobs[downloadId] = job
+        job.invokeOnCompletion { activeJobs.remove(downloadId, job) }
+        job.start()
+        job
     }
 
     /**
@@ -369,7 +425,7 @@ class MediaDownloadManager(
         } catch (_: Exception) {
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
-            activeJobs.remove(downloadId)
+            // The job completion handler removes this execution from activeJobs.
         }
     }
 
