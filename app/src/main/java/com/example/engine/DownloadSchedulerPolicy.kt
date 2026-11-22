@@ -14,6 +14,8 @@ internal object DownloadSchedulerPolicy {
             DownloadSchedulerBackend.WORK_MANAGER
         }
 
+    fun shouldRescheduleQueuedWorkOnAppStart(apiLevel: Int): Boolean = apiLevel < 34
+
     fun jobIdFor(downloadId: Long): Int {
         require(downloadId > 0L) { "Download ID must be positive" }
         return (downloadId % 1_000_000_000L).toInt().coerceAtLeast(1)
