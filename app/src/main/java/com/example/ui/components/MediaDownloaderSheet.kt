@@ -205,8 +205,9 @@ private fun DetectedMediaCard(
     onDownload: (String, MediaQualityOption) -> Unit,
 ) {
     val s = LocalAppStrings.current
-    var selectedQuality by remember(media.id, media.qualities) {
-        mutableStateOf(media.qualities.firstOrNull())
+    val downloadableQualities = media.downloadableQualities
+    var selectedQuality by remember(media.id, downloadableQualities) {
+        mutableStateOf(downloadableQualities.firstOrNull())
     }
     var customFileName by remember(media.id) {
         mutableStateOf(media.title.take(48))
@@ -291,7 +292,7 @@ private fun DetectedMediaCard(
                     val metaParts = buildList {
                         if (media.durationSeconds > 0) add(formatDuration(media.durationSeconds))
                         if (media.height > 0) add("${media.width}x${media.height}")
-                        add(String.format(s.qualitiesCountFormat, media.qualities.size))
+                        add(String.format(s.qualitiesCountFormat, downloadableQualities.size))
                         if (media.platformLabel.isNotBlank() && media.platformLabel != "Web") {
                             add(media.platformLabel)
                         }
@@ -327,7 +328,7 @@ private fun DetectedMediaCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    media.qualities.forEach { quality ->
+                    downloadableQualities.forEach { quality ->
                         val isSelected = selectedQuality?.id == quality.id
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -388,7 +389,7 @@ private fun DetectedMediaCard(
 
                 Button(
                     onClick = {
-                        val chosen = selectedQuality ?: media.qualities.firstOrNull()
+                        val chosen = selectedQuality ?: downloadableQualities.firstOrNull()
                         if (chosen != null) {
                             onDownload(customFileName.ifBlank { media.title }, chosen)
                         }
