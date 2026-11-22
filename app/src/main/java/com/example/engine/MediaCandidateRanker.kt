@@ -101,6 +101,8 @@ internal object MediaCandidateRanker {
             MediaDetectionSource.JSON_LD,
             MediaDetectionSource.OPEN_GRAPH,
         )
+        val networkEvidence = media.detectionSource == MediaDetectionSource.NETWORK_HOOK &&
+            media.priorityScore >= 85
         val manifestEvidence = media.qualities.size > 1 &&
             media.qualities.any { it.isHls || it.isDash }
         val legacyEvidence = media.detectionSource == MediaDetectionSource.UNKNOWN &&
@@ -109,6 +111,7 @@ internal object MediaCandidateRanker {
         return if (
             strongDomEvidence ||
             structuredMetadataEvidence ||
+            networkEvidence ||
             manifestEvidence ||
             legacyEvidence
         ) {
