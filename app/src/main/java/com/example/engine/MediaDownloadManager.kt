@@ -55,6 +55,7 @@ class MediaDownloadManager(
         quality: MediaQualityOption,
         sourcePageUrl: String,
         userAgent: String,
+        cookieHeader: String = "",
     ) {
         val safeFileName = sanitizeFileName(fileName, quality)
         scope.launch(Dispatchers.IO) {
@@ -84,6 +85,7 @@ class MediaDownloadManager(
                 mimeType = quality.mimeType,
                 isHls = quality.isHls || quality.url.lowercase().contains(".m3u8"),
                 isDash = quality.isDash,
+                cookieHeader = cookieHeader,
             )
         }
     }
@@ -109,6 +111,7 @@ class MediaDownloadManager(
                 mimeType = download.mimeType,
                 isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
                 isDash = download.isDashStream,
+                cookieHeader = runCatching { CookieManager.getInstance().getCookie(download.url) }.getOrNull().orEmpty(),
             )
         }
     }
@@ -132,12 +135,13 @@ class MediaDownloadManager(
         mimeType: String,
         isHls: Boolean,
         isDash: Boolean,
+        cookieHeader: String,
     ) {
         val job = scope.launch(Dispatchers.IO) {
             when {
-                isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent)
-                isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent)
-                else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType)
+                isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, cookieHeader)
+                isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, cookieHeader)
+                else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, cookieHeader)
             }
         }
         activeJobs[downloadId] = job
@@ -153,10 +157,13 @@ class MediaDownloadManager(
         referer: String,
         userAgent: String,
         mimeType: String,
+        cookieHeader: String,
     ) {
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
-            val cookie = runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull().orEmpty()
+            val cookie = cookieHeader.ifBlank {
+                runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull().orEmpty()
+            }
             val probe = probeRangeSupport(url, referer, userAgent, cookie)
             val totalBytes = probe.first
             val supportsRanges = probe.second
@@ -347,11 +354,14 @@ class MediaDownloadManager(
         audioPlaylistUrl: String,
         referer: String,
         userAgent: String,
+        cookieHeader: String,
     ) {
         val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = false)
-            val cookie = runCatching { CookieManager.getInstance().getCookie(playlistUrl) }.getOrNull().orEmpty()
+            val cookie = cookieHeader.ifBlank {
+                runCatching { CookieManager.getInstance().getCookie(playlistUrl) }.getOrNull().orEmpty()
+            }
 
             val rawVideoFile = File(tempDir, "hls_video.raw")
             val totalWritten = downloadSingleHlsPlaylistToFile(
@@ -416,11 +426,14 @@ class MediaDownloadManager(
         audioUrl: String,
         referer: String,
         userAgent: String,
+        cookieHeader: String,
     ) {
         val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = false)
-            val cookie = runCatching { CookieManager.getInstance().getCookie(videoUrl) }.getOrNull().orEmpty()
+            val cookie = cookieHeader.ifBlank {
+                runCatching { CookieManager.getInstance().getCookie(videoUrl) }.getOrNull().orEmpty()
+            }
             val vFile = File(tempDir, "dash_video.mp4")
             val aFile = File(tempDir, "dash_audio.m4a")
 
