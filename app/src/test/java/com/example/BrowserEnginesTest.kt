@@ -9,7 +9,10 @@ import com.example.engine.AdBlockerEngine
 import com.example.engine.BlockCategory
 import com.example.engine.ExtensionEngine
 import com.example.engine.MediaSnifferEngine
+import com.example.engine.MediaPlatformDetector
 import com.example.engine.WebViewConfigurator
+import com.example.ui.MediaCaptureStatus
+import com.example.ui.MediaDetectionSource
 import com.example.ui.i18n.stringsFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -266,4 +269,127 @@ class BrowserEnginesTest {
         assertFalse(faDump.contains("Salar Farzaneh", ignoreCase = true))
         assertFalse(faDump.contains("دسترسی سریع"))
     }
+    @Test
+    fun `blob MSE references are retained without exposing a fake download option`() {
+        val sniffer = MediaSnifferEngine()
+        val payload = """
+            [{
+              "src": "blob:https://www.youtube.com/4f62",
+              "sources": [{"url": "blob:https://www.youtube.com/4f62", "height": 1080}],
+              "source": "HTML5_ELEMENT",
+              "duration": 120.0,
+              "width": 1920,
+              "height": 1080,
+              "area": 400000,
+              "visible": true,
+              "isAudio": false,
+              "isLive": false,
+              "isAdElement": false,
+              "title": "MSE player"
+            }]
+        """.trimIndent()
+
+        val result = sniffer.parseDomMediaPayload(
+            payload,
+            "https://www.youtube.com/watch?v=test",
+            "Video page",
+        ).single()
+
+        assertEquals(MediaDetectionSource.MSE_REFERENCE, result.detectionSource)
+        assertEquals(MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY, result.captureStatus)
+        assertTrue(result.qualities.isEmpty())
+        assertFalse(result.isDownloadable)
+        assertEquals("YouTube", result.platformLabel)
+    }
+
+    @Test
+    fun `live media stream references are labelled as unsupported for download`() {
+        val sniffer = MediaSnifferEngine()
+        val payload = """
+            [{
+              "src": "https://cdn.example.com/live/master.m3u8",
+              "sources": [{"url": "https://cdn.example.com/live/master.m3u8", "height": 720}],
+              "source": "HTML5_ELEMENT",
+              "duration": 0,
+              "width": 1280,
+              "height": 720,
+              "area": 300000,
+              "visible": true,
+              "isAudio": false,
+              "isLive": true,
+              "isAdElement": false,
+              "title": "Live stream"
+            }]
+        """.trimIndent()
+
+        val result = sniffer.parseDomMediaPayload(
+            payload,
+            "https://example.com/live",
+            "Live page",
+        ).single()
+
+        assertEquals(MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY, result.captureStatus)
+        assertTrue(result.qualities.isEmpty())
+        assertFalse(result.isDownloadable)
+    }
+
+    @Test
+    fun `DOM source evidence and platform confidence are preserved`() {
+        val sniffer = MediaSnifferEngine()
+        val payload = """
+            [{
+              "src": "https://cdn.example.com/videos/feature.mp4",
+              "sources": [{"url": "https://cdn.example.com/videos/feature.mp4", "height": 1080}],
+              "source": "JSON_LD",
+              "duration": 240.0,
+              "width": 1920,
+              "height": 1080,
+              "area": 400000,
+              "visible": true,
+              "isAudio": false,
+              "isLive": false,
+              "isAdElement": false,
+              "title": "Feature video"
+            }]
+        """.trimIndent()
+
+        val result = sniffer.parseDomMediaPayload(
+            payload,
+            "https://m.youtube.com/watch?v=test",
+            "Feature page",
+        ).single()
+
+        assertEquals(MediaDetectionSource.JSON_LD, result.detectionSource)
+        assertEquals(MediaCaptureStatus.DOWNLOADABLE, result.captureStatus)
+        assertTrue(result.isDownloadable)
+        assertEquals("YouTube", result.platformLabel)
+        assertTrue(result.confidenceScore >= 80)
+    }
+
+    @Test
+    fun `platform matching uses exact host suffixes rather than substring matches`() {
+        assertEquals(
+            "YouTube",
+            MediaPlatformDetector.detect(
+                "https://www.youtube.com/watch?v=1",
+                "https://cdn.example.com/video.mp4",
+            ).label,
+        )
+        assertEquals(
+            "Web",
+            MediaPlatformDetector.detect(
+                "https://youtube.com.attacker.example/watch",
+                "https://cdn.example.com/video.mp4",
+            ).label,
+        )
+    }
+
+    @Test
+    fun `media URL admission rejects local and unsupported schemes`() {
+        val sniffer = MediaSnifferEngine()
+        assertFalse(sniffer.isCandidateMediaUrl("file:///sdcard/Movies/video.mp4"))
+        assertFalse(sniffer.isCandidateMediaUrl("javascript:https://cdn.example.com/video.mp4"))
+        assertFalse(sniffer.isCandidateMediaUrl("blob:https://example.com/video"))
+    }
+
 }
