@@ -47,6 +47,11 @@
                 <data android:scheme="https" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name=".engine.DownloadActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <service
             android:name=".engine.DownloadUidtJobService"
             android:exported="true"
