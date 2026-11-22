@@ -55,16 +55,21 @@ class DownloadCoordinator(context: Context) {
             isDesktopMode = isDesktopMode,
         )
 
-        if (isIncognito) {
-            // No persistent scheduler or cookie transfer for private sessions.
-            manager.executePersistedDownloadAsync(
-                downloadId = id,
-                userAgent = userAgent,
-                sessionCookieManager = sessionCookieManager,
-                allowGlobalCookieFallback = false,
-            )
-        } else {
-            scheduleNormalDownload(id, replaceExisting = false)
+        try {
+            if (isIncognito) {
+                // No persistent scheduler or cookie transfer for private sessions.
+                manager.executePersistedDownloadAsync(
+                    downloadId = id,
+                    userAgent = userAgent,
+                    sessionCookieManager = sessionCookieManager,
+                    allowGlobalCookieFallback = false,
+                )
+            } else {
+                scheduleNormalDownload(id, replaceExisting = false)
+            }
+        } catch (error: Exception) {
+            repository.updateDownloadStatus(id, "FAILED")
+            throw error
         }
         id
     }
@@ -92,7 +97,12 @@ class DownloadCoordinator(context: Context) {
                 allowGlobalCookieFallback = false,
             )
         } else {
-            scheduleNormalDownload(download.id, replaceExisting = false)
+            // WorkManager may still be completing a cancelled generation; replace it.
+            // UIDT uses the stable JobScheduler ID and must not replace a live transfer.
+            scheduleNormalDownload(
+                download.id,
+                replaceExisting = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+            )
         }
     }
 
