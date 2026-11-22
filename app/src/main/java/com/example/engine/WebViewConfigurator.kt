@@ -173,12 +173,16 @@ object WebViewConfigurator {
     fun clearIncognitoAndVolatileData(context: Context, clearCookiesToo: Boolean): Boolean {
         if (!supportsIsolatedIncognitoProfiles()) return false
         return runCatching {
-            val privateProfile = ProfileStore.getInstance().getOrCreateProfile(PRIVATE_PROFILE_NAME)
-            privateProfile.cookieManager.removeAllCookies(null)
-            privateProfile.cookieManager.flush()
-            privateProfile.webStorage.deleteAllData()
-            privateProfile.geolocationPermissions.clearAll()
-            true
+            val store = ProfileStore.getInstance()
+            // Delete the dedicated profile itself rather than clearing only selected stores.
+            // Do not call getOrCreateProfile/getProfile here: ProfileStore rejects deletion
+            // while that API has an in-memory Profile handle. All private WebViews must
+            // already have been destroyed by the caller.
+            if (PRIVATE_PROFILE_NAME !in store.allProfileNames) {
+                true
+            } else {
+                store.deleteProfile(PRIVATE_PROFILE_NAME)
+            }
         }.getOrDefault(false)
     }
 
