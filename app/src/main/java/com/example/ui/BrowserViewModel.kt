@@ -729,14 +729,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     // --- Media Download Action ---
 
-    private fun isVerifiedHttpDownloadUrl(url: String): Boolean {
-        val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
-        return uri.scheme?.lowercase() in setOf("http", "https") &&
-            !uri.host.isNullOrBlank()
-    }
-
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
-        if (!isVerifiedHttpDownloadUrl(quality.url)) {
+        if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(quality.url)) {
             _statusToast.value = s().unavailableMediaSourceNotice
             return
         }
@@ -766,7 +760,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun downloadGenericUrl(url: String, mimeType: String, contentDisposition: String?) {
-        if (!isVerifiedHttpDownloadUrl(url)) {
+        if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(url)) {
             _statusToast.value = s().unavailableMediaSourceNotice
             return
         }
