@@ -435,6 +435,43 @@ class BrowserEnginesTest {
         assertFalse(sniffer.isCandidateMediaUrl("blob:https://example.com/video"))
     }
 
+
+    @Test
+    fun `downloader model exposes only verified HTTP qualities`() {
+        val media = DetectedMedia(
+            id = "mixed-sources",
+            title = "Mixed sources",
+            sourcePageUrl = "https://example.com/watch",
+            primaryUrl = "https://cdn.example.com/video.mp4",
+            qualities = listOf(
+                MediaQualityOption(
+                    label = "Local",
+                    resolutionHeight = 1080,
+                    url = "file:///sdcard/video.mp4",
+                    format = "MP4",
+                    mimeType = "video/mp4",
+                ),
+                MediaQualityOption(
+                    label = "HTTPS",
+                    resolutionHeight = 720,
+                    url = "https://cdn.example.com/video.mp4",
+                    format = "MP4",
+                    mimeType = "video/mp4",
+                ),
+                MediaQualityOption(
+                    label = "Blob",
+                    resolutionHeight = 480,
+                    url = "blob:https://example.com/video",
+                    format = "MP4",
+                    mimeType = "video/mp4",
+                ),
+            ),
+        )
+
+        assertTrue(media.isDownloadable)
+        assertEquals(listOf("HTTPS"), media.downloadableQualities.map { it.label })
+    }
+
     @Test
     fun `downloadability requires an absolute HTTP or HTTPS host`() {
         val media = DetectedMedia(
