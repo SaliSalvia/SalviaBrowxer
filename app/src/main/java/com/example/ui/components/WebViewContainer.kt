@@ -493,16 +493,17 @@ private fun createConfiguredWebView(
     val tabId = tab.id
     return WebView(context).apply {
         val hostWebView = this
-        layoutParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        )
+        // AndroidX MULTI_PROFILE must be applied before any WebView API is touched.
         WebViewConfigurator.configure(
             webView = this,
             isIncognito = tab.isIncognito,
             desktopMode = tab.isDesktopMode,
             javaScriptEnabled = settings.javaScriptEnabled,
             blockThirdPartyCookiesIncognito = settings.blockThirdPartyCookiesIncognito,
+        )
+        layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
         )
 
         addJavascriptInterface(
