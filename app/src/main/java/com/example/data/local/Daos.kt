@@ -78,6 +78,12 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): DownloadEntity?
 
+    @Query("SELECT * FROM downloads WHERE isIncognito = 1 ORDER BY createdAt DESC")
+    suspend fun getIncognitoDownloads(): List<DownloadEntity>
+
+    @Query("DELETE FROM downloads WHERE isIncognito = 1")
+    suspend fun deleteIncognitoDownloads()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(download: DownloadEntity): Long
 
