@@ -144,8 +144,8 @@ object WebViewConfigurator {
      * Uses the CookieManager belonging to the WebView's current profile.
      * This is required for authenticated media requests in isolated private tabs.
      */
-    fun cookieHeader(webView: WebView?, url: String): String {
-        val manager = cookieManagerForTab(webView, isIncognito = false) ?: return ""
+    fun cookieHeader(webView: WebView?, url: String, isIncognito: Boolean = false): String {
+        val manager = cookieManagerForTab(webView, isIncognito) ?: return ""
         return runCatching { manager.getCookie(url).orEmpty() }.getOrDefault("")
     }
 
