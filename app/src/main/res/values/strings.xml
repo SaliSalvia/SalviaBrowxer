@@ -21,4 +21,5 @@
     <string name="download_notification_channel">Downloads</string>
     <string name="download_notification_title">SalviaBrowxer download</string>
     <string name="download_notification_text">Downloading %1$s</string>
+    <string name="download_schedule_failed">The download could not be scheduled. Please try again.</string>
 </resources>
