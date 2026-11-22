@@ -52,14 +52,20 @@ data class DetectedMedia(
     val mimeType: String = "",
     val detectedAt: Long = System.currentTimeMillis(),
 ) {
-    val isDownloadable: Boolean
-        get() = captureStatus == MediaCaptureStatus.DOWNLOADABLE &&
-            qualities.any { quality ->
+    val downloadableQualities: List<MediaQualityOption>
+        get() = if (captureStatus != MediaCaptureStatus.DOWNLOADABLE) {
+            emptyList()
+        } else {
+            qualities.filter { quality ->
                 val uri = runCatching { java.net.URI(quality.url) }.getOrNull()
                 uri != null &&
                     uri.scheme?.lowercase() in setOf("http", "https") &&
                     !uri.host.isNullOrBlank()
             }
+        }
+
+    val isDownloadable: Boolean
+        get() = downloadableQualities.isNotEmpty()
 }
 
 data class ConsoleLogEntry(
