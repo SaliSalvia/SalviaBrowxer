@@ -410,6 +410,20 @@ class BrowserEnginesTest {
                 "//cdn.example.com/video.mp4",
             ),
         )
+        assertEquals(
+            "https://example.com/video.mp4",
+            sniffer.resolveMediaUrl(
+                "https://example.com/watch",
+                "../../../../../video.mp4",
+            ),
+        )
+        assertEquals(
+            "https://example.com/video.mp4?quality=high#player",
+            sniffer.resolveMediaUrl(
+                "https://example.com/watch",
+                "../video.mp4?quality=high#player",
+            ),
+        )
     }
 
     @Test
