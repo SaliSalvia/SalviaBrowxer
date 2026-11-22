@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit
  *
  * Direct HTTP(S) resources and supported HLS/DASH manifests can be offered as downloads.
  * Browser-managed blob/MSE and live MediaStream references are retained as non-downloadable
- * evidence unless a separate direct HTTP(S) source is independently observed. This engine
- * does not reconstruct MSE buffers, extract DRM-protected content, or bypass access controls.
+ * evidence. A separately observed direct HTTP(S) candidate can still be represented on its own.
+ * This engine does not reconstruct MSE buffers, extract DRM-protected content, or bypass access controls.
  */
 class MediaSnifferEngine {
 
@@ -219,8 +219,11 @@ class MediaSnifferEngine {
             if (src.isBlank() || src.startsWith("data:", ignoreCase = true)) continue
 
             val isBlobReference = src.startsWith("blob:", ignoreCase = true)
-            if (!isBlobReference && !isHttpMediaUrl(src)) continue
-            if (!isBlobReference && AdBlockerEngine.isAdOrPreRollMediaUrl(src)) continue
+            val isLive = obj.optBoolean("isLive", false)
+            val isMediaStreamReference = src.startsWith("mediastream:", ignoreCase = true)
+            if (isMediaStreamReference && !isLive) continue
+            if (!isBlobReference && !isMediaStreamReference && !isHttpMediaUrl(src)) continue
+            if (isHttpMediaUrl(src) && AdBlockerEngine.isAdOrPreRollMediaUrl(src)) continue
 
             val duration = obj.optDouble("duration", 0.0)
             val width = obj.optInt("width", 0)
@@ -228,7 +231,6 @@ class MediaSnifferEngine {
             val domArea = obj.optLong("area", 0L)
             val isVisible = obj.optBoolean("visible", false)
             val isAudio = obj.optBoolean("isAudio", false)
-            val isLive = obj.optBoolean("isLive", false)
             val isAdClass = obj.optBoolean("isAdElement", false)
             val poster = obj.optString("poster", "")
             val titleHint = obj.optString("title", "").ifBlank { pageTitle }
@@ -823,7 +825,7 @@ class MediaSnifferEngine {
                     const adRegex = /(ad[-_]?break|preroll|midroll|vast|vmap|doubleclick|imasdk|sponsored|ad-showing)/i;
                     const pageTitle = document.title || '';
 
-                    document.querySelectorAll('video, audio').forEach(el => {
+                    document.querySelectorAll('video, audio').forEach((el, elementIndex) => {
                         const isAudio = el.tagName.toLowerCase() === 'audio';
                         const rect = el.getBoundingClientRect();
                         const area = Math.round(rect.width * rect.height);
@@ -852,12 +854,14 @@ class MediaSnifferEngine {
                         });
 
                         const primary = (sources[0] && sources[0].url) || '';
-                        if (!primary) return;
                         const isLive = el.duration === Infinity ||
                             (typeof MediaStream !== 'undefined' && el.srcObject instanceof MediaStream);
+                        if (!primary && !isLive) return;
+                        const sourceReference = primary ||
+                            ('mediastream:' + window.location.href + '#element-' + elementIndex);
 
                         list.push({
-                            src: primary,
+                            src: sourceReference,
                             sources: sources,
                             source: 'HTML5_ELEMENT',
                             isLive: isLive,
