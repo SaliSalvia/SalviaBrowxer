@@ -234,6 +234,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _activeSheet.value = ActiveSheet.NONE
         touchTabMru(newTab.id)
         syncWebViewLifecycleAndMemory(newTab.id)
+        if (isIncognito && !WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+            _statusToast.value = getApplication<Application>().getString(
+                com.example.R.string.incognito_isolation_unavailable,
+            )
+        }
     }
 
     fun selectTab(tabId: String) {
@@ -270,6 +275,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
         if (tabToClose.isIncognito && _tabs.value.none { it.isIncognito }) {
             WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
+            if (!WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+                _statusToast.value = getApplication<Application>().getString(
+                    com.example.R.string.incognito_isolation_unavailable,
+                )
+            }
         }
     }
 
@@ -297,8 +307,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             touchTabMru(_activeTabId.value)
             syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
-        WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
-        _statusToast.value = s().toastIncognitoCleared
+        val profileCleanupSucceeded = WebViewConfigurator.clearIncognitoAndVolatileData(
+            getApplication(),
+            clearCookiesToo = false,
+        )
+        val cleanupMessage = when {
+            profileCleanupSucceeded -> com.example.R.string.incognito_profile_cleared
+            !WebViewConfigurator.supportsIsolatedIncognitoProfiles() -> com.example.R.string.incognito_isolation_unavailable
+            else -> com.example.R.string.incognito_cleanup_failed
+        }
+        _statusToast.value = getApplication<Application>().getString(cleanupMessage)
     }
 
     private fun destroyWebView(tabId: String) {
@@ -613,8 +631,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val cacheKey = "$tabId|$mediaUrl"
         if (!pendingProbedUrls.add(cacheKey)) return
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), desktopMode = false)
+        val cookieHeader = WebViewConfigurator.cookieHeader(webViews[tabId], mediaUrl)
         viewModelScope.launch(Dispatchers.IO) {
-            val detected = mediaSniffer.probeNetworkMedia(mediaUrl, pageUrl, pageTitle, ua)
+            val detected = mediaSniffer.probeNetworkMedia(
+                mediaUrl = mediaUrl,
+                pageUrl = pageUrl,
+                pageTitle = pageTitle,
+                userAgent = ua,
+                cookieHeader = cookieHeader,
+            )
             if (detected != null) {
                 updateTab(tabId) { current ->
                     current.copy(
@@ -648,7 +673,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
-        downloadManager.startDownload(fileName, quality, sourcePageUrl, ua)
+        val cookieHeader = WebViewConfigurator.cookieHeader(webViews[tab.id], quality.url)
+        downloadManager.startDownload(fileName, quality, sourcePageUrl, ua, cookieHeader)
         _statusToast.value = String.format(s().toastDownloadStartedFormat, fileName)
     }
 
@@ -656,6 +682,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val guessedName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
+        val cookieHeader = WebViewConfigurator.cookieHeader(webViews[tab.id], url)
         val lower = url.lowercase()
         val strings = s()
         val opt = MediaQualityOption(
@@ -667,7 +694,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isHls = lower.contains(".m3u8"),
             isDash = lower.contains(".mpd"),
         )
-        downloadManager.startDownload(guessedName, opt, tab.url, ua)
+        downloadManager.startDownload(guessedName, opt, tab.url, ua, cookieHeader)
         _statusToast.value = String.format(strings.toastDownloadingFileFormat, guessedName)
     }
 
