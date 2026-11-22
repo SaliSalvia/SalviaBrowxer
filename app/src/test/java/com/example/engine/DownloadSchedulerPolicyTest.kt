@@ -30,6 +30,16 @@ class DownloadSchedulerPolicyTest {
     }
 
     @Test
+    fun `startup recovery only auto schedules legacy WorkManager tasks`() {
+        (24..33).forEach { api ->
+            assertEquals(true, DownloadSchedulerPolicy.shouldRescheduleQueuedWorkOnAppStart(api))
+        }
+        (34..37).forEach { api ->
+            assertEquals(false, DownloadSchedulerPolicy.shouldRescheduleQueuedWorkOnAppStart(api))
+        }
+    }
+
+    @Test
     fun `job identity is stable and positive for persistent download IDs`() {
         assertEquals(1, DownloadSchedulerPolicy.jobIdFor(1L))
         assertEquals(42, DownloadSchedulerPolicy.jobIdFor(42L))
