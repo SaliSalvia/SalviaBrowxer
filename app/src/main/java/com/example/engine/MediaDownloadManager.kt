@@ -57,8 +57,8 @@ class MediaDownloadManager(
         sourcePageUrl: String,
         userAgent: String,
         sessionCookieManager: CookieManager? = null,
-        allowGlobalCookieFallback: Boolean = !isIncognito,
         isIncognito: Boolean = false,
+        allowGlobalCookieFallback: Boolean = !isIncognito,
     ) {
         val safeFileName = sanitizeFileName(fileName, quality)
         scope.launch(Dispatchers.IO) {
