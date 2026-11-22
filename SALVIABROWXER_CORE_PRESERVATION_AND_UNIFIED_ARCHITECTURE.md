@@ -5,8 +5,9 @@
 **تاریخ ثبت:** 2026-11-22  
 **مخزن مادر:** SaliSalvia/SalviaBrowxer  
 **شاخه مبنا:** main  
-**Commit مبنا:** e004cacd749b579c26992cf37397afcaec3a07b5  
-**وضعیت:** مبنای مهندسی ثبت‌شده؛ هر تغییر اجرایی باید به این قرارداد ارجاع دهد.
+**Commit مبنای تاریخی:** e004cacd749b579c26992cf37397afcaec3a07b5  
+**آخرین main ثبت‌شده:** b0a1739a864f02b4f75042b2b204736c88b8bcb7  
+**وضعیت سند:** قرارداد مهندسی فعال؛ snapshotهای تاریخی با Ledger بخش 13 تکمیل می‌شوند.
 
 ---
 
@@ -410,6 +411,102 @@ Evidence source نباید با حدس از URL یا نام فایل جایگز�
 
 ## 12. شرط آغاز و کنترل تغییرات
 
-تا زمان ثبت baseline و تست‌های Phase 0، تغییر گسترده در معماری، جابه‌جایی فایل‌ها، Schema، جایگزینی Download Manager یا بازنویسی WebView/Incognito مجاز نیست.
+Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابراین کار اجرایی فقط در محدوده مرحله‌ای، PR مستقل، قابل برگشت و دارای تست رگرسیون مجاز است. جابه‌جایی گسترده فایل‌ها، تغییر Schema بدون migration، جایگزینی WebView یا تضعیف قابلیت‌های هسته همچنان ممنوع است.
 
-اولین ادغام اجرایی باید کوچک، قابل برگشت و تست‌پذیر باشد. اولویت شروع: تکمیل قرارداد Media Candidate و ranking بدون حذف مسیر فعلی؛ سپس Privacy/Permission و در ادامه Download Coordinator مستقل. هر commit باید فهرست قابلیت‌های دست‌نخورده، تست اجراشده، وضعیت build و محدودیت‌های باقی‌مانده را گزارش کند.
+هر commit باید فهرست قابلیت‌های دست‌نخورده، تست اجراشده، وضعیت build و محدودیت‌های باقی‌مانده را گزارش کند. وضعیت واقعی اجرا و شواهد هر PR در Ledger بخش 13 ثبت می‌شوند.
+
+---
+
+## 13. Ledger اجرایی و وضعیت جاری
+
+**تاریخ آخرین بازبینی:** 2026-11-23
+
+### 13.1 وضعیت main پس از مرحله حریم خصوصی
+
+- Commit: `b0a1739a864f02b4f75042b2b204736c88b8bcb7`
+- Room schema: نسخه 3
+- minSdk / targetSdk: 24 / 36
+- AndroidX WebKit: 1.18.0
+- PR #2: ادغام شده
+- CI روی merge commit: Run `45058012921` — موفق
+- CI مربوط به PR #2: Run `45057400150` — Unit Tests، Debug APK، Signed Release APK، Artifact validation و upload همگی موفق
+
+### 13.2 مرحله 2 — Privacy & Permissions (Merged)
+
+تغییرات اجرایی:
+- پروفایل اختصاصی `salvia_incognito` با AndroidX WebKit Multi-Profile در صورت پشتیبانی System WebView
+- اعمال Profile پیش از دسترسی به WebSettings، تزریق JavaScript و navigation
+- عدم fallback کوکی Private به CookieManager عادی
+- حذف پروفایل خصوصی بعد از نابودی همه WebViewها و popupها
+- هشدار فارسی و انگلیسی در صورت عدم پشتیبانی یا شکست اتصال پروفایل مستقل
+- کنترل صریح درخواست Camera، Microphone و Geolocation و بررسی Android runtime permission
+- بررسی exact secure-origin و رد resource ناشناخته
+- انتقال CookieManager پروفایل مبدأ به Media Probe و Downloader
+- محاسبه مجدد cookie در هر redirect و جلوگیری از downgrade از HTTPS به HTTP
+- ثبت private download با `isIncognito`، پاک‌سازی Room metadata و staging file در پایان نشست
+- جلوگیری از ثبت History و Bookmark عادی از تب خصوصی
+
+مهاجرت داده:
+- Room v2 → v3: افزودن `DownloadEntity.isIncognito` به شکل additive migration
+
+محدودیت شناخته‌شده:
+- جداسازی واقعی وابسته به نسخه System WebView است. دستگاه فاقد Multi-Profile نباید به‌عنوان دارای Incognito ایزوله معرفی شود. مسیر native cookie در چنین حالتی fail-closed است.
+
+### 13.3 مرحله 3 — Persistent Download Engine (PR #3)
+
+- Branch: `integration/persistent-download-engine-v2`
+- PR: https://github.com/SaliSalvia/SalviaBrowxer/pull/3
+- وضعیت: Open / Draft؛ در انتظار CI و review
+- Room schema در این شاخه: نسخه 4
+- WorkManager: 2.12.0
+- API 24–33: WorkManager foreground worker
+- API 34+: User-Initiated Data Transfer JobScheduler
+- `DownloadRuntime`: اجرای مستقل از `BrowserViewModel.viewModelScope`
+- `DownloadCoordinator`: مسیر واحد enqueue، pause، resume، cancel، recovery و notification action
+- Room قبل از schedule شدن، DownloadTask را ثبت می‌کند
+- Job execution بر اساس Download ID idempotent است
+- `isDesktopMode` برای بازسازی همان User-Agent در recovery ذخیره می‌شود
+- notification progress از Room خوانده می‌شود و Pause/Cancel action دارد
+- System interruption از user cancellation جدا شده و staging file برای Resume حفظ می‌شود
+- دانلودهای Private در WorkManager/JobScheduler ذخیره نمی‌شوند و به CookieManager زنده همان پروفایل متصل می‌مانند
+- MainActivity در شروع، recovery صف‌های عادی را فراخوانی می‌کند
+
+مهاجرت داده:
+- Room v3 → v4: افزودن `DownloadEntity.isDesktopMode` با migration افزایشی
+
+تست افزوده:
+- `DownloadSchedulerPolicyTest`: انتخاب backend بر اساس API level، پایداری شناسه‌ها و رد شناسه نامعتبر
+
+گیت‌های لازم پیش از Merge:
+1. Unit Tests و Debug/Release build روی commit نهایی PR سبز باشند.
+2. Room migration v3 → v4 بدون حذف داده موجود تأیید شود.
+3. Resume/Cancel/notification actions با scheduler lifecycle بررسی شوند.
+4. CI سبز به‌تنهایی به‌عنوان device-level proof معرفی نشود؛ تست واقعی روی API 24–33 و API 34+ همچنان لازم است.
+5. PR تا پایان این گیت‌ها Draft بماند.
+
+### 13.4 مرحله 1 — Baseline & Core Preservation
+
+- inventory موجود در بخش 3 و تحلیل منابع بخش 5 مرجع حفظ هسته‌اند.
+- فایل‌های هسته در PRهای 2 و 3 به‌صورت additive تغییر کرده‌اند؛ حذف UI، تب‌ها، DevTools، AdBlock، Extension یا مسیرهای موجود در این دو PR مجاز نبوده است.
+- در هر PR بعدی، changed-file review باید با این inventory تطبیق داده شود.
+- applicationId، namespace، minSdk و targetSdk بدون طرح مهاجرت جداگانه تغییر نکنند.
+
+### 13.5 مراحل بعدی
+
+| مرحله | وضعیت | پیش‌شرط |
+|---|---|---|
+| Advanced Media Intelligence | شروع نشده | PR #3 باید CI سبز و merge شود |
+| Main-content ranking و Site adapters | شروع نشده | fixture corpus و benchmark baseline |
+| HLS/DASH parser و resolver ارتقایافته | شروع نشده | تست manifest/segment/key و محدودیت DRM |
+| Media3 Player و Media Library | شروع نشده | Download output validation و lifecycle contract |
+| Benchmark و Release hardening | شروع نشده | اجرای matrix روی دستگاه واقعی و سنجش منابع |
+
+### 13.6 قانون به‌روزرسانی سند
+
+پس از هر merge:
+- commit و PR نهایی ثبت شوند.
+- schema نسخه و migrationهای جدید ثبت شوند.
+- CI run لینک‌دار و نتیجه دقیق ثبت شود.
+- تست واقعی دستگاه جدا از CI گزارش شود.
+- قابلیت‌های هسته‌ای که تغییر کرده‌اند و آزمون رگرسیون مرتبط مشخص شوند.
+- محدودیت جدید یا پشتیبانی تأییدنشده پنهان نشود.
