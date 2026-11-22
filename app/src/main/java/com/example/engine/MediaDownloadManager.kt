@@ -28,6 +28,8 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
+import java.net.ProtocolException
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
@@ -48,7 +50,7 @@ class MediaDownloadManager(
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
-        .followRedirects(true)
+        .followRedirects(false)
         .build()
 
     fun startDownload(
@@ -192,7 +194,7 @@ class MediaDownloadManager(
         try {
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
             val cookie = resolveCookieHeader(url, sessionCookieManager, allowGlobalCookieFallback)
-            val probe = probeRangeSupport(url, referer, userAgent, cookie)
+            val probe = probeRangeSupport(url, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
             val totalBytes = probe.first
             val supportsRanges = probe.second
 
@@ -232,7 +234,7 @@ class MediaDownloadManager(
                                 }
                                 .build()
 
-                            client.newCall(req).execute().use { resp ->
+                            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                                 if (!resp.isSuccessful && resp.code != 206) {
                                     throw IllegalStateException("Range HTTP ${resp.code}")
                                 }
@@ -308,7 +310,7 @@ class MediaDownloadManager(
                 }
                 .build()
 
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (!resp.isSuccessful && resp.code != 206) {
                     repository.updateDownloadStatus(downloadId, "FAILED")
                     return
@@ -726,19 +728,18 @@ class MediaDownloadManager(
         url: String,
         referer: String,
         userAgent: String,
-        cookie: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
     ): Pair<Long, Boolean> {
         return runCatching {
             val req = Request.Builder()
                 .url(url)
                 .head()
                 .header("User-Agent", userAgent)
-                .apply {
-                    if (referer.isNotBlank()) header("Referer", referer)
-                    if (cookie.isNotBlank()) header("Cookie", cookie)
-                }
+                .apply { if (referer.isNotBlank()) header("Referer", referer) }
                 .build()
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
+                if (!resp.isSuccessful) return@use -1L to false
                 val len = resp.header("Content-Length")?.toLongOrNull() ?: -1L
                 val acceptRanges = resp.header("Accept-Ranges").orEmpty().equals("bytes", ignoreCase = true)
                 len to acceptRanges
@@ -755,16 +756,13 @@ class MediaDownloadManager(
         allowGlobalCookieFallback: Boolean,
         onProgress: suspend (Long, Long, Long) -> Unit,
     ) {
-        val cookie = resolveCookieHeader(url, sessionCookieManager, allowGlobalCookieFallback)
         val req = Request.Builder()
             .url(url)
             .header("User-Agent", userAgent)
-            .apply {
-                if (referer.isNotBlank()) header("Referer", referer)
-                if (cookie.isNotBlank()) header("Cookie", cookie)
-            }
+            .apply { if (referer.isNotBlank()) header("Referer", referer) }
             .build()
-        client.newCall(req).execute().use { resp ->
+        executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
+            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
             val body = resp.body ?: return
             val total = body.contentLength()
             var dl = 0L
@@ -853,7 +851,7 @@ class MediaDownloadManager(
                     if (cookie.isNotBlank()) header("Cookie", cookie)
                 }
                 .build()
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (resp.isSuccessful) resp.body?.string() else null
             }
         }.getOrNull()
@@ -876,7 +874,7 @@ class MediaDownloadManager(
                     if (cookie.isNotBlank()) header("Cookie", cookie)
                 }
                 .build()
-            client.newCall(req).execute().use { resp ->
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (resp.isSuccessful) resp.body?.bytes() else null
             }
         }.getOrNull()
@@ -908,6 +906,70 @@ class MediaDownloadManager(
     private fun resolveUrl(base: Uri, relative: String): String {
         if (relative.startsWith("http://") || relative.startsWith("https://")) return relative
         return runCatching { java.net.URI(base.toString()).resolve(relative).toString() }.getOrDefault(relative)
+    }
+
+    /**
+     * Resolve cookies from the selected browser profile for every redirect hop.
+     * OkHttp does not consistently strip a manually supplied Cookie header on
+     * cross-origin redirects, so redirects are followed explicitly here.
+     */
+    private fun executeWithProfileCookies(
+        initialRequest: Request,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ): okhttp3.Response {
+        var request = initialRequest.newBuilder().removeHeader("Cookie").build()
+        val redirectCodes = setOf(300, 301, 302, 303, 307, 308)
+
+        repeat(10) { redirectCount ->
+            val cookie = resolveCookieHeader(
+                request.url.toString(),
+                sessionCookieManager,
+                allowGlobalCookieFallback,
+            )
+            val requestWithCookies = request.newBuilder()
+                .removeHeader("Cookie")
+                .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
+                .build()
+
+            val response = client.newCall(requestWithCookies).execute()
+            val location = response.header("Location")
+            if (response.code !in redirectCodes || location.isNullOrBlank()) return response
+
+            val target = response.request.url.resolve(location)
+            if (target == null || (target.scheme != "http" && target.scheme != "https")) return response
+
+            val current = response.request.url
+            if (current.isHttps && !target.isHttps) return response
+
+            if (redirectCount == 9) {
+                response.close()
+                throw ProtocolException("Too many redirects")
+            }
+
+            val crossOrigin = current.scheme != target.scheme ||
+                current.host != target.host ||
+                current.port != target.port
+            val next = response.request.newBuilder()
+                .url(target)
+                .removeHeader("Cookie")
+
+            if (crossOrigin) {
+                next.removeHeader("Authorization")
+                next.removeHeader("Proxy-Authorization")
+                val safeReferer = current.newBuilder()
+                    .encodedPath("/")
+                    .query(null)
+                    .fragment(null)
+                    .build()
+                next.header("Referer", safeReferer.toString())
+            }
+
+            response.close()
+            request = next.build()
+        }
+
+        throw ProtocolException("Redirect limit exceeded")
     }
 
     private fun resolveCookieHeader(
