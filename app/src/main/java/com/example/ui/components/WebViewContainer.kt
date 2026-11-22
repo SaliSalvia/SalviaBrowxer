@@ -2,6 +2,8 @@ package com.example.ui.components
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.Manifest
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
@@ -11,6 +13,7 @@ import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.GeolocationPermissions
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -54,6 +57,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +68,8 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.BrowserSettings
 import com.example.engine.AdBlockerEngine
 import com.example.engine.WebViewConfigurator
+import com.example.engine.WebPermissionPolicy
+import com.example.R
 import com.example.ui.BrowserTab
 import com.example.ui.BrowserViewModel
 import com.example.ui.i18n.LocalAppStrings
@@ -70,6 +77,16 @@ import com.example.ui.i18n.LocalAppStrings
 private data class PendingSslWarning(
     val url: String,
     val handler: SslErrorHandler,
+)
+
+private data class PendingWebPermission(
+    val tabId: String,
+    val origin: String,
+    val description: String,
+    val androidPermissions: List<String>,
+    val resources: List<String> = emptyList(),
+    val onGrant: (Set<String>) -> Unit,
+    val onDeny: () -> Unit,
 )
 
 @Composable
@@ -87,6 +104,44 @@ fun WebViewContainer(
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
     var popupTitle by remember { mutableStateOf(s.sslPopupDefaultTitle) }
+    var pendingWebPermission by remember(tab.id) { mutableStateOf<PendingWebPermission?>(null) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        val pending = pendingWebPermission ?: return@rememberLauncherForActivityResult
+        val currentUrl = viewModel.getWebView(pending.tabId)?.url.orEmpty()
+        val originStillMatches = WebPermissionPolicy.isSameSecureOrigin(pending.origin, currentUrl)
+        if (!originStillMatches) {
+            pending.onDeny()
+            pendingWebPermission = null
+            return@rememberLauncherForActivityResult
+        }
+
+        val grantedPermissions = pending.androidPermissions.filter { permission ->
+            results[permission] == true ||
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        }.toSet()
+
+        if (pending.resources.isNotEmpty()) {
+            val grantedResources = pending.resources.filter { resource ->
+                val required = WebPermissionPolicy.androidPermissionsForCapture(listOf(resource))
+                required != null && required.all(grantedPermissions::contains)
+            }.toSet()
+            if (grantedResources.isNotEmpty()) pending.onGrant(grantedResources) else pending.onDeny()
+        } else {
+            val locationGranted =
+                Manifest.permission.ACCESS_FINE_LOCATION in grantedPermissions ||
+                    Manifest.permission.ACCESS_COARSE_LOCATION in grantedPermissions
+            if (locationGranted) pending.onGrant(emptySet()) else pending.onDeny()
+        }
+        pendingWebPermission = null
+    }
+
+    val showPermissionPrompt: (PendingWebPermission) -> Unit = { next ->
+        pendingWebPermission?.onDeny?.invoke()
+        pendingWebPermission = next
+    }
 
     val dismissPopup: () -> Unit = {
         popupWebView?.let { popup ->
@@ -101,9 +156,11 @@ fun WebViewContainer(
         popupWebView = null
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(tab.id) {
         onDispose {
             dismissPopup()
+            pendingWebPermission?.onDeny?.invoke()
+            pendingWebPermission = null
         }
     }
 
@@ -138,6 +195,59 @@ fun WebViewContainer(
                     },
                     onSslWarning = { url, handler ->
                         sslWarning = PendingSslWarning(url, handler)
+                    },
+                    onRequestWebPermission = { request, currentUrl ->
+                        val resources = request.resources.toList()
+                        val androidPermissions = WebPermissionPolicy.androidPermissionsForCapture(resources)
+                        val origin = request.origin.toString()
+                        if (
+                            androidPermissions == null ||
+                            !WebPermissionPolicy.isSameSecureOrigin(origin, currentUrl.orEmpty())
+                        ) {
+                            request.deny()
+                        } else {
+                            val description = when {
+                                resources.contains(WebPermissionPolicy.CAMERA_RESOURCE) &&
+                                    resources.contains(WebPermissionPolicy.MICROPHONE_RESOURCE) ->
+                                    context.getString(R.string.web_permission_camera_microphone)
+                                resources.contains(WebPermissionPolicy.CAMERA_RESOURCE) ->
+                                    context.getString(R.string.web_permission_camera)
+                                else -> context.getString(R.string.web_permission_microphone)
+                            }
+                            showPermissionPrompt(
+                                PendingWebPermission(
+                                    tabId = tab.id,
+                                    origin = origin,
+                                    description = description,
+                                    androidPermissions = androidPermissions,
+                                    resources = resources,
+                                    onGrant = { granted -> request.grant(granted.toTypedArray()) },
+                                    onDeny = { request.deny() },
+                                ),
+                            )
+                        }
+                    },
+                    onRequestGeolocation = { origin, currentUrl, callback ->
+                        if (!WebPermissionPolicy.isSameSecureOrigin(origin, currentUrl.orEmpty())) {
+                            callback.invoke(origin, false, false)
+                        } else {
+                            showPermissionPrompt(
+                                PendingWebPermission(
+                                    tabId = tab.id,
+                                    origin = origin,
+                                    description = context.getString(R.string.web_permission_location),
+                                    androidPermissions = WebPermissionPolicy.locationAndroidPermissions,
+                                    onGrant = { callback.invoke(origin, true, false) },
+                                    onDeny = { callback.invoke(origin, false, false) },
+                                ),
+                            )
+                        }
+                    },
+                    onCancelWebPermission = { request ->
+                        if (pendingWebPermission?.tabId == tab.id) {
+                            pendingWebPermission?.onDeny?.invoke()
+                            pendingWebPermission = null
+                        }
                     },
                     onEnterFullscreen = { view, cb ->
                         fullscreenView = view
@@ -267,6 +377,44 @@ fun WebViewContainer(
             }
         }
 
+        pendingWebPermission?.let { pending ->
+            AlertDialog(
+                onDismissRequest = {
+                    pending.onDeny()
+                    pendingWebPermission = null
+                },
+                title = { Text(stringResource(R.string.web_permission_title)) },
+                text = {
+                    Text(
+                        String.format(
+                            stringResource(R.string.web_permission_body_format),
+                            pending.description,
+                            pending.origin,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            permissionLauncher.launch(pending.androidPermissions.toTypedArray())
+                        },
+                    ) {
+                        Text(stringResource(R.string.web_permission_allow))
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = {
+                            pending.onDeny()
+                            pendingWebPermission = null
+                        },
+                    ) {
+                        Text(stringResource(R.string.web_permission_deny))
+                    }
+                },
+            )
+        }
+
         // SSL Warning Dialog
         sslWarning?.let { warning ->
             AlertDialog(
@@ -322,12 +470,16 @@ private fun createConfiguredWebView(
     viewModel: BrowserViewModel,
     onShowFileChooser: (ValueCallback<Array<Uri>>) -> Unit,
     onSslWarning: (String, SslErrorHandler) -> Unit,
+    onRequestWebPermission: (PermissionRequest, String?) -> Unit,
+    onRequestGeolocation: (String, String?, GeolocationPermissions.Callback) -> Unit,
+    onCancelWebPermission: (PermissionRequest) -> Unit,
     onEnterFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     onExitFullscreen: () -> Unit,
     onOpenPopup: (Message) -> Unit,
 ): WebView {
     val tabId = tab.id
     return WebView(context).apply {
+        val hostWebView = this
         layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -491,7 +643,23 @@ private fun createConfiguredWebView(
             }
 
             override fun onPermissionRequest(request: PermissionRequest?) {
-                request?.grant(request.resources)
+                if (request == null) return
+                onRequestWebPermission(request, hostWebView.url)
+            }
+
+            override fun onPermissionRequestCanceled(request: PermissionRequest?) {
+                if (request != null) onCancelWebPermission(request)
+            }
+
+            override fun onGeolocationPermissionsShowPrompt(
+                origin: String?,
+                callback: GeolocationPermissions.Callback?,
+            ) {
+                if (origin.isNullOrBlank() || callback == null) {
+                    callback?.invoke(origin.orEmpty(), false, false)
+                    return
+                }
+                onRequestGeolocation(origin, hostWebView.url, callback)
             }
         }
     }
