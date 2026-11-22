@@ -10,6 +10,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.data.local.DownloadEntity
 
 object DownloadNotificationHelper {
 
@@ -18,7 +19,25 @@ object DownloadNotificationHelper {
     fun notificationId(downloadId: Long): Int =
         10_000 + (downloadId % 1_000_000L).toInt()
 
-    fun build(context: Context, downloadId: Long, fileName: String): Notification {
+    fun build(context: Context, downloadId: Long, fileName: String): Notification =
+        build(context, downloadId, fileName, downloadedBytes = 0L, totalBytes = -1L)
+
+    fun build(context: Context, download: DownloadEntity): Notification =
+        build(
+            context = context,
+            downloadId = download.id,
+            fileName = download.fileName,
+            downloadedBytes = download.downloadedBytes,
+            totalBytes = download.totalBytes,
+        )
+
+    private fun build(
+        context: Context,
+        downloadId: Long,
+        fileName: String,
+        downloadedBytes: Long,
+        totalBytes: Long,
+    ): Notification {
         ensureChannel(context)
         val openApp = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -29,7 +48,17 @@ object DownloadNotificationHelper {
             openApp,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val text = context.getString(R.string.download_notification_text, fileName)
+        val hasKnownTotal = totalBytes > 0L
+        val percent = if (hasKnownTotal) {
+            ((downloadedBytes.coerceAtLeast(0L) * 100L) / totalBytes).coerceIn(0L, 100L).toInt()
+        } else {
+            0
+        }
+        val text = if (hasKnownTotal) {
+            context.getString(R.string.download_notification_progress, fileName, percent)
+        } else {
+            context.getString(R.string.download_notification_text, fileName)
+        }
         val pauseIntent = actionPendingIntent(context, downloadId, DownloadActionReceiver.ACTION_PAUSE)
         val cancelIntent = actionPendingIntent(context, downloadId, DownloadActionReceiver.ACTION_CANCEL)
 
@@ -42,7 +71,7 @@ object DownloadNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setProgress(0, 0, true)
+            .setProgress(if (hasKnownTotal) 100 else 0, percent, !hasKnownTotal)
             .addAction(
                 NotificationCompat.Action.Builder(
                     android.R.drawable.ic_media_pause,
