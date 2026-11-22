@@ -494,7 +494,8 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 
 | مرحله | وضعیت | پیش‌شرط |
 |---|---|---|
-| Advanced Media Intelligence | PR #8 باز، اعتبارسنجی CI در جریان | CI سبز روی آخرین SHA و بررسی تغییرات |
+| Evidence-aware Media Intelligence | تکمیل شد؛ PR #8 squash-merged در `1949b1b2d27a108c910319a8c664b59a3420f947` | PR CI و main CI هر دو موفق |
+| Site adapters و benchmark corpus | مرحلهٔ بعد | fixture corpus و benchmark baseline |
 | Main-content ranking و Site adapters | مرحلهٔ بعد | fixture corpus و benchmark baseline |
 | HLS/DASH parser و resolver ارتقایافته | مرحلهٔ بعد | تست manifest/segment/key و محدودیت DRM |
 | Media3 Player و Media Library | شروع نشده | Download output validation و lifecycle contract |
@@ -513,7 +514,7 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 
 ### 13.7 مرحله 4 — Evidence-aware Media Intelligence (PR #8)
 
-**وضعیت:** تغییرات در شاخهٔ `feat/media-evidence-mse-reference-safety` و PR #8 قرار دارند؛ تا پایان CI روی آخرین commit و Merge، بخشی از `main` محسوب نمی‌شوند.
+**وضعیت:** تکمیل و ادغام شد. PR #8 در تاریخ 2026-11-22 با روش Squash ادغام شد؛ merge commit: `1949b1b2d27a108c910319a8c664b59a3420f947`. تغییرات اکنون در `main` قرار دارند.
 
 دامنهٔ تغییرات:
 - اتصال `MediaDetectionSource`، `MediaCaptureStatus`، `confidenceScore` و `platformLabel` به مسیر واقعی تشخیص DOM و Network.
@@ -548,4 +549,8 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 - اعتبارسنجی policy مشترک HTTP(S)، فیلتر qualityهای نامعتبر و رد audio sidecar نامعتبر.
 - اعتبارسنجی `DetectedMedia.isDownloadable` و guard پیش از enqueue.
 
-**CI:** فقط Run مربوط به آخرین SHA این PR ملاک پذیرش است؛ نتیجه و Artifact پس از پایان workflow باید ثبت شوند.
+**CI و Artifact نهایی:**
+- PR head `5c1a594b11ab33095502fe697f8a1dc897a5a4c4`: Run `45080234792` — موفق در Unit Tests، Debug APK، Signed Release APK، verification و artifact upload.
+- `main` merge commit `1949b1b2d27a108c910319a8c664b59a3420f947`: Run `45080545310` — موفق در تمام مراحل اصلی و cleanup.
+- Artifact روی `main`: `SalviaBrowxser-APK`، حجم 33,592,625 bytes، SHA-256 `bbae95e0961120e2b30974403a6f0e909ffbaa0dbcf6610d195ba81903ce062b`.
+- آزمون روی دستگاه فیزیکی هنوز جداگانه انجام نشده و نباید با CI اشتباه گرفته شود.
