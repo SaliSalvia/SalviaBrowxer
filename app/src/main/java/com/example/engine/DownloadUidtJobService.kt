@@ -42,7 +42,7 @@ class DownloadUidtJobService : JobService() {
             params,
             DownloadNotificationHelper.notificationId(downloadId),
             DownloadNotificationHelper.build(applicationContext, downloadId, fileName),
-            JOB_END_NOTIFICATION_POLICY_DETACH,
+            JOB_END_NOTIFICATION_POLICY_REMOVE,
         )
 
         val job = serviceScope.launch {
