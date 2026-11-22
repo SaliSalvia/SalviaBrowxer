@@ -2,6 +2,14 @@ package com.example.ui
 
 import java.util.UUID
 
+internal object MediaSourceUrlPolicy {
+    fun isVerifiedHttpUrl(value: String): Boolean {
+        val uri = runCatching { java.net.URI(value) }.getOrNull() ?: return false
+        return uri.scheme?.lowercase() in setOf("http", "https") &&
+            !uri.host.isNullOrBlank()
+    }
+}
+
 data class MediaQualityOption(
     val id: String = UUID.randomUUID().toString(),
     val label: String,        // e.g. "1080p Full HD", "720p HD", "480p", "Audio Only (M4A)"
@@ -57,10 +65,7 @@ data class DetectedMedia(
             emptyList()
         } else {
             qualities.filter { quality ->
-                val uri = runCatching { java.net.URI(quality.url) }.getOrNull()
-                uri != null &&
-                    uri.scheme?.lowercase() in setOf("http", "https") &&
-                    !uri.host.isNullOrBlank()
+                MediaSourceUrlPolicy.isVerifiedHttpUrl(quality.url)
             }
         }
 
