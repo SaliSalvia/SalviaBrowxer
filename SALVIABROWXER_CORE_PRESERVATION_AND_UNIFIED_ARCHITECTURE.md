@@ -496,7 +496,6 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 |---|---|---|
 | Evidence-aware Media Intelligence | تکمیل شد؛ PR #8 squash-merged در `1949b1b2d27a108c910319a8c664b59a3420f947` | PR CI و main CI هر دو موفق |
 | Site adapters و benchmark corpus | مرحلهٔ بعد | fixture corpus و benchmark baseline |
-| Main-content ranking و Site adapters | مرحلهٔ بعد | fixture corpus و benchmark baseline |
 | HLS/DASH parser و resolver ارتقایافته | مرحلهٔ بعد | تست manifest/segment/key و محدودیت DRM |
 | Media3 Player و Media Library | شروع نشده | Download output validation و lifecycle contract |
 | Benchmark و Release hardening | شروع نشده | اجرای matrix روی دستگاه واقعی و سنجش منابع |
