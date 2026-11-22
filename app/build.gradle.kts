@@ -63,7 +63,20 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      all {
+        // Robolectric fetches android-all at test runtime. Use Google's Maven Central
+        // mirror to avoid repo1 Maven Central rate-limit and transient fetch failures on CI.
+        it.systemProperty(
+          "robolectric.dependency.repo.url",
+          "https://maven-central.storage-download.googleapis.com/maven2/",
+        )
+        it.systemProperty("robolectric.dependency.repo.id", "google-maven-central-mirror")
+      }
+    }
+  }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
