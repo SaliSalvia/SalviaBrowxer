@@ -24,6 +24,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -149,7 +151,13 @@ class MediaDownloadManager(
             sessionCookieManager = sessionCookieManager,
             allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
         )
-        job.join()
+        val callerContext = currentCoroutineContext()
+        try {
+            job.join()
+        } finally {
+            // Stop the process-wide IO task when its owning Worker/JobService is cancelled.
+            if (!callerContext.isActive && job.isActive) job.cancelAndJoin()
+        }
         return repository.getDownloadById(downloadId)
     }
 
