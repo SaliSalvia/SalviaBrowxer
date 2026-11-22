@@ -858,7 +858,8 @@ class MediaSnifferEngine {
                             (typeof MediaStream !== 'undefined' && el.srcObject instanceof MediaStream);
                         if (!primary && !isLive) return;
                         const sourceReference = primary ||
-                            ('mediastream:' + window.location.href + '#element-' + elementIndex);
+                            ('mediastream:' + window.location.origin + window.location.pathname +
+                                '/__salvia_media_element_' + elementIndex);
 
                         list.push({
                             src: sourceReference,
