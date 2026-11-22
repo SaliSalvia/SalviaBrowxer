@@ -134,12 +134,18 @@ object WebViewConfigurator {
             settings.saveFormData = true
         }
 
-        val cookieManager = cookieManagerFor(webView)
-        cookieManager.setAcceptCookie(true)
-        val allowThirdParty = if (isIncognito) !blockThirdPartyCookiesIncognito else true
-        cookieManager.setAcceptThirdPartyCookies(webView, allowThirdParty)
+        val cookieManager = cookieManagerFor(webView, isIncognito, isolated)
+        if (cookieManager != null) {
+            cookieManager.setAcceptCookie(true)
+            val allowThirdParty = if (isIncognito) !blockThirdPartyCookiesIncognito else true
+            cookieManager.setAcceptThirdPartyCookies(webView, allowThirdParty)
+        }
         synchronized(lastAppliedConfigs) {
-            profileCookieManagers[webView] = cookieManager
+            if (cookieManager != null) {
+                profileCookieManagers[webView] = cookieManager
+            } else {
+                profileCookieManagers.remove(webView)
+            }
         }
         return isolated
     }
@@ -168,12 +174,14 @@ object WebViewConfigurator {
         }
     }
 
-    private fun cookieManagerFor(webView: WebView): CookieManager {
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-            return runCatching { WebViewCompat.getProfile(webView).cookieManager }
-                .getOrDefault(CookieManager.getInstance())
-        }
-        return CookieManager.getInstance()
+    private fun cookieManagerFor(
+        webView: WebView,
+        isIncognito: Boolean,
+        isolated: Boolean,
+    ): CookieManager? {
+        if (!isIncognito) return CookieManager.getInstance()
+        if (!isolated) return null
+        return runCatching { WebViewCompat.getProfile(webView).cookieManager }.getOrNull()
     }
 
     /**
