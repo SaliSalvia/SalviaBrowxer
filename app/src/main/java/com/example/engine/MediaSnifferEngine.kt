@@ -4,6 +4,8 @@ import android.net.Uri
 import android.util.Xml
 import android.webkit.CookieManager
 import com.example.ui.DetectedMedia
+import com.example.ui.MediaCaptureStatus
+import com.example.ui.MediaDetectionSource
 import com.example.ui.MediaQualityOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,13 +17,12 @@ import java.io.StringReader
 import java.util.concurrent.TimeUnit
 
 /**
- * Commercial-grade InShot-style Media Detection Engine:
- * - Intercepts network streams (.m3u8, .mpd, .mp4, .webm, .m4a, .mp3)
- * - Hooks JS fetch(), XMLHttpRequest, JSON-LD VideoObject, OpenGraph, and HTML5 <video>/<audio>
- *   to solve MSE `blob:` players seamlessly
- * - Parses HLS master playlists (including separate #EXT-X-MEDIA audio tracks) & MPEG-DASH (.mpd)
- * - Strictly excludes ad networks, VAST/VMAP pre-rolls, <=12s ad bumper clips, and .ts/.m4s chunks
- * - Prioritizes the primary visible video of the page ("ویدیو اصلی صفحه") at index 0
+ * Evidence-based browser media discovery.
+ *
+ * Direct HTTP(S) resources and supported HLS/DASH manifests can be offered as downloads.
+ * Browser-managed blob/MSE and live MediaStream references are retained as non-downloadable
+ * evidence unless a separate direct HTTP(S) source is independently observed. This engine
+ * does not reconstruct MSE buffers, extract DRM-protected content, or bypass access controls.
  */
 class MediaSnifferEngine {
 
@@ -42,10 +43,16 @@ class MediaSnifferEngine {
     }
 
     fun isCandidateMediaUrl(url: String): Boolean {
-        if (url.isBlank() || url.startsWith("blob:") || url.startsWith("data:")) return false
+        if (url.isBlank() || url.startsWith("blob:", ignoreCase = true) ||
+            url.startsWith("data:", ignoreCase = true)
+        ) {
+            return false
+        }
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        if (uri.scheme?.lowercase() !in setOf("http", "https") || uri.host.isNullOrBlank()) return false
         if (AdBlockerEngine.isAdOrPreRollMediaUrl(url)) return false
 
-        val path = runCatching { Uri.parse(url).path?.lowercase().orEmpty() }.getOrDefault("")
+        val path = uri.path?.lowercase().orEmpty()
         if (chunkSegmentExtensions.any { path.endsWith(it) }) return false
 
         val lower = url.lowercase()
@@ -76,6 +83,7 @@ class MediaSnifferEngine {
         val isDash = lower.contains(".mpd")
         val isAudio = audioExtensions.any { lower.contains(it) }
         val cleanTitle = sanitizeTitle(pageTitle, mediaUrl)
+        val platform = MediaPlatformDetector.detect(pageUrl, mediaUrl)
         val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(mediaUrl) }.getOrNull().orEmpty()
 
         if (isHls) {
@@ -88,6 +96,10 @@ class MediaSnifferEngine {
                     primaryUrl = mediaUrl,
                     priorityScore = 88,
                     isMainVideo = true,
+                    detectionSource = MediaDetectionSource.NETWORK_HOOK,
+                    captureStatus = MediaCaptureStatus.DOWNLOADABLE,
+                    confidenceScore = (74 + platform.confidenceBonus).coerceIn(0, 100),
+                    platformLabel = platform.label,
                     qualities = listOf(
                         MediaQualityOption(
                             label = "Auto Quality (HLS -> MP4)",
@@ -109,6 +121,10 @@ class MediaSnifferEngine {
                 height = topRes,
                 priorityScore = 100 + (topRes / 100),
                 isMainVideo = true,
+                detectionSource = MediaDetectionSource.NETWORK_HOOK,
+                captureStatus = MediaCaptureStatus.DOWNLOADABLE,
+                confidenceScore = (86 + platform.confidenceBonus).coerceIn(0, 100),
+                platformLabel = platform.label,
                 qualities = qualities,
             )
         }
@@ -125,6 +141,10 @@ class MediaSnifferEngine {
                     height = topRes,
                     priorityScore = 98 + (topRes / 100),
                     isMainVideo = true,
+                    detectionSource = MediaDetectionSource.NETWORK_HOOK,
+                    captureStatus = MediaCaptureStatus.DOWNLOADABLE,
+                    confidenceScore = (84 + platform.confidenceBonus).coerceIn(0, 100),
+                    platformLabel = platform.label,
                     qualities = qualities,
                 )
             }
@@ -162,6 +182,15 @@ class MediaSnifferEngine {
             priorityScore = if (isAudio) 40 else 85 + (guessedHeight / 100),
             isMainVideo = !isAudio,
             isAudioOnly = isAudio,
+            detectionSource = MediaDetectionSource.NETWORK_HOOK,
+            captureStatus = MediaCaptureStatus.DOWNLOADABLE,
+            confidenceScore = (
+                65 +
+                    (if (contentType.startsWith("video/") || contentType.startsWith("audio/")) 12 else 0) +
+                    (if (contentLength > 0L) 8 else 0) +
+                    platform.confidenceBonus
+                ).coerceIn(0, 100),
+            platformLabel = platform.label,
             qualities = listOf(
                 MediaQualityOption(
                     label = qualityLabel,
@@ -187,8 +216,11 @@ class MediaSnifferEngine {
         for (i in 0 until array.length()) {
             val obj = array.optJSONObject(i) ?: continue
             val src = obj.optString("src", "").trim()
-            if (src.isBlank() || src.startsWith("blob:") || src.startsWith("data:")) continue
-            if (AdBlockerEngine.isAdOrPreRollMediaUrl(src)) continue
+            if (src.isBlank() || src.startsWith("data:", ignoreCase = true)) continue
+
+            val isBlobReference = src.startsWith("blob:", ignoreCase = true)
+            if (!isBlobReference && !isHttpMediaUrl(src)) continue
+            if (!isBlobReference && AdBlockerEngine.isAdOrPreRollMediaUrl(src)) continue
 
             val duration = obj.optDouble("duration", 0.0)
             val width = obj.optInt("width", 0)
@@ -196,75 +228,88 @@ class MediaSnifferEngine {
             val domArea = obj.optLong("area", 0L)
             val isVisible = obj.optBoolean("visible", false)
             val isAudio = obj.optBoolean("isAudio", false)
+            val isLive = obj.optBoolean("isLive", false)
             val isAdClass = obj.optBoolean("isAdElement", false)
             val poster = obj.optString("poster", "")
             val titleHint = obj.optString("title", "").ifBlank { pageTitle }
+            val declaredSource = when (obj.optString("source", "").uppercase()) {
+                "HTML5_ELEMENT" -> MediaDetectionSource.HTML5_ELEMENT
+                "JSON_LD" -> MediaDetectionSource.JSON_LD
+                "OPEN_GRAPH" -> MediaDetectionSource.OPEN_GRAPH
+                else -> MediaDetectionSource.UNKNOWN
+            }
+            val detectionSource = if (isBlobReference) {
+                MediaDetectionSource.MSE_REFERENCE
+            } else {
+                declaredSource
+            }
 
             if (isAdClass) continue
-            if (!isAudio && duration > 0.0 && duration < MIN_VIDEO_DURATION_SECONDS) continue
+            if (!isAudio && !isLive && duration > 0.0 && duration < MIN_VIDEO_DURATION_SECONDS) continue
             if (!isAudio && domArea in 1L..14400L && !isVisible) continue
 
             val qualityList = mutableListOf<MediaQualityOption>()
-            val sourcesArr = obj.optJSONArray("sources")
-            if (sourcesArr != null) {
-                for (j in 0 until sourcesArr.length()) {
-                    val sObj = sourcesArr.optJSONObject(j) ?: continue
-                    val sUrl = sObj.optString("url", "").trim()
-                    if (sUrl.isBlank() || sUrl.startsWith("blob:") || AdBlockerEngine.isAdOrPreRollMediaUrl(sUrl)) {
-                        continue
+            if (!isLive) {
+                val sourcesArr = obj.optJSONArray("sources")
+                if (sourcesArr != null) {
+                    for (j in 0 until sourcesArr.length()) {
+                        val sObj = sourcesArr.optJSONObject(j) ?: continue
+                        val sUrl = sObj.optString("url", "").trim()
+                        if (!isHttpMediaUrl(sUrl) || AdBlockerEngine.isAdOrPreRollMediaUrl(sUrl)) continue
+
+                        val res = sObj.optInt("height", height)
+                        val sLabel = sObj.optString("label", "").ifBlank {
+                            if (res > 0) "${res}p" else "Original"
+                        }
+                        val isHls = sUrl.lowercase().contains(".m3u8")
+                        val isDash = sUrl.lowercase().contains(".mpd")
+                        val format = when {
+                            isHls -> "HLS"
+                            isDash -> "DASH"
+                            else -> inferFormat(sUrl, "")
+                        }
+                        qualityList.add(
+                            MediaQualityOption(
+                                label = "$sLabel ($format)",
+                                resolutionHeight = res,
+                                url = sUrl,
+                                format = format,
+                                mimeType = if (isAudio) "audio/mpeg" else "video/mp4",
+                                isHls = isHls,
+                                isDash = isDash,
+                            ),
+                        )
                     }
-                    val res = sObj.optInt("height", height)
-                    val sLabel = sObj.optString("label", "").ifBlank {
-                        if (res > 0) "${res}p" else "Original"
-                    }
-                    val isHls = sUrl.lowercase().contains(".m3u8")
-                    val isDash = sUrl.lowercase().contains(".mpd")
-                    val fmt = when {
+                }
+
+                if (!isBlobReference && qualityList.isEmpty()) {
+                    val isHls = src.lowercase().contains(".m3u8")
+                    val isDash = src.lowercase().contains(".mpd")
+                    val format = when {
                         isHls -> "HLS"
                         isDash -> "DASH"
-                        else -> inferFormat(sUrl, "")
+                        else -> inferFormat(src, "")
+                    }
+                    val resolvedHeight = if (height > 0) height else inferHeightFromUrl(src)
+                    val qualityLabel = when {
+                        isAudio -> "Audio ($format)"
+                        resolvedHeight >= 1080 -> "1080p Full HD ($format)"
+                        resolvedHeight >= 720 -> "720p HD ($format)"
+                        resolvedHeight > 0 -> "${resolvedHeight}p ($format)"
+                        else -> "Original ($format)"
                     }
                     qualityList.add(
                         MediaQualityOption(
-                            label = "$sLabel ($fmt)",
-                            resolutionHeight = res,
-                            url = sUrl,
-                            format = fmt,
-                            mimeType = if (isHls || isDash) "video/mp4" else "video/mp4",
+                            label = qualityLabel,
+                            resolutionHeight = resolvedHeight,
+                            url = src,
+                            format = format,
+                            mimeType = if (isAudio) "audio/mpeg" else "video/mp4",
                             isHls = isHls,
                             isDash = isDash,
                         ),
                     )
                 }
-            }
-
-            if (qualityList.isEmpty()) {
-                val isHls = src.lowercase().contains(".m3u8")
-                val isDash = src.lowercase().contains(".mpd")
-                val fmt = when {
-                    isHls -> "HLS"
-                    isDash -> "DASH"
-                    else -> inferFormat(src, "")
-                }
-                val h = if (height > 0) height else inferHeightFromUrl(src)
-                val qLabel = when {
-                    isAudio -> "Audio ($fmt)"
-                    h >= 1080 -> "1080p Full HD ($fmt)"
-                    h >= 720 -> "720p HD ($fmt)"
-                    h > 0 -> "${h}p ($fmt)"
-                    else -> "Original ($fmt)"
-                }
-                qualityList.add(
-                    MediaQualityOption(
-                        label = qLabel,
-                        resolutionHeight = h,
-                        url = src,
-                        format = fmt,
-                        mimeType = if (isAudio) "audio/mpeg" else "video/mp4",
-                        isHls = isHls,
-                        isDash = isDash,
-                    ),
-                )
             }
 
             var score = 50
@@ -273,6 +318,19 @@ class MediaSnifferEngine {
             if (duration >= 60.0) score += 40 else if (duration >= 20.0) score += 20
             if (height >= 720) score += 25
             if (isAudio) score -= 40
+            if (qualityList.isEmpty()) score = 0
+
+            val platform = MediaPlatformDetector.detect(pageUrl, src)
+            val confidence = calculateDomConfidence(
+                source = detectionSource,
+                visible = isVisible,
+                domAreaPx = domArea,
+                durationSeconds = duration,
+                width = width,
+                height = height,
+                qualityCount = qualityList.size,
+                platformBonus = platform.confidenceBonus,
+            )
 
             results.add(
                 DetectedMedia(
@@ -288,6 +346,15 @@ class MediaSnifferEngine {
                     priorityScore = score,
                     isAudioOnly = isAudio,
                     qualities = qualityList.distinctBy { it.url }.sortedByDescending { it.resolutionHeight },
+                    detectionSource = detectionSource,
+                    captureStatus = when {
+                        isLive -> MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY
+                        isBlobReference && qualityList.isEmpty() ->
+                            MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY
+                        else -> MediaCaptureStatus.DOWNLOADABLE
+                    },
+                    confidenceScore = confidence,
+                    platformLabel = platform.label,
                 ),
             )
         }
@@ -308,6 +375,21 @@ class MediaSnifferEngine {
             val mergedQualities = (current.qualities + incoming.qualities)
                 .distinctBy { "${it.url}|${it.audioUrl}" }
                 .sortedByDescending { it.resolutionHeight }
+            val strongerEvidence = if (
+                evidenceStrength(incoming.detectionSource) > evidenceStrength(current.detectionSource)
+            ) incoming else current
+            val mergedCaptureStatus = when {
+                incoming.captureStatus == MediaCaptureStatus.DOWNLOADABLE && incoming.qualities.isNotEmpty() ->
+                    MediaCaptureStatus.DOWNLOADABLE
+                current.captureStatus == MediaCaptureStatus.DOWNLOADABLE && current.qualities.isNotEmpty() ->
+                    MediaCaptureStatus.DOWNLOADABLE
+                incoming.captureStatus == MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY ->
+                    MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY
+                incoming.captureStatus == MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY ||
+                    current.captureStatus == MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY ->
+                    MediaCaptureStatus.BLOB_OR_MSE_REFERENCE_ONLY
+                else -> MediaCaptureStatus.DOWNLOADABLE
+            }
             map[incoming.id] = current.copy(
                 title = if (incoming.title.length > current.title.length) incoming.title else current.title,
                 thumbnailUrl = current.thumbnailUrl.ifBlank { incoming.thumbnailUrl },
@@ -317,6 +399,10 @@ class MediaSnifferEngine {
                 domAreaPx = maxOf(current.domAreaPx, incoming.domAreaPx),
                 priorityScore = maxOf(current.priorityScore, incoming.priorityScore),
                 qualities = mergedQualities,
+                detectionSource = strongerEvidence.detectionSource,
+                captureStatus = mergedCaptureStatus,
+                confidenceScore = maxOf(current.confidenceScore, incoming.confidenceScore),
+                platformLabel = current.platformLabel.takeIf { it != "Web" } ?: incoming.platformLabel,
             )
         }
         return prioritizeMedia(map.values.toList())
@@ -610,6 +696,46 @@ class MediaSnifferEngine {
         return match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
     }
 
+    private fun isHttpMediaUrl(value: String): Boolean {
+        val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return false
+        return uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()
+    }
+
+    private fun calculateDomConfidence(
+        source: MediaDetectionSource,
+        visible: Boolean,
+        domAreaPx: Long,
+        durationSeconds: Double,
+        width: Int,
+        height: Int,
+        qualityCount: Int,
+        platformBonus: Int,
+    ): Int {
+        var confidence = when (source) {
+            MediaDetectionSource.HTML5_ELEMENT -> 70
+            MediaDetectionSource.NETWORK_HOOK -> 68
+            MediaDetectionSource.JSON_LD -> 60
+            MediaDetectionSource.OPEN_GRAPH -> 48
+            MediaDetectionSource.MSE_REFERENCE -> 40
+            MediaDetectionSource.UNKNOWN -> 45
+        }
+        if (visible) confidence += 10
+        if (domAreaPx >= 40_000L) confidence += 8
+        if (durationSeconds >= 20.0) confidence += 6
+        if (width >= 640 && height >= 360) confidence += 6
+        if (qualityCount > 1) confidence += 4
+        return (confidence + platformBonus).coerceIn(0, 100)
+    }
+
+    private fun evidenceStrength(source: MediaDetectionSource): Int = when (source) {
+        MediaDetectionSource.HTML5_ELEMENT -> 5
+        MediaDetectionSource.NETWORK_HOOK -> 4
+        MediaDetectionSource.JSON_LD -> 3
+        MediaDetectionSource.OPEN_GRAPH -> 2
+        MediaDetectionSource.MSE_REFERENCE -> 1
+        MediaDetectionSource.UNKNOWN -> 0
+    }
+
     private fun sanitizeTitle(pageTitle: String, fallbackUrl: String): String {
         val cleaned = pageTitle.trim()
         if (cleaned.isNotBlank() && cleaned != "about:blank") return cleaned.take(72)
@@ -618,8 +744,8 @@ class MediaSnifferEngine {
     }
 
     /**
-     * Early JS Hook injected at document_start to capture hidden stream/video URLs inside
-     * fetch() and XMLHttpRequest JSON responses (solving blob: MediaSource video players!).
+     * Early hook that reports direct URLs seen in fetch/XHR requests and response text.
+     * It cannot expose browser-managed blob/MSE buffers or reconstruct MediaSource segments.
      */
     fun earlyMediaHookScript(): String = """
         (function() {
@@ -727,10 +853,14 @@ class MediaSnifferEngine {
 
                         const primary = (sources[0] && sources[0].url) || '';
                         if (!primary) return;
+                        const isLive = el.duration === Infinity ||
+                            (typeof MediaStream !== 'undefined' && el.srcObject instanceof MediaStream);
 
                         list.push({
                             src: primary,
                             sources: sources,
+                            source: 'HTML5_ELEMENT',
+                            isLive: isLive,
                             duration: isFinite(el.duration) ? el.duration : 0,
                             width: el.videoWidth || Math.round(rect.width),
                             height: el.videoHeight || Math.round(rect.height),
@@ -753,6 +883,7 @@ class MediaSnifferEngine {
                                     list.push({
                                         src: item.contentUrl,
                                         sources: [{ url: item.contentUrl, height: 720, label: 'VideoObject' }],
+                                        source: 'JSON_LD',
                                         duration: 0,
                                         width: 1280,
                                         height: 720,
@@ -775,6 +906,7 @@ class MediaSnifferEngine {
                         list.push({
                             src: ogVideo.content,
                             sources: [{ url: ogVideo.content, height: 720, label: 'OG Video' }],
+                            source: 'OPEN_GRAPH',
                             duration: 0,
                             width: 1280,
                             height: 720,
