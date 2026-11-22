@@ -32,6 +32,7 @@ import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -66,6 +67,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     @Volatile
     private var lastDevToolsSyncMs: Long = 0L
     private var devToolsTrailingSyncJob: kotlinx.coroutines.Job? = null
+    private var incognitoSessionGeneration: Long = 0L
+    private var incognitoCleanupJob: kotlinx.coroutines.Job? = null
 
     private val maxLiveWebViews: Int = runCatching {
         val am = application.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -237,6 +240,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // --- Tab Management ---
 
     fun createNewTab(isIncognito: Boolean = false, initialUrl: String? = null) {
+        if (isIncognito) {
+            incognitoSessionGeneration += 1L
+            incognitoCleanupJob?.cancel()
+            incognitoCleanupJob = null
+        }
         val resolved = initialUrl?.let { normalizeInputToUrl(it) }
         val strings = s()
         val newTab = BrowserTab(
@@ -324,21 +332,37 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
      * the default browsing profile.
      */
     fun onIncognitoSessionClosed() {
-        viewModelScope.launch(Dispatchers.IO) {
-            // Stop private transfers and erase their Room metadata before deleting the profile.
-            downloadManager.clearIncognitoDownloads()
-            val profileCleanupSucceeded = WebViewConfigurator.clearIncognitoAndVolatileData(
-                getApplication(),
-                clearCookiesToo = false,
-            )
-            withContext(Dispatchers.Main) {
-                val cleanupMessage = when {
-                    profileCleanupSucceeded -> com.example.R.string.incognito_profile_cleared
-                    !WebViewConfigurator.supportsIsolatedIncognitoProfiles() -> com.example.R.string.incognito_isolation_unavailable
-                    else -> com.example.R.string.incognito_cleanup_failed
-                }
-                _statusToast.value = getApplication<Application>().getString(cleanupMessage)
+        val requestedGeneration = incognitoSessionGeneration
+        incognitoCleanupJob?.cancel()
+        incognitoCleanupJob = viewModelScope.launch {
+            // A short grace period prevents a close/open gesture from deleting the new session.
+            delay(750L)
+            if (requestedGeneration != incognitoSessionGeneration || _tabs.value.any { it.isIncognito }) {
+                return@launch
             }
+
+            // Stop private transfers and remove their Room metadata before deleting the profile.
+            withContext(Dispatchers.IO) {
+                downloadManager.clearIncognitoDownloads()
+            }
+
+            // ProfileStore is a UI-thread API. Revalidate after returning to Main before deletion.
+            val profileCleanupSucceeded = withContext(Dispatchers.Main) {
+                if (requestedGeneration != incognitoSessionGeneration || _tabs.value.any { it.isIncognito }) {
+                    return@withContext null
+                }
+                WebViewConfigurator.clearIncognitoAndVolatileData(
+                    getApplication(),
+                    clearCookiesToo = false,
+                )
+            } ?: return@launch
+
+            val cleanupMessage = when {
+                profileCleanupSucceeded -> com.example.R.string.incognito_profile_cleared
+                !WebViewConfigurator.supportsIsolatedIncognitoProfiles() -> com.example.R.string.incognito_isolation_unavailable
+                else -> com.example.R.string.incognito_cleanup_failed
+            }
+            _statusToast.value = getApplication<Application>().getString(cleanupMessage)
         }
     }
 
