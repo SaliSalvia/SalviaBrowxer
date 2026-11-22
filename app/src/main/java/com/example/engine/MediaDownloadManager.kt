@@ -340,7 +340,7 @@ class MediaDownloadManager(
 
                             executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                                 if (resp.code != 206) {
-                                    throw IOException("Range request was not honored (HTTP \${resp.code})")
+                                    throw IOException("Range request was not honored (HTTP ${resp.code})")
                                 }
                                 val rangeMatch = Regex("^bytes\\\\s+(\\\\d+)-(\\\\d+)/(\\\\d+)$", RegexOption.IGNORE_CASE)
                                     .matchEntire(resp.header("Content-Range").orEmpty())
@@ -349,8 +349,6 @@ class MediaDownloadManager(
                                     rangeMatch.groupValues[2].toLong() != end ||
                                     rangeMatch.groupValues[3].toLong() != totalBytes
                                 ) throw IOException("Unexpected Content-Range")
-                                    throw IllegalStateException("Range HTTP ${resp.code}")
-                                }
                                 val stream = resp.body?.byteStream() ?: throw IllegalStateException("Empty body")
                                 var receivedBytes = 0L
                                 FileOutputStream(partFile, alreadyHave > 0L).use { out ->
@@ -388,7 +386,7 @@ class MediaDownloadManager(
                                 }
                                 val expectedBytes = end - reqStart + 1L
                                 if (receivedBytes != expectedBytes) {
-                                    throw IOException("Incomplete range segment: \${receivedBytes} of \${expectedBytes} bytes")
+                                    throw IOException("Incomplete range segment: ${receivedBytes} of ${expectedBytes} bytes")
                                 }
                             }
                         }
@@ -399,9 +397,12 @@ class MediaDownloadManager(
 
                 val assembledBytes = partFiles.sumOf { if (it.exists()) it.length() else 0L }
                 if (assembledBytes != totalBytes) {
-                    throw IOException("Incomplete download: \${assembledBytes} of \${totalBytes} bytes")
+                    throw IOException("Incomplete download: ${assembledBytes} of ${totalBytes} bytes")
                 }
                 // Merge chunks into final destination
+                if (resolvedTotal > 0L && downloaded != resolvedTotal) {
+                    throw IOException("Incomplete download: ${downloaded} of ${resolvedTotal} bytes")
+                }
                 val (destStream, destUri) = openOutputDestination(fileName, mimeType)
                 destStream.use { out ->
                     val buf = ByteArray(32 * 1024)
@@ -434,14 +435,11 @@ class MediaDownloadManager(
 
             executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (!resp.isSuccessful || (existingLen > 0L && resp.code != 206)) {
-                    throw IOException("Resume range was not honored (HTTP \${resp.code})")
+                    throw IOException("Resume range was not honored (HTTP ${resp.code})")
                 }
                 if (existingLen > 0L &&
-                    !resp.header("Content-Range").orEmpty().startsWith("bytes \${existingLen}-", ignoreCase = true)
+                    !resp.header("Content-Range").orEmpty().startsWith("bytes ${existingLen}-", ignoreCase = true)
                 ) throw IOException("Unexpected resume Content-Range")
-                    repository.updateDownloadStatus(downloadId, "FAILED")
-                    return
-                }
                 val body = resp.body ?: run {
                     repository.updateDownloadStatus(downloadId, "FAILED")
                     return
@@ -484,9 +482,6 @@ class MediaDownloadManager(
                     FileInputStream(singleFile).use { it.copyTo(out) }
                 }
                 tempDir.deleteRecursively()
-                if (resolvedTotal > 0L && downloaded != resolvedTotal) {
-                    throw IOException("Incomplete download: \${downloaded} of \${resolvedTotal} bytes")
-                }
                 repository.updateDownloadProgress(downloadId, downloaded, downloaded, 0L, "COMPLETED", destUri, supportsRanges)
             }
         } catch (_: CancellationException) {
