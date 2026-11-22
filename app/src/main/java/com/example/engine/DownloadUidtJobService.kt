@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
@@ -58,18 +59,34 @@ class DownloadUidtJobService : JobService() {
                     return@launch
                 }
 
-                val userAgent = WebViewConfigurator.resolveUserAgent(
-                    applicationContext,
-                    desktopMode = download.isDesktopMode,
-                )
-                withContext(Dispatchers.IO) {
-                    DownloadRuntime.manager(applicationContext).executePersistedDownload(
-                        downloadId = downloadId,
-                        userAgent = userAgent,
-                        sessionCookieManager = CookieManager.getInstance(),
-                        allowGlobalCookieFallback = true,
-                        cancelTransferWhenCallerCancelled = false,
+                val progressJob = serviceScope.launch {
+                    repository.downloads.collect { rows ->
+                        rows.firstOrNull { it.id == downloadId }?.let { latest ->
+                            setNotification(
+                                params,
+                                DownloadNotificationHelper.notificationId(downloadId),
+                                DownloadNotificationHelper.build(applicationContext, latest),
+                                JOB_END_NOTIFICATION_POLICY_REMOVE,
+                            )
+                        }
+                    }
+                }
+                try {
+                    val userAgent = WebViewConfigurator.resolveUserAgent(
+                        applicationContext,
+                        desktopMode = download.isDesktopMode,
                     )
+                    withContext(Dispatchers.IO) {
+                        DownloadRuntime.manager(applicationContext).executePersistedDownload(
+                            downloadId = downloadId,
+                            userAgent = userAgent,
+                            sessionCookieManager = CookieManager.getInstance(),
+                            allowGlobalCookieFallback = true,
+                            cancelTransferWhenCallerCancelled = false,
+                        )
+                    }
+                } finally {
+                    progressJob.cancel()
                 }
                 jobFinished(params, false)
             } catch (cancelled: CancellationException) {
