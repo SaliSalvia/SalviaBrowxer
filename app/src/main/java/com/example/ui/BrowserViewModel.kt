@@ -1215,10 +1215,19 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     """.trimIndent()
 
     override fun onCleared() {
-        // Release all live/hibernated WebViews before deleting the private profile.
+        // Release all live/hibernated WebViews first. Private download tasks are
+        // stopped in the process-wide runtime before their profile is deleted.
         webViews.keys.toList().forEach(::destroyWebView)
-        if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
-            WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
+        DownloadRuntime.launchMaintenance {
+            downloadCoordinator.clearIncognitoDownloads()
+            if (WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
+                withContext(Dispatchers.Main.immediate) {
+                    WebViewConfigurator.clearIncognitoAndVolatileData(
+                        getApplication(),
+                        clearCookiesToo = false,
+                    )
+                }
+            }
         }
 
         val remainingAds = pendingAdsDelta.getAndSet(0L)
