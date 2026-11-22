@@ -22,7 +22,11 @@ data class MediaQualityOption(
     val bandwidthBps: Long = 0L,
     val isHls: Boolean = false,
     val isDash: Boolean = false,
-)
+) {
+    val isVerifiedDownloadSource: Boolean
+        get() = MediaSourceUrlPolicy.isVerifiedHttpUrl(url) &&
+            (audioUrl.isBlank() || MediaSourceUrlPolicy.isVerifiedHttpUrl(audioUrl))
+}
 
 enum class MediaDetectionSource {
     NETWORK_HOOK,
@@ -64,9 +68,7 @@ data class DetectedMedia(
         get() = if (captureStatus != MediaCaptureStatus.DOWNLOADABLE) {
             emptyList()
         } else {
-            qualities.filter { quality ->
-                MediaSourceUrlPolicy.isVerifiedHttpUrl(quality.url)
-            }
+            qualities.filter { quality -> quality.isVerifiedDownloadSource }
         }
 
     val isDownloadable: Boolean
