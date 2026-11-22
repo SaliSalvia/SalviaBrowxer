@@ -109,6 +109,24 @@ class MediaDownloadManager(
         )
     }
 
+    fun executePersistedDownloadAsync(
+        downloadId: Long,
+        userAgent: String,
+        sessionCookieManager: CookieManager? = null,
+        allowGlobalCookieFallback: Boolean = true,
+    ): Job = scope.launch(Dispatchers.IO) {
+        executePersistedDownload(
+            downloadId = downloadId,
+            userAgent = userAgent,
+            sessionCookieManager = sessionCookieManager,
+            allowGlobalCookieFallback = allowGlobalCookieFallback,
+        )
+    }
+
+    suspend fun markDownloadQueued(downloadId: Long) {
+        repository.updateDownloadStatus(downloadId, "QUEUED")
+    }
+
     suspend fun executePersistedDownload(
         downloadId: Long,
         userAgent: String,
