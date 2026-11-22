@@ -1,6 +1,8 @@
 package com.example.engine
 
 import com.example.ui.DetectedMedia
+import com.example.ui.MediaCaptureStatus
+import com.example.ui.MediaDetectionSource
 
 /**
  * Conservative, evidence-based ordering for media candidates.
@@ -16,7 +18,8 @@ internal object MediaCandidateRanker {
         SECONDARY(1),
         SUGGESTED(2),
         AUDIO(3),
-        AD(4),
+        REFERENCE_ONLY(4),
+        AD(5),
     }
 
     internal data class RankedCandidate(
@@ -60,7 +63,7 @@ internal object MediaCandidateRanker {
             RankedCandidate(
                 media = media,
                 role = classify(media),
-                score = media.priorityScore,
+                score = calculateScore(media),
             )
         }.sortedWith(
             compareBy<RankedCandidate> { it.role.order }
@@ -76,24 +79,59 @@ internal object MediaCandidateRanker {
         return rankCandidates(items).mapIndexed { index, ranked ->
             ranked.media.copy(
                 isMainVideo = index == 0 &&
+                    ranked.media.isDownloadable &&
                     !ranked.media.isAudioOnly &&
-                    ranked.role != Role.AD,
+                    ranked.role != Role.AD &&
+                    ranked.role != Role.REFERENCE_ONLY,
             )
         }
     }
 
     private fun classify(media: DetectedMedia): Role {
         if (looksLikeAd(media)) return Role.AD
+        if (media.captureStatus != MediaCaptureStatus.DOWNLOADABLE) return Role.REFERENCE_ONLY
         if (media.isAudioOnly) return Role.AUDIO
         if (looksLikeSuggested(media)) return Role.SUGGESTED
 
-        val hasMainEvidence = media.isMainVideo ||
-            media.priorityScore >= 100 ||
-            media.domAreaPx >= 40_000L ||
-            media.height >= 480 ||
-            media.qualities.size > 1
+        val strongDomEvidence = media.detectionSource == MediaDetectionSource.HTML5_ELEMENT &&
+            (media.domAreaPx >= 40_000L ||
+                media.durationSeconds >= 20.0 ||
+                (media.width >= 640 && media.height >= 360))
+        val structuredMetadataEvidence = media.detectionSource in setOf(
+            MediaDetectionSource.JSON_LD,
+            MediaDetectionSource.OPEN_GRAPH,
+        )
+        val manifestEvidence = media.qualities.size > 1 &&
+            media.qualities.any { it.isHls || it.isDash }
+        val legacyEvidence = media.detectionSource == MediaDetectionSource.UNKNOWN &&
+            media.isMainVideo
 
-        return if (hasMainEvidence) Role.MAIN else Role.SECONDARY
+        return if (
+            strongDomEvidence ||
+            structuredMetadataEvidence ||
+            manifestEvidence ||
+            legacyEvidence
+        ) {
+            Role.MAIN
+        } else {
+            Role.SECONDARY
+        }
+    }
+
+    private fun calculateScore(media: DetectedMedia): Int {
+        val domAreaBonus = (media.domAreaPx / 10_000L).coerceIn(0L, 30L).toInt()
+        val durationBonus = when {
+            media.durationSeconds >= 180.0 -> 24
+            media.durationSeconds >= 60.0 -> 18
+            media.durationSeconds >= 20.0 -> 10
+            media.durationSeconds >= 12.0 -> 4
+            else -> 0
+        }
+        val resolutionBonus = (media.height / 120).coerceIn(0, 18)
+        val qualityBonus = (media.qualities.size.coerceAtMost(6) - 1).coerceAtLeast(0) * 4
+        val confidenceBonus = (media.confidenceScore.coerceIn(0, 100) / 10)
+        return media.priorityScore + domAreaBonus + durationBonus +
+            resolutionBonus + qualityBonus + confidenceBonus
     }
 
     private fun looksLikeAd(media: DetectedMedia): Boolean {
