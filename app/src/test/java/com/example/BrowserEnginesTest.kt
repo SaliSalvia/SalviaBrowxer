@@ -334,6 +334,7 @@ class BrowserEnginesTest {
 
         assertEquals(MediaCaptureStatus.LIVE_MEDIA_STREAM_REFERENCE_ONLY, result.captureStatus)
         assertTrue(result.primaryUrl.startsWith("mediastream:"))
+        assertEquals(result.primaryUrl, result.id)
         assertTrue(result.qualities.isEmpty())
         assertFalse(result.isDownloadable)
     }
