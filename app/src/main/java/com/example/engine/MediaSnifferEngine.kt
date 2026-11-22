@@ -694,7 +694,22 @@ class MediaSnifferEngine {
     private fun resolveRelativeUrl(base: Uri, relative: String): String {
         if (relative.startsWith("http://") || relative.startsWith("https://")) return relative
         return runCatching {
-            java.net.URI(base.toString()).resolve(relative).normalize().toString()
+            val resolved = java.net.URI(base.toString())
+                .resolve(java.net.URI(relative))
+                .normalize()
+            val authority = resolved.rawAuthority ?: return@runCatching resolved.toString()
+            // java.net.URI.normalize() intentionally preserves leading parent segments on
+            // absolute paths (for example /../video.mp4). Clamp those at the origin root.
+            val normalizedPath = resolved.rawPath.orEmpty()
+                .replace(Regex("^(?:/\\.\\./)+"), "/")
+            buildString {
+                append(resolved.scheme)
+                append("://")
+                append(authority)
+                append(normalizedPath)
+                resolved.rawQuery?.let { append('?').append(it) }
+                resolved.rawFragment?.let { append('#').append(it) }
+            }
         }.getOrDefault(relative)
     }
 
