@@ -452,37 +452,36 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 محدودیت شناخته‌شده:
 - جداسازی واقعی وابسته به نسخه System WebView است. دستگاه فاقد Multi-Profile نباید به‌عنوان دارای Incognito ایزوله معرفی شود. مسیر native cookie در چنین حالتی fail-closed است.
 
-### 13.3 مرحله 3 — Persistent Download Engine (PR #3)
+### 13.3 مرحله 3 — Persistent Download Engine (Integrated)
 
-- Branch: `integration/persistent-download-engine-v2`
-- PR: https://github.com/SaliSalvia/SalviaBrowxer/pull/3
-- وضعیت: Open / Draft؛ در انتظار CI و review
-- Room schema در این شاخه: نسخه 4
+**وضعیت به‌روز: 2026-11-23**
+
+- پیاده‌سازی اصلی Persistent Download Engine اکنون در `main` وجود دارد.
+- مسیر ادغام کد: PR #5 با merge commit `4bb013c0e042c8e8afedb9ca9d629e77d99e5727`؛ این ادغام شامل `DownloadCoordinator`، `DownloadRuntime`، WorkManager، UIDT JobService و تغییرات Room v4 است.
+- PR #6 با merge commit `da8bbfb534cca7df361f550cbfa25c9c30fad10c`، اصلاحات CI و fixture تست Media Candidate را تکمیل کرد.
+- PR #3 با عنوان `feat(download): add persistent Room-first download execution` هنوز Open/Draft و به‌علت واگرایی شاخه غیرقابل‌ادغام است؛ محتوای اصلی آن در `main` superseded شده و نباید دوباره merge شود.
+- Room schema فعلی: نسخه 4؛ مسیر migration پشتیبانی‌شده: v2 → v3 → v4.
 - WorkManager: 2.12.0
 - API 24–33: WorkManager foreground worker
 - API 34+: User-Initiated Data Transfer JobScheduler
-- `DownloadRuntime`: اجرای مستقل از `BrowserViewModel.viewModelScope`
+- `DownloadRuntime`: اجرای عملیات پایدار دانلود خارج از lifecycle مربوط به `BrowserViewModel.viewModelScope`
 - `DownloadCoordinator`: مسیر واحد enqueue، pause، resume، cancel، recovery و notification action
-- Room قبل از schedule شدن، DownloadTask را ثبت می‌کند
-- Job execution بر اساس Download ID idempotent است
-- `isDesktopMode` برای بازسازی همان User-Agent در recovery ذخیره می‌شود
-- notification progress از Room خوانده می‌شود و Pause/Cancel action دارد
-- System interruption از user cancellation جدا شده و staging file برای Resume حفظ می‌شود
-- دانلودهای Private در WorkManager/JobScheduler ذخیره نمی‌شوند و به CookieManager زنده همان پروفایل متصل می‌مانند
-- MainActivity در شروع، recovery صف‌های عادی را فراخوانی می‌کند
+- Room پیش از schedule شدن، DownloadTask را ثبت می‌کند؛ اجرای Job بر اساس Download ID idempotent است.
+- `isDesktopMode` برای بازسازی User-Agent اصلی در recovery ذخیره می‌شود.
+- notification progress از Room خوانده می‌شود و Pause/Cancel action دارد.
+- System interruption از user cancellation جدا شده و staging file برای Resume حفظ می‌شود.
+- دانلودهای Private در WorkManager/JobScheduler ذخیره نمی‌شوند و به CookieManager زنده همان پروفایل متصل می‌مانند.
+- MainActivity در شروع، recovery صف‌های عادی را فراخوانی می‌کند.
 
 مهاجرت داده:
-- Room v3 → v4: افزودن `DownloadEntity.isDesktopMode` با migration افزایشی
+- Room v2 → v3: افزودن `DownloadEntity.isIncognito` با migration افزایشی.
+- Room v3 → v4: افزودن `DownloadEntity.isDesktopMode` با migration افزایشی.
+- نسخه اولیه دیتابیس در تاریخچه مخزن v2 است؛ مسیر migration از v2 به نسخه فعلی صریح است. destructive fallback نباید داده کاربر را silently حذف کند.
 
-تست افزوده:
-- `DownloadSchedulerPolicyTest`: انتخاب backend بر اساس API level، پایداری شناسه‌ها و رد شناسه نامعتبر
-
-گیت‌های لازم پیش از Merge:
-1. Unit Tests و Debug/Release build روی commit نهایی PR سبز باشند.
-2. Room migration v3 → v4 بدون حذف داده موجود تأیید شود.
-3. Resume/Cancel/notification actions با scheduler lifecycle بررسی شوند.
-4. CI سبز به‌تنهایی به‌عنوان device-level proof معرفی نشود؛ تست واقعی روی API 24–33 و API 34+ همچنان لازم است.
-5. PR تا پایان این گیت‌ها Draft بماند.
+تست و CI:
+- تست سیاست scheduler برای API 24–33 و API 34+، recovery در startup، شناسه‌های پایدار و ورودی نامعتبر در مجموعه تست نگه داشته می‌شود.
+- CI روی `main`، commit `da8bbfb534cca7df361f550cbfa25c9c30fad10c`، در Run `45076420155` با موفقیت Unit Tests، Debug APK، Signed Release APK، artifact verification و upload را گذرانده است.
+- سبز بودن CI جایگزین تست واقعی روی API 24–33 و API 34+ برای process-death recovery، network handoff، notification actions و UIDT نیست.
 
 ### 13.4 مرحله 1 — Baseline & Core Preservation
 
