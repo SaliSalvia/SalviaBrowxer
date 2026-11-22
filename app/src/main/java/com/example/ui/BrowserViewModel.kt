@@ -26,7 +26,8 @@ import com.example.engine.AdBlockerEngine
 import com.example.engine.BlockCategory
 import com.example.engine.BlockDecision
 import com.example.engine.ExtensionEngine
-import com.example.engine.MediaDownloadManager
+import com.example.engine.DownloadCoordinator
+import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
@@ -53,7 +54,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val repository = BrowserRepository(db)
     private val prefsRepository = PreferencesRepository(application)
     private val mediaSniffer = MediaSnifferEngine()
-    private val downloadManager = MediaDownloadManager(application, repository, viewModelScope)
+    private val downloadManager = DownloadRuntime.manager(application)
+    private val downloadCoordinator = DownloadCoordinator(application)
 
     private val webViews = ConcurrentHashMap<String, WebView>()
     private val savedTabStates = ConcurrentHashMap<String, Bundle>()
@@ -118,7 +120,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             WebViewConfigurator.clearIncognitoAndVolatileData(application, clearCookiesToo = false)
         }
         viewModelScope.launch(Dispatchers.IO) {
-            downloadManager.clearIncognitoDownloads()
+            downloadCoordinator.clearIncognitoDownloads()
             repository.ensureSeeded()
         }
     }
@@ -344,7 +346,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
             // Stop private transfers and remove their Room metadata before deleting the profile.
             withContext(Dispatchers.IO) {
-                downloadManager.clearIncognitoDownloads()
+                downloadCoordinator.clearIncognitoDownloads()
             }
 
             // ProfileStore is a UI-thread API. Revalidate after returning to Main before deletion.
@@ -722,15 +724,26 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun downloadMedia(fileName: String, quality: MediaQualityOption, sourcePageUrl: String) {
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
-        downloadManager.startDownload(
-            fileName = fileName,
-            quality = quality,
-            sourcePageUrl = sourcePageUrl,
-            userAgent = ua,
-            sessionCookieManager = cookieManagerForTab(tab),
-            allowGlobalCookieFallback = !tab.isIncognito,
-            isIncognito = tab.isIncognito,
-        )
+        val sessionCookieManager = cookieManagerForTab(tab)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                downloadCoordinator.enqueue(
+                    fileName = fileName,
+                    quality = quality,
+                    sourcePageUrl = sourcePageUrl,
+                    userAgent = ua,
+                    sessionCookieManager = sessionCookieManager,
+                    isIncognito = tab.isIncognito,
+                    isDesktopMode = tab.isDesktopMode,
+                )
+            }.onFailure {
+                withContext(Dispatchers.Main) {
+                    _statusToast.value = getApplication<Application>().getString(
+                        com.example.R.string.download_schedule_failed,
+                    )
+                }
+            }
+        }
         _statusToast.value = String.format(s().toastDownloadStartedFormat, fileName)
     }
 
@@ -749,20 +762,33 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isHls = lower.contains(".m3u8"),
             isDash = lower.contains(".mpd"),
         )
-        downloadManager.startDownload(
-            fileName = guessedName,
-            quality = opt,
-            sourcePageUrl = tab.url,
-            userAgent = ua,
-            sessionCookieManager = cookieManagerForTab(tab),
-            allowGlobalCookieFallback = !tab.isIncognito,
-            isIncognito = tab.isIncognito,
-        )
+        val sessionCookieManager = cookieManagerForTab(tab)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                downloadCoordinator.enqueue(
+                    fileName = guessedName,
+                    quality = opt,
+                    sourcePageUrl = tab.url,
+                    userAgent = ua,
+                    sessionCookieManager = sessionCookieManager,
+                    isIncognito = tab.isIncognito,
+                    isDesktopMode = tab.isDesktopMode,
+                )
+            }.onFailure {
+                withContext(Dispatchers.Main) {
+                    _statusToast.value = getApplication<Application>().getString(
+                        com.example.R.string.download_schedule_failed,
+                    )
+                }
+            }
+        }
         _statusToast.value = String.format(strings.toastDownloadingFileFormat, guessedName)
     }
 
     fun pauseDownload(download: DownloadEntity) {
-        downloadManager.pauseDownload(download)
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadCoordinator.pause(download)
+        }
     }
 
     fun resumeDownload(download: DownloadEntity) {
@@ -771,14 +797,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         } else {
             getCurrentTab()
         }
-        if (sessionTab == null) {
+        if (download.isIncognito && sessionTab == null) {
             _statusToast.value = getApplication<Application>().getString(
                 com.example.R.string.incognito_isolation_unavailable,
             )
             return
         }
-        val ua = WebViewConfigurator.resolveUserAgent(getApplication(), sessionTab.isDesktopMode)
-        val sessionCookieManager = if (download.isIncognito) {
+        val ua = WebViewConfigurator.resolveUserAgent(
+            getApplication(),
+            desktopMode = download.isDesktopMode,
+        )
+        val sessionCookieManager = if (download.isIncognito && sessionTab != null) {
             cookieManagerForTab(sessionTab)
         } else {
             CookieManager.getInstance()
@@ -789,16 +818,19 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             )
             return
         }
-        downloadManager.resumeDownload(
-            download = download,
-            userAgent = ua,
-            sessionCookieManager = sessionCookieManager,
-            allowGlobalCookieFallback = !download.isIncognito,
-        )
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadCoordinator.resume(
+                download = download,
+                privateCookieManager = sessionCookieManager,
+                privateUserAgent = ua,
+            )
+        }
     }
 
     fun cancelDownload(download: DownloadEntity) {
-        downloadManager.cancelDownload(download)
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadCoordinator.cancel(download)
+        }
     }
 
     fun isHostWhitelisted(host: String?): Boolean =
@@ -828,6 +860,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun clearFinishedDownloads() {
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearFinishedDownloads()
+        }
+    }
+
+    fun recoverPendingDownloads() {
+        viewModelScope.launch(Dispatchers.IO) {
+            downloadCoordinator.recoverPendingDownloads()
         }
     }
 
