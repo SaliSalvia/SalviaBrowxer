@@ -400,9 +400,6 @@ class MediaDownloadManager(
                     throw IOException("Incomplete download: ${assembledBytes} of ${totalBytes} bytes")
                 }
                 // Merge chunks into final destination
-                if (resolvedTotal > 0L && downloaded != resolvedTotal) {
-                    throw IOException("Incomplete download: ${downloaded} of ${resolvedTotal} bytes")
-                }
                 val (destStream, destUri) = openOutputDestination(fileName, mimeType)
                 destStream.use { out ->
                     val buf = ByteArray(32 * 1024)
