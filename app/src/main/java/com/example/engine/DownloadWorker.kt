@@ -10,6 +10,11 @@ import com.example.data.local.DownloadEntity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -46,18 +51,29 @@ class DownloadWorker(
                 applicationContext,
                 desktopMode = download.isDesktopMode,
             )
-            val result = manager.executePersistedDownload(
-                downloadId = download.id,
-                userAgent = userAgent,
-                sessionCookieManager = CookieManager.getInstance(),
-                allowGlobalCookieFallback = true,
-                cancelTransferWhenCallerCancelled = false,
-            )
-            return when (result?.status) {
-                "COMPLETED" -> Result.success()
-                "FAILED", "CANCELLED" -> Result.failure()
-                "PAUSED" -> Result.success()
-                else -> Result.retry()
+            val progressJob = CoroutineScope(currentCoroutineContext()).launch {
+                repository.downloads.collect { rows ->
+                    rows.firstOrNull { it.id == downloadId }?.let { latest ->
+                        setForeground(createForegroundInfo(latest))
+                    }
+                }
+            }
+            try {
+                val result = manager.executePersistedDownload(
+                    downloadId = download.id,
+                    userAgent = userAgent,
+                    sessionCookieManager = CookieManager.getInstance(),
+                    allowGlobalCookieFallback = true,
+                    cancelTransferWhenCallerCancelled = false,
+                )
+                return when (result?.status) {
+                    "COMPLETED" -> Result.success()
+                    "FAILED", "CANCELLED" -> Result.failure()
+                    "PAUSED" -> Result.success()
+                    else -> Result.retry()
+                }
+            } finally {
+                progressJob.cancelAndJoin()
             }
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable + Dispatchers.IO) {
@@ -75,11 +91,7 @@ class DownloadWorker(
     }
 
     private fun createForegroundInfo(download: DownloadEntity): ForegroundInfo {
-        val notification = DownloadNotificationHelper.build(
-            applicationContext,
-            download.id,
-            download.fileName,
-        )
+        val notification = DownloadNotificationHelper.build(applicationContext, download)
         val id = DownloadNotificationHelper.notificationId(download.id)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
