@@ -140,8 +140,8 @@ class MediaDownloadManager(
             chunkDir(download.id).deleteRecursively()
             repository.deleteDownload(download.id)
         }
-        // Sweep records inserted just before the session-close snapshot.
-        repository.deleteIncognitoDownloads()
+        // Only records captured in this closing-session snapshot are removed.
+        // A new private session started during cleanup keeps its own queue entries.
     }
 
     fun cancelDownload(download: DownloadEntity) {
