@@ -294,7 +294,7 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                 )
 
                 ActiveSheet.DOWNLOADS -> DownloadsSheet(
-                    downloads = downloads,
+                    downloads = downloads.filter { it.isIncognito == activeTab.isIncognito },
                     onPause = { viewModel.pauseDownload(it) },
                     onResume = { viewModel.resumeDownload(it) },
                     onCancel = { viewModel.cancelDownload(it) },
