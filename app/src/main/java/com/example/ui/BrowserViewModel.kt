@@ -27,7 +27,6 @@ import com.example.engine.BlockCategory
 import com.example.engine.BlockDecision
 import com.example.engine.ExtensionEngine
 import com.example.engine.DownloadCoordinator
-import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
@@ -54,7 +53,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val repository = BrowserRepository(db)
     private val prefsRepository = PreferencesRepository(application)
     private val mediaSniffer = MediaSnifferEngine()
-    private val downloadManager = DownloadRuntime.manager(application)
     private val downloadCoordinator = DownloadCoordinator(application)
 
     private val webViews = ConcurrentHashMap<String, WebView>()
