@@ -273,14 +273,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             touchTabMru(_activeTabId.value)
             syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
-        if (tabToClose.isIncognito && _tabs.value.none { it.isIncognito }) {
-            WebViewConfigurator.clearIncognitoAndVolatileData(getApplication(), clearCookiesToo = false)
-            if (!WebViewConfigurator.supportsIsolatedIncognitoProfiles()) {
-                _statusToast.value = getApplication<Application>().getString(
-                    com.example.R.string.incognito_isolation_unavailable,
-                )
-            }
-        }
+
     }
 
     fun closeAllIncognitoTabs() {
@@ -307,6 +300,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             touchTabMru(_activeTabId.value)
             syncWebViewLifecycleAndMemory(_activeTabId.value)
         }
+    }
+
+    /**
+     * Called after Compose has disposed the final private WebView and any popup
+     * WebView associated with it. Cleanup is profile-scoped and never touches
+     * the default browsing profile.
+     */
+    fun onIncognitoSessionClosed() {
         val profileCleanupSucceeded = WebViewConfigurator.clearIncognitoAndVolatileData(
             getApplication(),
             clearCookiesToo = false,
