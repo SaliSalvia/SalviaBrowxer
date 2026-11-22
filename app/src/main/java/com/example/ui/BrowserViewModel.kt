@@ -124,7 +124,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tabWebView = webViews[tab.id]
         // A missing/hibernated private WebView must never fall back to normal-profile cookies.
         if (tab.isIncognito && tabWebView == null) return ""
-        return WebViewConfigurator.cookieHeader(tabWebView, url)
+        return WebViewConfigurator.cookieHeader(tabWebView, url, tab.isIncognito)
     }
 
     private fun cookieManagerForTab(tab: BrowserTab): CookieManager? =
