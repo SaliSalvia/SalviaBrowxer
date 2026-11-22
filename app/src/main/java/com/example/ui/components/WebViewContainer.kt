@@ -85,6 +85,7 @@ private data class PendingWebPermission(
     val description: String,
     val androidPermissions: List<String>,
     val resources: List<String> = emptyList(),
+    val permissionRequest: PermissionRequest? = null,
     val onGrant: (Set<String>) -> Unit,
     val onDeny: () -> Unit,
 )
@@ -221,6 +222,7 @@ fun WebViewContainer(
                                     description = description,
                                     androidPermissions = androidPermissions,
                                     resources = resources,
+                                    permissionRequest = request,
                                     onGrant = { granted -> request.grant(granted.toTypedArray()) },
                                     onDeny = { request.deny() },
                                 ),
@@ -244,8 +246,18 @@ fun WebViewContainer(
                         }
                     },
                     onCancelWebPermission = { request ->
-                        if (pendingWebPermission?.tabId == tab.id) {
-                            pendingWebPermission?.onDeny?.invoke()
+                        val pending = pendingWebPermission
+                        if (pending?.permissionRequest === request) {
+                            pending.onDeny()
+                            pendingWebPermission = null
+                        }
+                    },
+                    onCancelGeolocation = {
+                        val pending = pendingWebPermission
+                        if (pending?.tabId == tab.id && pending.permissionRequest == null &&
+                            pending.description == context.getString(R.string.web_permission_location)
+                        ) {
+                            pending.onDeny()
                             pendingWebPermission = null
                         }
                     },
@@ -473,6 +485,7 @@ private fun createConfiguredWebView(
     onRequestWebPermission: (PermissionRequest, String?) -> Unit,
     onRequestGeolocation: (String, String?, GeolocationPermissions.Callback) -> Unit,
     onCancelWebPermission: (PermissionRequest) -> Unit,
+    onCancelGeolocation: () -> Unit,
     onEnterFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     onExitFullscreen: () -> Unit,
     onOpenPopup: (Message) -> Unit,
@@ -660,6 +673,10 @@ private fun createConfiguredWebView(
                     return
                 }
                 onRequestGeolocation(origin, hostWebView.url, callback)
+            }
+
+            override fun onGeolocationPermissionsHidePrompt() {
+                onCancelGeolocation()
             }
         }
     }
