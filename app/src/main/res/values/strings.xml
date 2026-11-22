@@ -24,4 +24,5 @@
     <string name="download_schedule_failed">The download could not be scheduled. Please try again.</string>
     <string name="download_notification_pause">Pause</string>
     <string name="download_notification_cancel">Cancel</string>
+    <string name="download_notification_progress">Downloading %1$s · %2$d%%</string>
 </resources>
