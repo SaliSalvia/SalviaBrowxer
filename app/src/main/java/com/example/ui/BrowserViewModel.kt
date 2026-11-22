@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.ArrayDeque
@@ -114,6 +115,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             WebViewConfigurator.clearIncognitoAndVolatileData(application, clearCookiesToo = false)
         }
         viewModelScope.launch(Dispatchers.IO) {
+            downloadManager.clearIncognitoDownloads()
             repository.ensureSeeded()
         }
     }
@@ -322,16 +324,22 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
      * the default browsing profile.
      */
     fun onIncognitoSessionClosed() {
-        val profileCleanupSucceeded = WebViewConfigurator.clearIncognitoAndVolatileData(
-            getApplication(),
-            clearCookiesToo = false,
-        )
-        val cleanupMessage = when {
-            profileCleanupSucceeded -> com.example.R.string.incognito_profile_cleared
-            !WebViewConfigurator.supportsIsolatedIncognitoProfiles() -> com.example.R.string.incognito_isolation_unavailable
-            else -> com.example.R.string.incognito_cleanup_failed
+        viewModelScope.launch(Dispatchers.IO) {
+            // Stop private transfers and erase their Room metadata before deleting the profile.
+            downloadManager.clearIncognitoDownloads()
+            val profileCleanupSucceeded = WebViewConfigurator.clearIncognitoAndVolatileData(
+                getApplication(),
+                clearCookiesToo = false,
+            )
+            withContext(Dispatchers.Main) {
+                val cleanupMessage = when {
+                    profileCleanupSucceeded -> com.example.R.string.incognito_profile_cleared
+                    !WebViewConfigurator.supportsIsolatedIncognitoProfiles() -> com.example.R.string.incognito_isolation_unavailable
+                    else -> com.example.R.string.incognito_cleanup_failed
+                }
+                _statusToast.value = getApplication<Application>().getString(cleanupMessage)
+            }
         }
-        _statusToast.value = getApplication<Application>().getString(cleanupMessage)
     }
 
     override fun onCleared() {
@@ -704,6 +712,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             userAgent = ua,
             sessionCookieManager = cookieManagerForTab(tab),
             allowGlobalCookieFallback = !tab.isIncognito,
+            isIncognito = tab.isIncognito,
         )
         _statusToast.value = String.format(s().toastDownloadStartedFormat, fileName)
     }
@@ -739,13 +748,34 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun resumeDownload(download: DownloadEntity) {
-        val tab = getCurrentTab()
-        val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
+        val sessionTab = if (download.isIncognito) {
+            _tabs.value.firstOrNull { it.isIncognito }
+        } else {
+            getCurrentTab()
+        }
+        if (sessionTab == null) {
+            _statusToast.value = getApplication<Application>().getString(
+                com.example.R.string.incognito_isolation_unavailable,
+            )
+            return
+        }
+        val ua = WebViewConfigurator.resolveUserAgent(getApplication(), sessionTab.isDesktopMode)
+        val sessionCookieManager = if (download.isIncognito) {
+            cookieManagerForTab(sessionTab)
+        } else {
+            CookieManager.getInstance()
+        }
+        if (download.isIncognito && sessionCookieManager == null) {
+            _statusToast.value = getApplication<Application>().getString(
+                com.example.R.string.incognito_isolation_unavailable,
+            )
+            return
+        }
         downloadManager.resumeDownload(
             download = download,
             userAgent = ua,
-            sessionCookieManager = cookieManagerForTab(tab),
-            allowGlobalCookieFallback = !tab.isIncognito,
+            sessionCookieManager = sessionCookieManager,
+            allowGlobalCookieFallback = !download.isIncognito,
         )
     }
 
