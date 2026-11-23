@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SalviaBrowxser</string>
+    <string name="app_name">SalviaBrowxer</string>
     <string name="omnibox_placeholder">Search or enter web address…</string>
     <string name="incognito_banner">Incognito mode active</string>
     <string name="error_invalid_url">Invalid web address</string>
