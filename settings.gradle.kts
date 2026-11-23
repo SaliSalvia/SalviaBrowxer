@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "SalviaBrowxser"
+rootProject.name = "SalviaBrowxer"
 
 include(":app")
