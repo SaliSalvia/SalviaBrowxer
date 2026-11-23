@@ -1,4 +1,4 @@
-# SalviaBrowxser
+# SalviaBrowxer
 
 مرورگر اندرویدی امن، سریع و فوق‌حرفه‌ای مبتنی بر موتور کرومیوم (Chromium WebView) با رابط کاربری کیهانی تیره، مسدودکننده تبلیغات و ردیاب‌ها، حالت ناشناس (Incognito)، پشتیبانی از افزونه‌ها به سبک فایرفاکس، ابزارهای پیشرفته توسعه‌دهندگان (DevTools) و حباب شناور مغناطیسی تشخیص و دانلود مدیا.
 
@@ -32,11 +32,11 @@
 این مخزن دارای ورکفلو آماده در مسیر `.github/workflows/build-apk.yml` است که با هر `push` به شاخه‌های `main` یا `master`، اجرای دستی (`workflow_dispatch`)، یا ثبت تگ نسخه (`v1.0.0`) به صورت خودکار روی **JDK 21** (همراه با Android SDK Platform 36.1 و Build-Tools 36.1.0) اجرا می‌شود:
 
 1. تست‌های واحد (`:app:testDebugUnitTest`) را اجرا می‌کند.
-2. فایل نصب اندروید (`SalviaBrowxser-debug.apk`) را می‌سازد و در بخش **Actions → Artifacts** مخزن برای دانلود قرار می‌دهد.
+2. فایل نصب اندروید (`SalviaBrowxer-debug.apk`) را می‌سازد و در بخش **Actions → Artifacts** مخزن برای دانلود قرار می‌دهد.
 3. در صورت انتشار تگ (مانند `v1.0.0`)، یک **GitHub Release** خودکار همراه با فایل APK ضمیمه‌شده منتشر می‌کند.
 
 ### ساخت نسخه Release امضاشده (اختیاری)
-در صورت تمایل به ساخت خودکار `SalviaBrowxser-release.apk` در ورکفلو، سه Secret زیر را در **Settings → Secrets and variables → Actions** مخزن گیت‌هاب خود تعریف کنید:
+در صورت تمایل به ساخت خودکار `SalviaBrowxer-release.apk` در ورکفلو، سه Secret زیر را در **Settings → Secrets and variables → Actions** مخزن گیت‌هاب خود تعریف کنید:
 - `RELEASE_KEYSTORE_BASE64`: خروجی Base64 فایل keystore امضا
 - `STORE_PASSWORD`: رمز keystore
 - `KEY_PASSWORD`: رمز کلید (`upload`)

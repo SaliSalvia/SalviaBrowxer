@@ -234,6 +234,20 @@ class BrowserEnginesTest {
         assertTrue(mobileUa.contains("Chrome/"))
     }
 
+
+    @Test
+    fun `incognito cookie lookup never falls back to the default profile without its WebView`() {
+        assertEquals(null, WebViewConfigurator.cookieManagerForTab(null, isIncognito = true))
+        assertEquals(
+            "",
+            WebViewConfigurator.cookieHeader(
+                webView = null,
+                url = "https://example.com/private",
+                isIncognito = true,
+            ),
+        )
+    }
+
     @Test
     fun `extension engine matches glob patterns and builds injection script`() {
         assertTrue(ExtensionEngine.matchesUrl("*://*.youtube.com/*", "https://m.youtube.com/watch?v=123"))

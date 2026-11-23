@@ -1015,7 +1015,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             val currentUrl = obj.optString("url", tab.url)
-            val cookies = runCatching { CookieManager.getInstance().getCookie(currentUrl).orEmpty() }.getOrDefault("")
+            // Read cookies from the tab-owned profile; private tabs must never expose default-profile cookies.
+            val cookies = cookieHeaderForTab(tab, currentUrl)
             val ua = wv.settings.userAgentString
             updateTab(tab.id) { current ->
                 current.copy(

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">SalviaBrowxser</string>
+    <string name="app_name">SalviaBrowxer</string>
     <string name="omnibox_placeholder">جستجو یا وارد کردن آدرس وب…</string>
     <string name="incognito_banner">حالت ناشناس فعال است</string>
     <string name="error_invalid_url">آدرس وب نامعتبر است</string>
