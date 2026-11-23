@@ -1,4 +1,4 @@
-name: Build SalviaBrowxser APK
+name: Build SalviaBrowxer APK
 
 on:
   push:
@@ -94,7 +94,7 @@ jobs:
       - name: Prepare APK artifact
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/SalviaBrowxser-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/SalviaBrowxer-debug.apk
           ls -lh dist
 
       - name: Build Signed Release APK (if secrets configured)
@@ -109,7 +109,7 @@ jobs:
           # Fail with a readable message if the secret is not a usable keystore.
           keytool -list -keystore my-upload-key.jks -storepass "$STORE_PASSWORD" -alias upload > /dev/null
           gradle :app:assembleRelease --no-daemon --console=plain
-          cp app/build/outputs/apk/release/app-release.apk dist/SalviaBrowxser-release.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/SalviaBrowxer-release.apk
           ls -lh dist
 
       - name: Verify APK artifacts
@@ -126,7 +126,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: SalviaBrowxser-APK
+          name: SalviaBrowxer-APK
           path: dist/*.apk
           if-no-files-found: error
           retention-days: 30
