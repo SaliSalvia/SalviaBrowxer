@@ -551,5 +551,5 @@ Baseline و inventory اولیه اکنون ثبت شده‌اند. بنابرا
 **CI و Artifact نهایی:**
 - PR head `5c1a594b11ab33095502fe697f8a1dc897a5a4c4`: Run `45080234792` — موفق در Unit Tests، Debug APK، Signed Release APK، verification و artifact upload.
 - `main` merge commit `1949b1b2d27a108c910319a8c664b59a3420f947`: Run `45080545310` — موفق در تمام مراحل اصلی و cleanup.
-- Artifact روی `main`: `SalviaBrowxer-APK`، حجم 33,592,625 bytes، SHA-256 `bbae95e0961120e2b30974403a6f0e909ffbaa0dbcf6610d195ba81903ce062b`.
+- Artifact روی `main` (ساخت پیش از اصلاح نام‌گذاری): `SalviaBrowxser-APK`، حجم 33,592,625 bytes، SHA-256 `bbae95e0961120e2b30974403a6f0e909ffbaa0dbcf6610d195ba81903ce062b`. ساخت‌های بعدی با نام صحیح `SalviaBrowxer-APK` منتشر می‌شوند.
 - آزمون روی دستگاه فیزیکی هنوز جداگانه انجام نشده و نباید با CI اشتباه گرفته شود.
