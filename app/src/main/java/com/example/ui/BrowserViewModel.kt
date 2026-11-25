@@ -677,11 +677,24 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    /** Accepts extensionless network resources only when the browser observed a media MIME type. */
+    fun onHookedResource(tabId: String, mediaUrl: String, titleHint: String, contentType: String) {
+        val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val mime = contentType.substringBefore(";").trim().lowercase()
+        if (!(mime.startsWith("video/") || mime.startsWith("audio/") ||
+                mime.contains("mpegurl") || mime.contains("dash+xml"))
+        ) return
+        val resolved = mediaSniffer.resolveMediaUrl(tab.url, mediaUrl)
+        if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(resolved)) return
+        probeAndAttachNetworkMedia(tabId, resolved, tab.url, titleHint.ifBlank { tab.title }, mime)
+    }
+
     private fun probeAndAttachNetworkMedia(
         tabId: String,
         mediaUrl: String,
         pageUrl: String,
         pageTitle: String,
+        contentTypeHint: String = "",
     ) {
         val cacheKey = "$tabId|$mediaUrl"
         if (!pendingProbedUrls.add(cacheKey)) return
@@ -698,6 +711,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 pageTitle = pageTitle,
                 userAgent = ua,
                 cookieHeader = cookieHeader,
+                contentTypeHint = contentTypeHint,
             )
             if (detected != null) {
                 updateTab(tabId) { current ->
