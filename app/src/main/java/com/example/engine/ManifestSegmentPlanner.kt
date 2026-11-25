@@ -41,7 +41,7 @@ internal object ManifestSegmentPlanner {
                             }
                             val resolved = resolve(url, a["URI"] ?: error("HLS AES-128 key URI missing"))
                             requireHttp(resolved)
-                            HlsKey("AES-128", resolved, a["IV"].orEmpty().removePrefix("0x"))
+                            HlsKey("AES-128", resolved, a["IV"].orEmpty().replace(Regex("^0x", RegexOption.IGNORE_CASE), ""))
                         }
                         else -> error("Unsupported HLS encryption method")
                     }
