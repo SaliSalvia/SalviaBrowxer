@@ -457,12 +457,12 @@ class MediaSnifferEngine {
                 .url(masterUrl)
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
-            MediaRequestHeaderPolicy.headersForUrl(masterUrl, requestHeadersByOrigin)
+            val injectedHeaders = MediaRequestHeaderPolicy.headersForUrl(masterUrl, requestHeadersByOrigin)
                 .filterKeys { it != "origin" }
-                .forEach { (name, value) -> reqBuilder.header(name, value) }
+            injectedHeaders.forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            val body = client.newCall(reqBuilder.build()).execute().use { resp ->
+            val body = executeProbeRequest(reqBuilder.build(), injectedHeaders).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
                 resp.body?.string().orEmpty()
             }
@@ -567,12 +567,12 @@ class MediaSnifferEngine {
                 .url(mpdUrl)
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
-            MediaRequestHeaderPolicy.headersForUrl(mpdUrl, requestHeadersByOrigin)
+            val injectedHeaders = MediaRequestHeaderPolicy.headersForUrl(mpdUrl, requestHeadersByOrigin)
                 .filterKeys { it != "origin" }
-                .forEach { (name, value) -> reqBuilder.header(name, value) }
+            injectedHeaders.forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            val xml = client.newCall(reqBuilder.build()).execute().use { resp ->
+            val xml = executeProbeRequest(reqBuilder.build(), injectedHeaders).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
                 resp.body?.string().orEmpty()
             }
@@ -743,17 +743,37 @@ class MediaSnifferEngine {
                 .head()
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
-            MediaRequestHeaderPolicy.headersForUrl(url, requestHeadersByOrigin)
+            val injectedHeaders = MediaRequestHeaderPolicy.headersForUrl(url, requestHeadersByOrigin)
                 .filterKeys { it != "origin" }
-                .forEach { (name, value) -> reqBuilder.header(name, value) }
+            injectedHeaders.forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            client.newCall(reqBuilder.build()).execute().use { resp ->
+            executeProbeRequest(reqBuilder.build(), injectedHeaders).use { resp ->
                 val len = resp.header("Content-Length")?.toLongOrNull() ?: -1L
                 val type = resp.header("Content-Type").orEmpty().substringBefore(";").trim()
                 len to type
             }
         }.getOrDefault(-1L to "")
+    }
+
+
+    /**
+     * Optional request metadata must never make the existing probe path less reliable.
+     * Retry selected header-related failures once without any helper-injected fields.
+     */
+    private fun executeProbeRequest(
+        request: Request,
+        injectedHeaders: Map<String, String>,
+    ): okhttp3.Response {
+        val assisted = client.newCall(request).execute()
+        if (!MediaRequestHeaderPolicy.shouldRetryWithoutContext(assisted.code, injectedHeaders.size)) {
+            return assisted
+        }
+        assisted.close()
+        val legacyRequest = request.newBuilder().apply {
+            injectedHeaders.keys.forEach(::removeHeader)
+        }.build()
+        return client.newCall(legacyRequest).execute()
     }
 
     private fun resolveRelativeUrl(base: Uri, relative: String): String {
