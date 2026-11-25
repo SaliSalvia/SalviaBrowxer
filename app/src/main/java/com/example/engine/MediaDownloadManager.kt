@@ -32,6 +32,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.MessageDigest
 import java.net.ProtocolException
 import java.io.OutputStream
 import java.nio.ByteBuffer
@@ -695,7 +696,7 @@ class MediaDownloadManager(
             val videoRep = manifest.representations.firstOrNull { it.isVideo && it.id == videoRepresentationId }
                 ?: throw IOException("Selected DASH video representation is no longer available")
             val videoFile = File(tempDir, "dash_video_" + safeSegmentName(videoRep.id) + ".mp4")
-            downloadDashRepresentation(videoRep, videoFile, tempDir, "video", referer, userAgent,
+            downloadDashRepresentation(videoRep, videoFile, tempDir, "video_" + manifestFingerprint(xml) + "_" + safeSegmentName(videoRep.id), referer, userAgent,
                 sessionCookieManager, allowGlobalCookieFallback, downloadId)
 
             var audioFile: File? = null
@@ -703,7 +704,7 @@ class MediaDownloadManager(
                 val audioRep = manifest.representations.firstOrNull { !it.isVideo && it.id == audioRepresentationId }
                 if (audioRep != null) {
                     audioFile = File(tempDir, "dash_audio_" + safeSegmentName(audioRep.id) + ".m4a")
-                    downloadDashRepresentation(audioRep, audioFile, tempDir, "audio", referer, userAgent,
+                    downloadDashRepresentation(audioRep, audioFile, tempDir, "audio_" + manifestFingerprint(xml) + "_" + safeSegmentName(audioRep.id), referer, userAgent,
                         sessionCookieManager, allowGlobalCookieFallback, downloadId)
                 }
             }
@@ -811,6 +812,12 @@ class MediaDownloadManager(
         }
     }
 
+    private fun manifestFingerprint(value: String): String =
+        MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+            .take(12).joinToString("") { byte ->
+                (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+            }
+
     private fun safeSegmentName(value: String): String =
         value.replace(Regex("[^A-Za-z0-9_-]"), "_").take(48).ifBlank { "rep" }
 
@@ -882,7 +889,7 @@ class MediaDownloadManager(
         val plan = ManifestSegmentPlanner.parseHls(mediaUrl, text)
         if (!plan.isEndList) throw IOException("Live HLS playlist is not complete; wait for ENDLIST")
         val keyCache = ConcurrentHashMap<String, ByteArray>()
-        val prefix = targetFile.nameWithoutExtension
+        val prefix = targetFile.nameWithoutExtension + "_" + manifestFingerprint(text)
         val initFile = File(staging, prefix + "_hls_init.bin")
         if (plan.initUri != null && (!initFile.exists() || initFile.length() == 0L)) {
             val bytes = fetchHlsBytes(plan.initUri, plan.initRange, referer, userAgent,
