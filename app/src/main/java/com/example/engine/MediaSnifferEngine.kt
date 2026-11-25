@@ -570,7 +570,7 @@ class MediaSnifferEngine {
             if (parsedDash?.unsupported == "DRM" || parsedDash?.unsupported == "LIVE") {
                 return@runCatching emptyList()
             }
-            if (parsedDash?.unsupported == null) {
+            if (parsedDash != null && parsedDash.unsupported == null) {
                 val video = parsedDash.representations.filter { it.isVideo }
                     .sortedWith(compareByDescending<com.example.engine.DashRepresentation> { it.height }
                         .thenByDescending { it.bandwidth })
