@@ -1005,7 +1005,7 @@ class MediaDownloadManager(
         if (range != null) builder.header("Range", "bytes=" + range.offset + "-" + (range.offset + range.length - 1L))
         executeWithProfileCookies(builder.build(), sessionCookieManager, allowGlobalCookieFallback).use { response ->
             if (range == null) {
-                if (!response.isSuccessful) throw IOException("HLS segment request failed: HTTP " + response.code)
+                if (response.code != 200) throw IOException("Expected complete HLS/DASH response, got HTTP " + response.code)
             } else {
                 if (response.code != 206) throw IOException("HLS byte-range request was not honored")
                 val expected = "bytes " + range.offset + "-" + (range.offset + range.length - 1L)
