@@ -69,6 +69,7 @@ import com.example.data.local.BrowserSettings
 import com.example.engine.AdBlockerEngine
 import com.example.engine.WebViewConfigurator
 import com.example.engine.WebPermissionPolicy
+import com.example.engine.SitePermissionStore
 import com.example.R
 import com.example.ui.BrowserTab
 import com.example.ui.BrowserViewModel
@@ -201,11 +202,19 @@ fun WebViewContainer(
                         val resources = request.resources.toList()
                         val androidPermissions = WebPermissionPolicy.androidPermissionsForCapture(resources)
                         val origin = request.origin.toString()
+                        val sitePermissions = SitePermissionStore(context)
+                        val rememberedGrant = !tab.isIncognito && resources.isNotEmpty() &&
+                            resources.all { sitePermissions.isGranted(origin, it) } &&
+                            androidPermissions?.all { permission ->
+                                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                            } == true
                         if (
                             androidPermissions == null ||
                             !WebPermissionPolicy.isSameSecureOrigin(origin, currentUrl.orEmpty())
                         ) {
                             request.deny()
+                        } else if (rememberedGrant) {
+                            request.grant(resources.toTypedArray())
                         } else {
                             val description = when {
                                 resources.contains(WebPermissionPolicy.CAMERA_RESOURCE) &&
@@ -223,15 +232,26 @@ fun WebViewContainer(
                                     androidPermissions = androidPermissions,
                                     resources = resources,
                                     permissionRequest = request,
-                                    onGrant = { granted -> request.grant(granted.toTypedArray()) },
+                                    onGrant = { granted ->
+                                        if (!tab.isIncognito) sitePermissions.rememberGrant(origin, resources)
+                                        request.grant(granted.toTypedArray())
+                                    },
                                     onDeny = { request.deny() },
                                 ),
                             )
                         }
                     },
                     onRequestGeolocation = { origin, currentUrl, callback ->
+                        val sitePermissions = SitePermissionStore(context)
+                        val geoPermissionsAvailable = WebPermissionPolicy.locationAndroidPermissions.any { permission ->
+                            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                        }
                         if (!WebPermissionPolicy.isSameSecureOrigin(origin, currentUrl.orEmpty())) {
                             callback.invoke(origin, false, false)
+                        } else if (!tab.isIncognito && geoPermissionsAvailable &&
+                            sitePermissions.isGranted(origin, "GEOLOCATION")
+                        ) {
+                            callback.invoke(origin, true, true)
                         } else {
                             showPermissionPrompt(
                                 PendingWebPermission(
@@ -239,7 +259,10 @@ fun WebViewContainer(
                                     origin = origin,
                                     description = context.getString(R.string.web_permission_location),
                                     androidPermissions = WebPermissionPolicy.locationAndroidPermissions,
-                                    onGrant = { callback.invoke(origin, true, false) },
+                                    onGrant = {
+                                        if (!tab.isIncognito) sitePermissions.rememberGrant(origin, listOf("GEOLOCATION"))
+                                        callback.invoke(origin, true, true)
+                                    },
                                     onDeny = { callback.invoke(origin, false, false) },
                                 ),
                             )
