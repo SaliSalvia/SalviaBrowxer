@@ -1,6 +1,5 @@
 package com.example.engine
 
-import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -32,14 +31,17 @@ class ManifestSegmentPlannerTest {
 
     @Test
     fun parsesStaticDashSegmentTimelineAndNumberTemplate() {
+        val tokenId = "$" + "RepresentationID" + "$"
+        val tokenNumber = "$" + "Number%03d" + "$"
+        val tokenTime = "$" + "Time" + "$"
         val xml = """
             <MPD type="static" mediaPresentationDuration="PT6S">
               <BaseURL>https://cdn.example/video/</BaseURL>
               <Period>
                 <AdaptationSet mimeType="video/mp4">
                   <SegmentTemplate timescale="1" startNumber="7"
-                    initialization="init-\$RepresentationID\$.mp4"
-                    media="chunk-\$Number%03d\$-\$Time\$.m4s">
+                    initialization="init-TOKEN_ID.mp4"
+                    media="chunk-TOKEN_NUMBER-TOKEN_TIME.m4s">
                     <SegmentTimeline>
                       <S t="0" d="2" r="2"/>
                     </SegmentTimeline>
@@ -49,6 +51,9 @@ class ManifestSegmentPlannerTest {
               </Period>
             </MPD>
         """.trimIndent()
+            .replace("TOKEN_ID", tokenId)
+            .replace("TOKEN_NUMBER", tokenNumber)
+            .replace("TOKEN_TIME", tokenTime)
         val plan = ManifestSegmentPlanner.parseDash("https://cdn.example/master.mpd", xml)
         val rep = plan.representations.single()
         assertEquals(4, rep.segments.size)
