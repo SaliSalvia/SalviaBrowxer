@@ -269,7 +269,7 @@ internal object ManifestSegmentPlanner {
             return result
         }
         val t = rep.template ?: return emptyList()
-        if (!isStatic || t.media.contains("$Time$") && t.timeline.isNullOrEmpty()) return emptyList()
+        if (!isStatic || t.media.contains("\\$Time\\$") && t.timeline.isNullOrEmpty()) return emptyList()
         val result = mutableListOf<DashSegment>()
         if (t.initialization.isNotBlank()) {
             result += DashSegment(-1, templateUrl(rep, t.initialization, t.startNumber, 0L), initialization = true)
