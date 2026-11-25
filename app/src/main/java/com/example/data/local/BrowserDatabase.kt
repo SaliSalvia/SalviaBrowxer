@@ -30,7 +30,14 @@ abstract class BrowserDatabase : RoomDatabase() {
     abstract fun adBlockRuleDao(): AdBlockRuleDao
 
     companion object {
-        private val MIGRATION_4_5 = object : Migration(4, 5) {\n            override fun migrate(db: SupportSQLiteDatabase) {\n                db.execSQL("ALTER TABLE downloads ADD COLUMN manifestRepresentationId TEXT NOT NULL DEFAULT \\\"\\\"")\n                db.execSQL("ALTER TABLE downloads ADD COLUMN manifestAudioRepresentationId TEXT NOT NULL DEFAULT \\\"\\\"")\n            }\n        }\n\n        private val MIGRATION_3_4 = object : Migration(3, 4) {
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE downloads ADD COLUMN manifestRepresentationId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE downloads ADD COLUMN manifestAudioRepresentationId TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "ALTER TABLE downloads ADD COLUMN isDesktopMode INTEGER NOT NULL DEFAULT 0",
