@@ -905,7 +905,6 @@ class MediaDownloadManager(
                 ?: throw IOException("Could not fetch selected HLS media playlist")
         }
         val plan = ManifestSegmentPlanner.parseHls(mediaUrl, text)
-        if (!plan.isEndList) throw IOException("Live HLS playlist is not complete; wait for ENDLIST")
         val keyCache = ConcurrentHashMap<String, ByteArray>()
         val prefix = targetFile.nameWithoutExtension + "_" + manifestFingerprint(text)
         val initFile = File(staging, prefix + "_hls_init.bin")
