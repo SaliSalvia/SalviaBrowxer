@@ -1,6 +1,11 @@
 package com.example.ui.components
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.widget.Toast
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.Manifest
@@ -37,6 +42,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -343,6 +349,33 @@ fun WebViewContainer(
                 )
             },
         )
+
+        // Native Android print pipeline; the system print UI also exposes "Save as PDF".
+        IconButton(
+            onClick = {
+                val activity = context as? Activity
+                val activeWebView = viewModel.getWebView(tab.id)
+                val printManager = activity?.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+                if (activity == null || activeWebView == null || printManager == null) {
+                    Toast.makeText(context, "Printing is unavailable for this tab.", Toast.LENGTH_SHORT).show()
+                } else {
+                    runCatching {
+                        printManager.print(
+                            "SalviaBrowser-${tab.id.take(8)}",
+                            activeWebView.createPrintDocumentAdapter("SalviaBrowser"),
+                            PrintAttributes.Builder().build(),
+                        )
+                    }.onFailure {
+                        Toast.makeText(context, "Unable to start printing.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).background(
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.88f), RoundedCornerShape(24.dp),
+            ),
+        ) {
+            Icon(Icons.Default.Print, contentDescription = "Print or save as PDF")
+        }
 
         // OAuth / Google Sign-In / Multi-Window Popup Overlay
         popupWebView?.let { popup ->
