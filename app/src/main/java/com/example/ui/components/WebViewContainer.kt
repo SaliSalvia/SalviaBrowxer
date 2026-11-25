@@ -520,6 +520,16 @@ private fun createConfiguredWebView(
                 fun onHookedUrl(url: String, titleHint: String) {
                     viewModel.onHookedMediaUrl(tabId, url, titleHint)
                 }
+
+                @JavascriptInterface
+                fun onHookedResource(url: String, titleHint: String, contentType: String) {
+                    viewModel.onHookedResource(tabId, url, titleHint, contentType)
+                }
+
+                @JavascriptInterface
+                fun onMseBufferObserved(mimeType: String, byteLength: Int) {
+                    viewModel.onMseBufferObserved(tabId, mimeType, byteLength)
+                }
             },
             "NavaMediaBridge",
         )
