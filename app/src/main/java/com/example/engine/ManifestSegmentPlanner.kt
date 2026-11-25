@@ -9,7 +9,7 @@ internal object ManifestSegmentPlanner {
     data class HlsSegment(val index: Int, val sequence: Long, val uri: String,
                           val range: ByteRange?, val key: HlsKey?)
     data class HlsPlan(val mediaPlaylistUrl: String, val initUri: String?, val initRange: ByteRange?,
-                       val segments: List<HlsSegment>, val isEndList: Boolean)
+                       val initKey: HlsKey?, val segments: List<HlsSegment>, val isEndList: Boolean)
 
     fun parseHls(url: String, text: String): HlsPlan {
         requireHttp(url)
@@ -24,6 +24,7 @@ internal object ManifestSegmentPlanner {
         var key: HlsKey? = null
         var initUri: String? = null
         var initRange: ByteRange? = null
+        var initKey: HlsKey? = null
         var pendingRange: String? = null
         var previousRangeUri = ""
         var nextRangeOffset = 0L
@@ -35,6 +36,9 @@ internal object ManifestSegmentPlanner {
                     key = when (a["METHOD"]?.uppercase()) {
                         "NONE" -> null
                         "AES-128" -> {
+                            require(a["KEYFORMAT"].isNullOrBlank() || a["KEYFORMAT"].equals("identity", true)) {
+                                "Non-identity HLS key format is unsupported"
+                            }
                             val resolved = resolve(url, a["URI"] ?: error("HLS AES-128 key URI missing"))
                             requireHttp(resolved)
                             HlsKey("AES-128", resolved, a["IV"].orEmpty().removePrefix("0x"))
@@ -46,6 +50,7 @@ internal object ManifestSegmentPlanner {
                     val a = attributes(line.substringAfter(':'))
                     initUri = a["URI"]?.let { resolve(url, it) }
                     initRange = a["BYTERANGE"]?.let { parseRange(it, 0L) }
+                    initKey = key
                 }
                 line.startsWith("#EXT-X-BYTERANGE:") -> pendingRange = line.substringAfter(':')
                 line.isNotEmpty() && !line.startsWith("#") -> {
@@ -70,7 +75,7 @@ internal object ManifestSegmentPlanner {
             }
         }
         require(segments.isNotEmpty()) { "HLS playlist has no media segments" }
-        return HlsPlan(url, initUri, initRange, segments, lines.any { it == "#EXT-X-ENDLIST" })
+        return HlsPlan(url, initUri, initRange, initKey, segments, lines.any { it == "#EXT-X-ENDLIST" })
     }
 
     private fun attributes(s: String): Map<String, String> =
