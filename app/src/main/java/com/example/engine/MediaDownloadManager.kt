@@ -882,7 +882,8 @@ class MediaDownloadManager(
         val plan = ManifestSegmentPlanner.parseHls(mediaUrl, text)
         if (!plan.isEndList) throw IOException("Live HLS playlist is not complete; wait for ENDLIST")
         val keyCache = ConcurrentHashMap<String, ByteArray>()
-        val initFile = File(staging, "hls_init.bin")
+        val prefix = targetFile.nameWithoutExtension
+        val initFile = File(staging, prefix + "_hls_init.bin")
         if (plan.initUri != null && (!initFile.exists() || initFile.length() == 0L)) {
             val bytes = fetchHlsBytes(plan.initUri, plan.initRange, referer, userAgent,
                 sessionCookieManager, allowGlobalCookieFallback)
@@ -911,7 +912,7 @@ class MediaDownloadManager(
         }
 
         var completedBytes = if (initFile.exists()) initFile.length() else 0L
-        val segmentFiles = plan.segments.map { File(staging, "hls_seg_" + it.index + ".bin") }
+        val segmentFiles = plan.segments.map { File(staging, prefix + "_hls_seg_" + it.index + ".bin") }
         for (group in plan.segments.indices.toList().chunked(4)) {
             coroutineScope {
                 group.map { index ->
