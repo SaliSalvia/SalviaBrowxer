@@ -883,6 +883,9 @@ class MediaSnifferEngine {
                     return origFetch.apply(this, arguments).then(function(resp) {
                         try {
                             var ct = resp.headers && resp.headers.get ? (resp.headers.get('content-type') || '') : '';
+                            if ((/^video\\//i.test(ct) || /^audio\\//i.test(ct) || /mpegurl|dash\\+xml/i.test(ct)) && window.NavaMediaBridge && reqUrl) {
+                                window.NavaMediaBridge.onHookedResource(reqUrl, document.title || '', ct);
+                            }
                             if (ct.includes('json') || ct.includes('mpegurl') || ct.includes('dash')) {
                                 resp.clone().text().then(reportTextUrls).catch(function(){});
                             }
@@ -902,6 +905,10 @@ class MediaSnifferEngine {
                 var xhr = this;
                 xhr.addEventListener('load', function() {
                     try {
+                        var xhrType = xhr.getResponseHeader('content-type') || '';
+                        if (xhr.__salviaUrl && (/^video\\//i.test(xhrType) || /^audio\\//i.test(xhrType) || /mpegurl|dash\\+xml/i.test(xhrType)) && !adFilter.test(xhr.__salviaUrl) && window.NavaMediaBridge) {
+                            window.NavaMediaBridge.onHookedResource(xhr.__salviaUrl, document.title || '', xhrType);
+                        }
                         if (xhr.__salviaUrl && /\.(m3u8|mpd|mp4|webm|m4a)/i.test(xhr.__salviaUrl) && !adFilter.test(xhr.__salviaUrl) && window.NavaMediaBridge) {
                             window.NavaMediaBridge.onHookedUrl(xhr.__salviaUrl, document.title || '');
                         }
