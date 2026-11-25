@@ -693,8 +693,23 @@ class MediaDownloadManager(
                 ?: throw IOException("Could not fetch DASH MPD")
             val manifest = DashManifestParser.parse(xml, mpdUrl)
             if (manifest.unsupported != null) throw IOException("DASH manifest unsupported: " + manifest.unsupported)
-            val videoRep = manifest.representations.firstOrNull { it.isVideo && it.id == videoRepresentationId }
-                ?: throw IOException("Selected DASH video representation is no longer available")
+            val selected = manifest.representations.firstOrNull { it.id == videoRepresentationId }
+                ?: throw IOException("Selected DASH representation is no longer available")
+            if (!selected.isVideo) {
+                val audioOnly = File(tempDir, "dash_audio_" + safeSegmentName(selected.id) + ".m4a")
+                downloadDashRepresentation(selected, audioOnly, tempDir,
+                    "audio_" + manifestFingerprint(xml) + "_" + safeSegmentName(selected.id), referer, userAgent,
+                    sessionCookieManager, allowGlobalCookieFallback, downloadId)
+                val outName = fileName.substringBeforeLast('.') + ".m4a"
+                val (out, uri) = openOutputDestination(outName, "audio/mp4")
+                out.use { stream -> FileInputStream(audioOnly).use { it.copyTo(stream) } }
+                val bytes = audioOnly.length()
+                tempDir.deleteRecursively()
+                repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, true)
+                return
+            }
+
+            val videoRep = selected
             val videoFile = File(tempDir, "dash_video_" + safeSegmentName(videoRep.id) + ".mp4")
             downloadDashRepresentation(videoRep, videoFile, tempDir, "video_" + manifestFingerprint(xml) + "_" + safeSegmentName(videoRep.id), referer, userAgent,
                 sessionCookieManager, allowGlobalCookieFallback, downloadId)
