@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
         DownloadEntity::class,
         AdBlockRuleEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class BrowserDatabase : RoomDatabase() {
@@ -30,6 +30,13 @@ abstract class BrowserDatabase : RoomDatabase() {
     abstract fun adBlockRuleDao(): AdBlockRuleDao
 
     companion object {
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE downloads ADD COLUMN manifestRepresentationId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE downloads ADD COLUMN manifestAudioRepresentationId TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -56,7 +63,7 @@ abstract class BrowserDatabase : RoomDatabase() {
                     BrowserDatabase::class.java,
                     "salvia_browser_db",
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

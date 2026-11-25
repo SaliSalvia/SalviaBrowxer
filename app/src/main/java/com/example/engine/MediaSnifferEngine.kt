@@ -564,6 +564,53 @@ class MediaSnifferEngine {
                 resp.body?.string().orEmpty()
             }
             if (!xml.contains("<MPD", ignoreCase = true)) return emptyList()
+            // Parse finite DASH manifests with SegmentTemplate, SegmentTimeline, SegmentList,
+            // and SegmentBase metadata. DRM/live manifests are rejected before the legacy path.
+            val parsedDash = runCatching { DashManifestParser.parse(xml, mpdUrl) }.getOrNull()
+            if (parsedDash?.unsupported == "DRM") {
+                return@runCatching emptyList()
+            }
+            if (parsedDash != null && parsedDash.unsupported == null) {
+                val video = parsedDash.representations.filter { it.isVideo }
+                    .sortedWith(compareByDescending<com.example.engine.DashRepresentation> { it.height }
+                        .thenByDescending { it.bandwidth })
+                val audio = parsedDash.pickAudio(null)
+                if (video.isNotEmpty()) {
+                    return@runCatching video.map { rep ->
+                        val label = when {
+                            rep.height >= 2160 -> "2160p 4K (DASH)"
+                            rep.height >= 1440 -> "1440p 2K (DASH)"
+                            rep.height >= 1080 -> "1080p Full HD (DASH)"
+                            rep.height >= 720 -> "720p HD (DASH)"
+                            rep.height >= 480 -> "480p SD (DASH)"
+                            rep.height > 0 -> rep.height.toString() + "p (DASH)"
+                            else -> (rep.bandwidth / 1000).toString() + " kbps (DASH)"
+                        }
+                        MediaQualityOption(
+                            label = label,
+                            resolutionHeight = rep.height,
+                            url = mpdUrl,
+                            format = "DASH",
+                            mimeType = "video/mp4",
+                            bandwidthBps = rep.bandwidth,
+                            isDash = true,
+                            manifestRepresentationId = rep.id,
+                            manifestAudioRepresentationId = audio?.id.orEmpty(),
+                        )
+                    } + listOfNotNull(audio?.let { rep ->
+                        MediaQualityOption(
+                            label = "Audio Only (DASH)",
+                            resolutionHeight = 0,
+                            url = mpdUrl,
+                            format = "DASH",
+                            mimeType = "audio/mp4",
+                            bandwidthBps = rep.bandwidth,
+                            isDash = true,
+                            manifestRepresentationId = rep.id,
+                        )
+                    })
+                }
+            }
 
             val baseUri = Uri.parse(mpdUrl)
             val parser = Xml.newPullParser()

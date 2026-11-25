@@ -32,6 +32,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.MessageDigest
 import java.net.ProtocolException
 import java.io.OutputStream
 import java.nio.ByteBuffer
@@ -107,6 +108,8 @@ class MediaDownloadManager(
                 supportsResume = !quality.isHls && !quality.isDash,
                 isIncognito = isIncognito,
                 isDesktopMode = isDesktopMode,
+                manifestRepresentationId = quality.manifestRepresentationId,
+                manifestAudioRepresentationId = quality.manifestAudioRepresentationId,
             ),
         )
     }
@@ -137,7 +140,7 @@ class MediaDownloadManager(
         cancelTransferWhenCallerCancelled: Boolean = true,
     ): DownloadEntity? {
         val download = repository.getDownloadById(downloadId) ?: return null
-        if (download.status in setOf("COMPLETED", "CANCELLED", "FAILED")) return download
+        if (download.status in setOf("COMPLETED", "CANCELLED")) return download
 
         // A fresh explicit resume must not inherit an old scheduler-stop marker.
         pausedIds.remove(downloadId)
@@ -152,6 +155,8 @@ class MediaDownloadManager(
             mimeType = download.mimeType,
             isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
             isDash = download.isDashStream || download.url.lowercase().contains(".mpd"),
+            manifestRepresentationId = download.manifestRepresentationId,
+            manifestAudioRepresentationId = download.manifestAudioRepresentationId,
             sessionCookieManager = sessionCookieManager,
             allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
         )
@@ -222,6 +227,8 @@ class MediaDownloadManager(
                 mimeType = download.mimeType,
                 isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
                 isDash = download.isDashStream,
+                manifestRepresentationId = download.manifestRepresentationId,
+                manifestAudioRepresentationId = download.manifestAudioRepresentationId,
                 sessionCookieManager = sessionCookieManager,
                 allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
             )
@@ -264,6 +271,8 @@ class MediaDownloadManager(
         mimeType: String,
         isHls: Boolean,
         isDash: Boolean,
+        manifestRepresentationId: String,
+        manifestAudioRepresentationId: String,
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
     ): Job = synchronized(activeJobs) {
@@ -272,6 +281,7 @@ class MediaDownloadManager(
         val job = scope.launch(context = Dispatchers.IO, start = CoroutineStart.LAZY) {
             when {
                 isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                isDash && manifestRepresentationId.isNotBlank() -> downloadDashManifestAndMux(downloadId, fileName, url, manifestRepresentationId, manifestAudioRepresentationId, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, sessionCookieManager, allowGlobalCookieFallback)
             }
@@ -601,7 +611,7 @@ class MediaDownloadManager(
     ) {
         val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
         try {
-            repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = false)
+            repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
 
             val rawVideoFile = File(tempDir, "hls_video.raw")
             val totalWritten = downloadSingleHlsPlaylistToFile(
@@ -649,7 +659,7 @@ class MediaDownloadManager(
             }
             val finalSize = if (remuxSuccess && remuxedTempMp4.exists()) remuxedTempMp4.length() else totalWritten
             tempDir.deleteRecursively()
-            repository.updateDownloadProgress(downloadId, finalSize, finalSize, 0L, "COMPLETED", finalUri, false)
+            repository.updateDownloadProgress(downloadId, finalSize, finalSize, 0L, "COMPLETED", finalUri, true)
         } catch (_: CancellationException) {
             if (pausedIds.remove(downloadId)) {
                 repository.updateDownloadStatus(downloadId, "PAUSED")
@@ -658,12 +668,176 @@ class MediaDownloadManager(
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
         } catch (_: Exception) {
-            tempDir.deleteRecursively()
+            // Preserve atomically completed HLS segment files for explicit retry/resume.
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
             // activeJobs is cleared by the central Job completion handler.
         }
     }
+
+    private suspend fun downloadDashManifestAndMux(
+        downloadId: Long,
+        fileName: String,
+        mpdUrl: String,
+        videoRepresentationId: String,
+        audioRepresentationId: String,
+        referer: String,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ) {
+        val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
+        try {
+            repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
+            val xml = fetchText(mpdUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                ?: throw IOException("Could not fetch DASH MPD")
+            val manifest = DashManifestParser.parse(xml, mpdUrl)
+            if (manifest.unsupported != null) throw IOException("DASH manifest unsupported: " + manifest.unsupported)
+            val selected = manifest.representations.firstOrNull { it.id == videoRepresentationId }
+                ?: throw IOException("Selected DASH representation is no longer available")
+            if (!selected.isVideo) {
+                val audioOnly = File(tempDir, "dash_audio_" + safeSegmentName(selected.id) + ".m4a")
+                val audioResumeSupported = !selected.isSingleFile || selected.byteRanges.isNotEmpty() || selected.sidxUrl != null
+                downloadDashRepresentation(selected, audioOnly, tempDir,
+                    "audio_" + manifestFingerprint(xml) + "_" + safeSegmentName(selected.id), referer, userAgent,
+                    sessionCookieManager, allowGlobalCookieFallback, downloadId)
+                val outName = fileName.substringBeforeLast('.') + ".m4a"
+                val (out, uri) = openOutputDestination(outName, "audio/mp4")
+                out.use { stream -> FileInputStream(audioOnly).use { it.copyTo(stream) } }
+                val bytes = audioOnly.length()
+                tempDir.deleteRecursively()
+                repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, audioResumeSupported)
+                return
+            }
+
+            val videoRep = selected
+            val videoFile = File(tempDir, "dash_video_" + safeSegmentName(videoRep.id) + ".mp4")
+            var supportsResume = !videoRep.isSingleFile || videoRep.byteRanges.isNotEmpty() || videoRep.sidxUrl != null
+            downloadDashRepresentation(videoRep, videoFile, tempDir, "video_" + manifestFingerprint(xml) + "_" + safeSegmentName(videoRep.id), referer, userAgent,
+                sessionCookieManager, allowGlobalCookieFallback, downloadId)
+
+            var audioFile: File? = null
+            if (audioRepresentationId.isNotBlank()) {
+                val audioRep = manifest.representations.firstOrNull { !it.isVideo && it.id == audioRepresentationId }
+                if (audioRep != null) {
+                    audioFile = File(tempDir, "dash_audio_" + safeSegmentName(audioRep.id) + ".m4a")
+                    supportsResume = supportsResume && (!audioRep.isSingleFile || audioRep.byteRanges.isNotEmpty() || audioRep.sidxUrl != null)
+                    downloadDashRepresentation(audioRep, audioFile, tempDir, "audio_" + manifestFingerprint(xml) + "_" + safeSegmentName(audioRep.id), referer, userAgent,
+                        sessionCookieManager, allowGlobalCookieFallback, downloadId)
+                }
+            }
+
+            val muxed = File(tempDir, "dash_muxed.mp4")
+            val muxOk = remuxToMp4(videoFile, audioFile, muxed)
+            val source = if (muxOk && muxed.exists() && muxed.length() > 0L) muxed else videoFile
+            val outName = fileName.substringBeforeLast('.') + ".mp4"
+            val (out, uri) = openOutputDestination(outName, "video/mp4")
+            out.use { stream -> FileInputStream(source).use { it.copyTo(stream) } }
+            val bytes = source.length()
+            tempDir.deleteRecursively()
+            repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, supportsResume)
+        } catch (_: CancellationException) {
+            if (pausedIds.remove(downloadId)) {
+                repository.updateDownloadStatus(downloadId, "PAUSED")
+            } else {
+                tempDir.deleteRecursively()
+                repository.updateDownloadStatus(downloadId, "CANCELLED")
+            }
+        } catch (_: Exception) {
+            // Keep completed segment files; a user retry can reuse them.
+            repository.updateDownloadStatus(downloadId, "FAILED")
+        }
+    }
+
+    private suspend fun downloadDashRepresentation(
+        representation: DashRepresentation,
+        target: File,
+        staging: File,
+        label: String,
+        referer: String,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+        downloadId: Long,
+    ) {
+        var rep = representation
+        if (rep.sidxUrl != null && rep.sidxRange != null) {
+            val indexRange = rep.sidxRange
+            val indexBytes = fetchHlsBytes(
+                rep.sidxUrl,
+                ManifestSegmentPlanner.ByteRange(indexRange.last - indexRange.first + 1L, indexRange.first),
+                referer, userAgent, sessionCookieManager, allowGlobalCookieFallback,
+            )
+            val sidx = runCatching { SidxParser.parse(indexBytes) }.getOrNull()
+                ?: throw IOException("Invalid DASH sidx index")
+            require(sidx.entries.none { it.isSubsegment }) { "Nested DASH sidx references are not supported safely" }
+            val urls = mutableListOf<String>()
+            val ranges = mutableListOf<LongRange?>()
+            if (rep.initRange != null) {
+                urls.add(rep.sidxUrl)
+                ranges.add(rep.initRange)
+            } else if (indexRange.first > 0L) {
+                urls.add(rep.sidxUrl)
+                ranges.add(0L..(indexRange.first - 1L))
+            }
+            var cursor = indexRange.last + 1L + sidx.boxSize + sidx.firstOffset
+            for (entry in sidx.entries) {
+                urls.add(rep.sidxUrl)
+                ranges.add(cursor..(cursor + entry.size - 1L))
+                cursor += entry.size
+            }
+            rep = rep.copy(urls = urls, byteRanges = ranges, isSingleFile = false,
+                sidxUrl = null, sidxRange = null, initRange = null)
+        }
+
+        if (rep.isSingleFile && rep.byteRanges.isEmpty()) {
+            downloadUrlToFile(rep.urls.first(), target, referer, userAgent,
+                sessionCookieManager, allowGlobalCookieFallback) { dl, total, speed ->
+                repository.updateDownloadProgress(downloadId, dl, total, speed, "DOWNLOADING", supportsResume = false)
+            }
+            return
+        }
+
+        val ranges = rep.byteRanges.ifEmpty { List(rep.urls.size) { null } }
+        val files = rep.urls.indices.map { File(staging, "dash_" + label + "_" + it + ".part") }
+        for (group in rep.urls.indices.toList().chunked(4)) {
+            coroutineScope {
+                group.map { index ->
+                    async(Dispatchers.IO) {
+                        val range = ranges.getOrNull(index)
+                        val file = files[index]
+                        if (file.exists() && file.length() > 0L &&
+                            (range == null || file.length() == range.last - range.first + 1L)) return@async
+                        file.delete()
+                        val bytes = fetchHlsBytes(rep.urls[index], range?.let {
+                            ManifestSegmentPlanner.ByteRange(it.last - it.first + 1L, it.first)
+                        }, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                        val tmp = File(staging, file.name + ".tmp")
+                        tmp.writeBytes(bytes)
+                        if (!tmp.renameTo(file)) {
+                            tmp.delete()
+                            throw IOException("Could not atomically finalize DASH segment")
+                        }
+                    }
+                }.awaitAll()
+            }
+            val total = files.sumOf { if (it.exists()) it.length() else 0L }
+            repository.updateDownloadProgress(downloadId, total, -1L, 0L, "DOWNLOADING", supportsResume = true)
+        }
+        if (files.any { !it.exists() || it.length() == 0L }) throw IOException("DASH representation is incomplete")
+        FileOutputStream(target, false).use { out ->
+            files.forEach { file -> FileInputStream(file).use { it.copyTo(out) } }
+        }
+    }
+
+    private fun manifestFingerprint(value: String): String =
+        MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+            .take(12).joinToString("") { byte ->
+                (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+            }
+
+    private fun safeSegmentName(value: String): String =
+        value.replace(Regex("[^A-Za-z0-9_-]"), "_").take(48).ifBlank { "rep" }
 
     private suspend fun downloadDashAndMux(
         downloadId: Long,
@@ -720,100 +894,128 @@ class MediaDownloadManager(
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
     ): Long {
-        var mediaPlaylistUrl = playlistUrl
-        var playlistText = fetchText(mediaPlaylistUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) ?: return 0L
-        if (playlistText.contains("#EXT-X-STREAM-INF")) {
-            val firstVariant = extractHighestVariantUrl(mediaPlaylistUrl, playlistText)
-            if (firstVariant != null) {
-                mediaPlaylistUrl = firstVariant
-                playlistText = fetchText(mediaPlaylistUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) ?: playlistText
-            }
+        val staging = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
+        var mediaUrl = playlistUrl
+        var text = fetchText(mediaUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+            ?: throw IOException("Could not fetch HLS playlist")
+        if (text.contains("#EXT-X-STREAM-INF")) {
+            mediaUrl = extractHighestVariantUrl(mediaUrl, text)
+                ?: throw IOException("Could not resolve HLS master playlist")
+            text = fetchText(mediaUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                ?: throw IOException("Could not fetch selected HLS media playlist")
+        }
+        val plan = ManifestSegmentPlanner.parseHls(mediaUrl, text)
+        val keyCache = ConcurrentHashMap<String, ByteArray>()
+        val prefix = targetFile.nameWithoutExtension + "_" + manifestFingerprint(text)
+        val initFile = File(staging, prefix + "_hls_init.bin")
+        if (plan.initUri != null && (!initFile.exists() || initFile.length() == 0L)) {
+            val bytes = fetchHlsBytes(plan.initUri, plan.initRange, referer, userAgent,
+                sessionCookieManager, allowGlobalCookieFallback)
+                val tmp = File(staging, "hls_init.tmp")
+                tmp.writeBytes(bytes)
+                if (!tmp.renameTo(initFile)) {
+                    tmp.delete()
+                    throw IOException("Could not atomically finalize HLS init map")
+                }
         }
 
-        val baseUri = Uri.parse(mediaPlaylistUrl)
-        val lines = playlistText.lines().map { it.trim() }
+        suspend fun segmentBytes(segment: ManifestSegmentPlanner.HlsSegment): ByteArray {
+            val raw = fetchHlsBytes(segment.uri, segment.range, referer, userAgent,
+                sessionCookieManager, allowGlobalCookieFallback)
+            val key = segment.key
+            if (key == null) return raw
+            if (key.method != "AES-128") throw IOException("Unsupported HLS key method")
+            val keyBytes = keyCache[key.uri] ?: fetchBytes(key.uri, referer, userAgent,
+                sessionCookieManager, allowGlobalCookieFallback)?.also {
+                if (it.size != 16) throw IOException("Invalid AES-128 HLS key length")
+                keyCache[key.uri] = it
+            } ?: throw IOException("Could not fetch HLS AES-128 key")
+            val iv = if (key.ivHex.isNotBlank()) hexToBytes(key.ivHex) else sequenceIv(segment.sequence)
+            return decryptAes128(raw, keyBytes, iv)
+                ?: throw IOException("HLS AES-128 decryption failed; refusing to save encrypted bytes")
+        }
 
-        var aesKeyBytes: ByteArray? = null
-        var explicitIv: ByteArray? = null
-        var mediaSequence = 0L
-        var mapInitUrl: String? = null
-        val segments = mutableListOf<String>()
+        var completedBytes = if (initFile.exists()) initFile.length() else 0L
+        val segmentFiles = plan.segments.map { File(staging, prefix + "_hls_seg_" + it.index + ".bin") }
+        for (group in plan.segments.indices.toList().chunked(4)) {
+            coroutineScope {
+                group.map { index ->
+                    async(Dispatchers.IO) {
+                        val segment = plan.segments[index]
+                        val out = segmentFiles[index]
+                        val expectedRangeLength = segment.range?.length
+                        val encryptedRange = segment.key != null
+                        if (out.exists() && out.length() > 0L &&
+                            (expectedRangeLength == null || encryptedRange || out.length() == expectedRangeLength)) {
+                            return@async
+                        }
+                        out.delete()
+                        val bytes = segmentBytes(segment)
+                        val tmp = File(staging, out.name + ".tmp")
+                        tmp.writeBytes(bytes)
+                        if (!tmp.renameTo(out)) {
+                            tmp.delete()
+                            throw IOException("Could not atomically finalize HLS segment")
+                        }
+                    }
+                }.awaitAll()
+            }
+            completedBytes = (if (initFile.exists()) initFile.length() else 0L) +
+                segmentFiles.sumOf { if (it.exists()) it.length() else 0L }
+            repository.updateDownloadProgress(
+                id = downloadId,
+                downloaded = completedBytes,
+                total = -1L,
+                speedBytesPerSec = 0L,
+                status = "DOWNLOADING",
+                supportsResume = true,
+            )
+        }
 
-        for (line in lines) {
-            when {
-                line.startsWith("#EXT-X-MEDIA-SEQUENCE:") -> {
-                    mediaSequence = line.removePrefix("#EXT-X-MEDIA-SEQUENCE:").toLongOrNull() ?: 0L
-                }
-                line.startsWith("#EXT-X-MAP:") -> {
-                    val uri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.getOrNull(1)
-                    if (!uri.isNullOrBlank()) mapInitUrl = resolveUrl(baseUri, uri)
-                }
-                line.startsWith("#EXT-X-KEY:") -> {
-                    if (line.contains("METHOD=AES-128", ignoreCase = true)) {
-                        val keyUri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.getOrNull(1)
-                        val ivHex = Regex("IV=0x([0-9a-fA-F]+)").find(line)?.groupValues?.getOrNull(1)
-                        if (!keyUri.isNullOrBlank()) {
-                            aesKeyBytes = fetchBytes(resolveUrl(baseUri, keyUri), referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                        }
-                        if (!ivHex.isNullOrBlank()) {
-                            explicitIv = hexToBytes(ivHex)
-                        }
-                    } else if (line.contains("METHOD=NONE", ignoreCase = true)) {
-                        aesKeyBytes = null
+        if (segmentFiles.any { !it.exists() || it.length() == 0L }) {
+            throw IOException("HLS download is incomplete")
+        }
+        FileOutputStream(targetFile, false).use { output ->
+            if (initFile.exists()) FileInputStream(initFile).use { it.copyTo(output) }
+            val buffer = ByteArray(64 * 1024)
+            segmentFiles.forEach { file ->
+                FileInputStream(file).use { input ->
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        output.write(buffer, 0, n)
                     }
                 }
-                line.isNotBlank() && !line.startsWith("#") -> {
-                    segments.add(resolveUrl(baseUri, line))
-                }
             }
         }
+        return targetFile.length()
+    }
 
-        if (segments.isEmpty()) return 0L
-        var totalWritten = 0L
-        var lastTick = System.currentTimeMillis()
-        var lastBytes = 0L
-
-        FileOutputStream(targetFile).use { out ->
-            if (!mapInitUrl.isNullOrBlank()) {
-                val initBytes = fetchBytes(mapInitUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                if (initBytes != null) {
-                    out.write(initBytes)
-                    totalWritten += initBytes.size
+    private fun fetchHlsBytes(
+        url: String,
+        range: ManifestSegmentPlanner.ByteRange?,
+        referer: String,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ): ByteArray {
+        val builder = Request.Builder().url(url).header("User-Agent", userAgent)
+        if (referer.isNotBlank()) builder.header("Referer", referer)
+        if (range != null) builder.header("Range", "bytes=" + range.offset + "-" + (range.offset + range.length - 1L))
+        executeWithProfileCookies(builder.build(), sessionCookieManager, allowGlobalCookieFallback).use { response ->
+            if (range == null) {
+                if (response.code != 200) throw IOException("Expected complete HLS/DASH response, got HTTP " + response.code)
+            } else {
+                if (response.code != 206) throw IOException("HLS byte-range request was not honored")
+                val expected = "bytes " + range.offset + "-" + (range.offset + range.length - 1L)
+                if (!response.header("Content-Range").orEmpty().startsWith(expected)) {
+                    throw IOException("Unexpected HLS Content-Range")
                 }
             }
-
-            segments.forEachIndexed { idx, segUrl ->
-                val rawBytes = fetchBytes(segUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                if (rawBytes != null) {
-                    val dataToWrite = if (aesKeyBytes != null) {
-                        val iv = explicitIv ?: sequenceIv(mediaSequence + idx)
-                        decryptAes128(rawBytes, aesKeyBytes, iv) ?: rawBytes
-                    } else {
-                        rawBytes
-                    }
-                    out.write(dataToWrite)
-                    totalWritten += dataToWrite.size
-                }
-
-                val now = System.currentTimeMillis()
-                val dt = now - lastTick
-                if (dt >= 400L || idx == segments.lastIndex) {
-                    val speed = if (dt > 0) ((totalWritten - lastBytes) * 1000L) / dt else 0L
-                    lastTick = now
-                    lastBytes = totalWritten
-                    val estimatedTotal = (totalWritten / (idx + 1).coerceAtLeast(1)) * segments.size
-                    repository.updateDownloadProgress(
-                        downloadId,
-                        totalWritten,
-                        estimatedTotal,
-                        speed.coerceAtLeast(0L),
-                        "DOWNLOADING",
-                        supportsResume = false,
-                    )
-                }
-            }
+            val bytes = response.body?.bytes() ?: throw IOException("Empty HLS response")
+            if (range != null && bytes.size.toLong() != range.length) throw IOException("Truncated HLS byte range")
+            return bytes
         }
-        return totalWritten
     }
 
     /**

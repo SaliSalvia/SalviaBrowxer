@@ -60,6 +60,8 @@ data class DownloadEntity(
     val supportsResume: Boolean = false,
     val isIncognito: Boolean = false,
     val isDesktopMode: Boolean = false,
+    val manifestRepresentationId: String = "",
+    val manifestAudioRepresentationId: String = "",
     val createdAt: Long = System.currentTimeMillis(),
 )
 
