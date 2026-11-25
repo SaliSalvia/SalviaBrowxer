@@ -1,6 +1,5 @@
 package com.example.engine
 
-import com.salvia.salviabrowxer.media.SidxParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
