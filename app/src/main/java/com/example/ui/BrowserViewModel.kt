@@ -29,6 +29,7 @@ import com.example.engine.ExtensionEngine
 import com.example.engine.DownloadCoordinator
 import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
+import com.example.engine.MediaRequestHeaderPolicy
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
@@ -620,7 +621,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isBlocked = decision.isBlocked,
             blockReason = decision.matchedRule.orEmpty(),
             isMediaDetected = isCandidateMedia,
-            headersSummary = headers.entries.take(4).joinToString(" • ") { "${it.key}: ${it.value}" },
+            headersSummary = MediaRequestHeaderPolicy.safeSummary(headers),
         )
         val buf = networkBuffers.getOrPut(tabId) { ArrayDeque() }
         synchronized(buf) {
