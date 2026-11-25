@@ -227,6 +227,13 @@ fun WebViewContainer(
                     onSslWarning = { url, handler ->
                         sslWarning = PendingSslWarning(url, handler)
                     },
+                    onRequestHttpAuth = { pending ->
+                        authUsername = ""
+                        authPassword = ""
+                        pendingHttpAuth?.handler?.cancel()
+                        pendingHttpAuth = pending
+                    },
+                    onRequestJsDialog = { pending -> pendingJsDialog = pending },
                     onRequestWebPermission = { request, currentUrl ->
                         val resources = request.resources.toList()
                         val androidPermissions = WebPermissionPolicy.androidPermissionsForCapture(resources)
@@ -613,6 +620,8 @@ private fun createConfiguredWebView(
     viewModel: BrowserViewModel,
     onShowFileChooser: (ValueCallback<Array<Uri>>) -> Unit,
     onSslWarning: (String, SslErrorHandler) -> Unit,
+    onRequestHttpAuth: (PendingHttpAuth) -> Unit,
+    onRequestJsDialog: (PendingJsDialog) -> Unit,
     onRequestWebPermission: (PermissionRequest, String?) -> Unit,
     onRequestGeolocation: (String, String?, GeolocationPermissions.Callback) -> Unit,
     onCancelWebPermission: (PermissionRequest) -> Unit,
@@ -751,10 +760,7 @@ private fun createConfiguredWebView(
                 host: String,
                 realm: String?,
             ) {
-                authUsername = ""
-                authPassword = ""
-                pendingHttpAuth?.handler?.cancel()
-                pendingHttpAuth = PendingHttpAuth(host, realm, handler)
+                onRequestHttpAuth(PendingHttpAuth(host, realm, handler))
             }
 
             override fun onReceivedSslError(
@@ -771,13 +777,13 @@ private fun createConfiguredWebView(
         webChromeClient = object : WebChromeClient() {
             override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
                 if (result == null) return false
-                pendingJsDialog = PendingJsDialog("alert", url.orEmpty(), message.orEmpty(), "", result)
+                onRequestJsDialog(PendingJsDialog("alert", url.orEmpty(), message.orEmpty(), "", result))
                 return true
             }
 
             override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
                 if (result == null) return false
-                pendingJsDialog = PendingJsDialog("confirm", url.orEmpty(), message.orEmpty(), "", result)
+                onRequestJsDialog(PendingJsDialog("confirm", url.orEmpty(), message.orEmpty(), "", result))
                 return true
             }
 
@@ -785,7 +791,7 @@ private fun createConfiguredWebView(
                 view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?,
             ): Boolean {
                 if (result == null) return false
-                pendingJsDialog = PendingJsDialog("prompt", url.orEmpty(), message.orEmpty(), defaultValue.orEmpty(), result, result)
+                onRequestJsDialog(PendingJsDialog("prompt", url.orEmpty(), message.orEmpty(), defaultValue.orEmpty(), result, result))
                 return true
             }
 
