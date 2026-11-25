@@ -697,6 +697,7 @@ class MediaDownloadManager(
                 ?: throw IOException("Selected DASH representation is no longer available")
             if (!selected.isVideo) {
                 val audioOnly = File(tempDir, "dash_audio_" + safeSegmentName(selected.id) + ".m4a")
+                val audioResumeSupported = !selected.isSingleFile || selected.byteRanges.isNotEmpty() || selected.sidxUrl != null
                 downloadDashRepresentation(selected, audioOnly, tempDir,
                     "audio_" + manifestFingerprint(xml) + "_" + safeSegmentName(selected.id), referer, userAgent,
                     sessionCookieManager, allowGlobalCookieFallback, downloadId)
@@ -711,6 +712,7 @@ class MediaDownloadManager(
 
             val videoRep = selected
             val videoFile = File(tempDir, "dash_video_" + safeSegmentName(videoRep.id) + ".mp4")
+            var supportsResume = !videoRep.isSingleFile || videoRep.byteRanges.isNotEmpty() || videoRep.sidxUrl != null
             downloadDashRepresentation(videoRep, videoFile, tempDir, "video_" + manifestFingerprint(xml) + "_" + safeSegmentName(videoRep.id), referer, userAgent,
                 sessionCookieManager, allowGlobalCookieFallback, downloadId)
 
@@ -719,6 +721,7 @@ class MediaDownloadManager(
                 val audioRep = manifest.representations.firstOrNull { !it.isVideo && it.id == audioRepresentationId }
                 if (audioRep != null) {
                     audioFile = File(tempDir, "dash_audio_" + safeSegmentName(audioRep.id) + ".m4a")
+                    supportsResume = supportsResume && (!audioRep.isSingleFile || audioRep.byteRanges.isNotEmpty() || audioRep.sidxUrl != null)
                     downloadDashRepresentation(audioRep, audioFile, tempDir, "audio_" + manifestFingerprint(xml) + "_" + safeSegmentName(audioRep.id), referer, userAgent,
                         sessionCookieManager, allowGlobalCookieFallback, downloadId)
                 }
@@ -790,7 +793,7 @@ class MediaDownloadManager(
         if (rep.isSingleFile && rep.byteRanges.isEmpty()) {
             downloadUrlToFile(rep.urls.first(), target, referer, userAgent,
                 sessionCookieManager, allowGlobalCookieFallback) { dl, total, speed ->
-                repository.updateDownloadProgress(downloadId, dl, total, speed, "DOWNLOADING", supportsResume = true)
+                repository.updateDownloadProgress(downloadId, dl, total, speed, "DOWNLOADING", supportsResume = false)
             }
             return
         }
