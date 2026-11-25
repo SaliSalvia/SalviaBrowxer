@@ -270,7 +270,10 @@ fun WebViewContainer(
                         fullscreenCallback?.onCustomViewHidden()
                         fullscreenCallback = null
                     },
-                    onOpenPopup = { resultMsg ->
+                    onOpenPopup = { resultMsg, isUserGesture ->
+                        if (!isUserGesture) {
+                            viewModel.onPopupBlocked()
+                        } else {
                         val popup = createPopupWebView(
                             context = context,
                             tab = tab,
@@ -284,6 +287,7 @@ fun WebViewContainer(
                         val transport = resultMsg.obj as? WebView.WebViewTransport
                         transport?.webView = popup
                         resultMsg.sendToTarget()
+                        }
                     },
                 ).also { created ->
                     val savedBundle = viewModel.consumeSavedTabState(tab.id)
@@ -488,7 +492,7 @@ private fun createConfiguredWebView(
     onCancelGeolocation: () -> Unit,
     onEnterFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     onExitFullscreen: () -> Unit,
-    onOpenPopup: (Message) -> Unit,
+    onOpenPopup: (Message, Boolean) -> Unit,
 ): WebView {
     val tabId = tab.id
     return WebView(context).apply {
@@ -526,10 +530,6 @@ private fun createConfiguredWebView(
                     viewModel.onHookedResource(tabId, url, titleHint, contentType)
                 }
 
-                @JavascriptInterface
-                fun onMseBufferObserved(mimeType: String, byteLength: Int) {
-                    viewModel.onMseBufferObserved(tabId, mimeType, byteLength)
-                }
             },
             "NavaMediaBridge",
         )
@@ -653,8 +653,8 @@ private fun createConfiguredWebView(
                 resultMsg: Message?,
             ): Boolean {
                 if (resultMsg != null) {
-                    onOpenPopup(resultMsg)
-                    return true
+                    onOpenPopup(resultMsg, isUserGesture)
+                    return isUserGesture
                 }
                 return false
             }
