@@ -1,6 +1,8 @@
 package com.example.data.local
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "bookmarks")
@@ -62,6 +64,26 @@ data class DownloadEntity(
     val isDesktopMode: Boolean = false,
     val manifestRepresentationId: String = "",
     val manifestAudioRepresentationId: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+
+@Entity(
+    tableName = "media_download_request_contexts",
+    foreignKeys = [
+        ForeignKey(
+            entity = DownloadEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["downloadId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["expiresAt"])],
+)
+data class MediaDownloadRequestContextEntity(
+    @PrimaryKey val downloadId: Long,
+    val contextData: String,
+    val expiresAt: Long,
     val createdAt: Long = System.currentTimeMillis(),
 )
 

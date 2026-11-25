@@ -30,6 +30,7 @@ import com.example.engine.DownloadCoordinator
 import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.MediaRequestHeaderPolicy
+import com.example.engine.MediaRequestHeaderStore
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
@@ -55,6 +56,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val repository = BrowserRepository(db)
     private val prefsRepository = PreferencesRepository(application)
     private val mediaSniffer = MediaSnifferEngine()
+    private val mediaRequestHeaderStore = MediaRequestHeaderStore()
     private val downloadCoordinator = DownloadCoordinator(application)
 
     private val webViews = ConcurrentHashMap<String, WebView>()
@@ -287,6 +289,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         savedTabStates.remove(tabId)
         networkBuffers.remove(tabId)
         consoleBuffers.remove(tabId)
+        mediaRequestHeaderStore.clearTab(tabId)
         synchronized(tabMruOrder) { tabMruOrder.remove(tabId) }
         pendingProbedUrls.removeIf { it.startsWith("$tabId|") }
 
@@ -314,6 +317,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             savedTabStates.remove(id)
             networkBuffers.remove(id)
             consoleBuffers.remove(id)
+            mediaRequestHeaderStore.clearTab(id)
             synchronized(tabMruOrder) { tabMruOrder.remove(id) }
             pendingProbedUrls.removeIf { it.startsWith("$id|") }
         }
@@ -595,6 +599,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
 
         val isCandidateMedia = !decision.isBlocked && mediaSniffer.isCandidateMediaUrl(requestUrl)
+        if (!decision.isBlocked) {
+            mediaRequestHeaderStore.capture(
+                tabId = tabId,
+                url = requestUrl,
+                method = method,
+                isMainFrame = isMainFrame,
+                headers = headers,
+                mediaEvidence = isCandidateMedia || isLikelyMediaSegmentUrl(requestUrl),
+            )
+        }
         if (isCandidateMedia) {
             probeAndAttachNetworkMedia(tabId, requestUrl, tabUrl, tab?.title.orEmpty())
         }
@@ -643,6 +657,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         scheduleBlockedStatsFlush()
     }
 
+
+    private fun isLikelyMediaSegmentUrl(url: String): Boolean {
+        val path = runCatching { Uri.parse(url).path?.lowercase().orEmpty() }.getOrDefault("")
+        return listOf(".ts", ".m4s", ".cmfv", ".cmfa", ".aac", ".vtt").any(path::endsWith)
+    }
+
     private fun scheduleBlockedStatsFlush() {
         if (statsFlushJob?.isActive == true) return
         statsFlushJob = viewModelScope.launch(Dispatchers.IO) {
@@ -674,6 +694,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
         val resolvedMediaUrl = mediaSniffer.resolveMediaUrl(tab.url, mediaUrl)
         if (!mediaSniffer.isCandidateMediaUrl(resolvedMediaUrl)) return
+        mediaRequestHeaderStore.markMedia(tabId, resolvedMediaUrl)
         probeAndAttachNetworkMedia(
             tabId,
             resolvedMediaUrl,
@@ -691,6 +712,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         ) return
         val resolved = mediaSniffer.resolveMediaUrl(tab.url, mediaUrl)
         if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(resolved)) return
+        mediaRequestHeaderStore.markMedia(tabId, resolved)
         probeAndAttachNetworkMedia(tabId, resolved, tab.url, titleHint.ifBlank { tab.title }, mime)
     }
 
@@ -709,6 +731,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             desktopMode = sourceTab.isDesktopMode,
         )
         val cookieHeader = cookieHeaderForTab(sourceTab, mediaUrl)
+        val requestHeadersByOrigin = mediaRequestHeaderStore.snapshot(tabId, mediaUrl)
         viewModelScope.launch(Dispatchers.IO) {
             val detected = mediaSniffer.probeNetworkMedia(
                 mediaUrl = mediaUrl,
@@ -717,6 +740,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 userAgent = ua,
                 cookieHeader = cookieHeader,
                 contentTypeHint = contentTypeHint,
+                requestHeadersByOrigin = requestHeadersByOrigin,
             )
             if (detected != null) {
                 updateTab(tabId) { current ->
@@ -740,6 +764,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             current.copy(detectedMedia = merged)
         }
         items.forEach { media ->
+            mediaRequestHeaderStore.markMedia(tabId, media.primaryUrl)
             media.qualities.filter { it.isHls || it.isDash }.forEach { streamOpt ->
                 probeAndAttachNetworkMedia(tabId, streamOpt.url, tab.url, media.title)
             }
@@ -756,6 +781,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         val sessionCookieManager = cookieManagerForTab(tab)
+        val requestHeadersByOrigin = mediaRequestHeaderStore.snapshot(tab.id, quality.url)
         DownloadRuntime.launchMaintenance {
             runCatching {
                 downloadCoordinator.enqueue(
@@ -766,6 +792,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     sessionCookieManager = sessionCookieManager,
                     isIncognito = tab.isIncognito,
                     isDesktopMode = tab.isDesktopMode,
+                    requestHeadersByOrigin = requestHeadersByOrigin,
                 )
             }.onFailure {
                 withContext(Dispatchers.Main) {
@@ -798,6 +825,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isDash = lower.contains(".mpd"),
         )
         val sessionCookieManager = cookieManagerForTab(tab)
+        mediaRequestHeaderStore.markMedia(tab.id, url)
+        val requestHeadersByOrigin = mediaRequestHeaderStore.snapshot(tab.id, url)
         DownloadRuntime.launchMaintenance {
             runCatching {
                 downloadCoordinator.enqueue(
@@ -808,6 +837,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     sessionCookieManager = sessionCookieManager,
                     isIncognito = tab.isIncognito,
                     isDesktopMode = tab.isDesktopMode,
+                    requestHeadersByOrigin = requestHeadersByOrigin,
                 )
             }.onFailure {
                 withContext(Dispatchers.Main) {
@@ -847,6 +877,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         } else {
             CookieManager.getInstance()
         }
+        val privateRequestHeadersByOrigin = if (download.isIncognito && sessionTab != null) {
+            mediaRequestHeaderStore.snapshot(sessionTab.id, download.url)
+        } else {
+            emptyMap()
+        }
         if (download.isIncognito && sessionCookieManager == null) {
             _statusToast.value = getApplication<Application>().getString(
                 com.example.R.string.incognito_isolation_unavailable,
@@ -858,6 +893,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 download = download,
                 privateCookieManager = sessionCookieManager,
                 privateUserAgent = ua,
+                privateRequestHeadersByOrigin = privateRequestHeadersByOrigin,
             )
         }
     }

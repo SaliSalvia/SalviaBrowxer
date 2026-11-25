@@ -96,6 +96,7 @@ class MediaSnifferEngine {
         userAgent: String,
         cookieHeader: String? = null,
         contentTypeHint: String = "",
+        requestHeadersByOrigin: Map<String, Map<String, String>> = emptyMap(),
     ): DetectedMedia? = withContext(Dispatchers.IO) {
         val normalizedUrl = resolveMediaUrl(pageUrl, mediaUrl)
         val hintedType = contentTypeHint.substringBefore(";").trim().lowercase()
@@ -112,7 +113,7 @@ class MediaSnifferEngine {
         val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(normalizedUrl) }.getOrNull().orEmpty()
 
         if (isHls) {
-            val qualities = parseHlsPlaylist(normalizedUrl, pageUrl, userAgent, cookies)
+            val qualities = parseHlsPlaylist(normalizedUrl, pageUrl, userAgent, cookies, requestHeadersByOrigin)
             if (qualities.isEmpty()) {
                 return@withContext DetectedMedia(
                     id = normalizeMediaKey(normalizedUrl),
@@ -155,7 +156,7 @@ class MediaSnifferEngine {
         }
 
         if (isDash) {
-            val qualities = parseDashManifest(normalizedUrl, pageUrl, userAgent, cookies)
+            val qualities = parseDashManifest(normalizedUrl, pageUrl, userAgent, cookies, requestHeadersByOrigin)
             if (qualities.isNotEmpty()) {
                 val topRes = qualities.maxOfOrNull { it.resolutionHeight } ?: 720
                 return@withContext DetectedMedia(
@@ -175,7 +176,7 @@ class MediaSnifferEngine {
             }
         }
 
-        val probe = headProbe(normalizedUrl, pageUrl, userAgent, cookies)
+        val probe = headProbe(normalizedUrl, pageUrl, userAgent, cookies, requestHeadersByOrigin)
         val contentLength = probe.first
         val contentType = probe.second.ifBlank { hintedType }
 
@@ -449,12 +450,16 @@ class MediaSnifferEngine {
         referer: String,
         userAgent: String,
         cookies: String,
+        requestHeadersByOrigin: Map<String, Map<String, String>>,
     ): List<MediaQualityOption> {
         return runCatching {
             val reqBuilder = Request.Builder()
                 .url(masterUrl)
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
+            MediaRequestHeaderPolicy.headersForUrl(masterUrl, requestHeadersByOrigin)
+                .filterKeys { it != "origin" }
+                .forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
             val body = client.newCall(reqBuilder.build()).execute().use { resp ->
@@ -555,12 +560,16 @@ class MediaSnifferEngine {
         referer: String,
         userAgent: String,
         cookies: String,
+        requestHeadersByOrigin: Map<String, Map<String, String>>,
     ): List<MediaQualityOption> {
         return runCatching {
             val reqBuilder = Request.Builder()
                 .url(mpdUrl)
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
+            MediaRequestHeaderPolicy.headersForUrl(mpdUrl, requestHeadersByOrigin)
+                .filterKeys { it != "origin" }
+                .forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
             val xml = client.newCall(reqBuilder.build()).execute().use { resp ->
@@ -726,6 +735,7 @@ class MediaSnifferEngine {
         referer: String,
         userAgent: String,
         cookies: String,
+        requestHeadersByOrigin: Map<String, Map<String, String>>,
     ): Pair<Long, String> {
         return runCatching {
             val reqBuilder = Request.Builder()
@@ -733,6 +743,9 @@ class MediaSnifferEngine {
                 .head()
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
+            MediaRequestHeaderPolicy.headersForUrl(url, requestHeadersByOrigin)
+                .filterKeys { it != "origin" }
+                .forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
             client.newCall(reqBuilder.build()).execute().use { resp ->

@@ -119,12 +119,14 @@ class MediaDownloadManager(
         userAgent: String,
         sessionCookieManager: CookieManager? = null,
         allowGlobalCookieFallback: Boolean = true,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
     ): Job = scope.launch(Dispatchers.IO) {
         executePersistedDownload(
             downloadId = downloadId,
             userAgent = userAgent,
             sessionCookieManager = sessionCookieManager,
             allowGlobalCookieFallback = allowGlobalCookieFallback,
+            requestHeaderContextOverride = requestHeaderContextOverride,
         )
     }
 
@@ -138,6 +140,7 @@ class MediaDownloadManager(
         sessionCookieManager: CookieManager? = null,
         allowGlobalCookieFallback: Boolean = true,
         cancelTransferWhenCallerCancelled: Boolean = true,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
     ): DownloadEntity? {
         val download = repository.getDownloadById(downloadId) ?: return null
         if (download.status in setOf("COMPLETED", "CANCELLED")) return download
@@ -159,6 +162,8 @@ class MediaDownloadManager(
             manifestAudioRepresentationId = download.manifestAudioRepresentationId,
             sessionCookieManager = sessionCookieManager,
             allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
+            requestHeaderContextOverride = requestHeaderContextOverride,
+            isIncognito = download.isIncognito,
         )
         val callerContext = currentCoroutineContext()
         try {
@@ -198,6 +203,7 @@ class MediaDownloadManager(
         pausedIds.remove(download.id)
         activeJobs[download.id]?.cancelAndJoin()
         chunkDir(download.id).deleteRecursively()
+        repository.deleteMediaRequestContext(download.id)
         repository.updateDownloadStatus(download.id, "CANCELLED")
     }
 
@@ -214,6 +220,7 @@ class MediaDownloadManager(
         userAgent: String,
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
     ) {
         pausedIds.remove(download.id)
         scope.launch(Dispatchers.IO) {
@@ -231,6 +238,8 @@ class MediaDownloadManager(
                 manifestAudioRepresentationId = download.manifestAudioRepresentationId,
                 sessionCookieManager = sessionCookieManager,
                 allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
+                requestHeaderContextOverride = requestHeaderContextOverride,
+                isIncognito = download.isIncognito,
             )
         }
     }
@@ -257,6 +266,7 @@ class MediaDownloadManager(
         activeJobs.remove(download.id)?.cancel()
         chunkDir(download.id).deleteRecursively()
         scope.launch(Dispatchers.IO) {
+            repository.deleteMediaRequestContext(download.id)
             repository.updateDownloadStatus(download.id, "CANCELLED")
         }
     }
@@ -275,15 +285,37 @@ class MediaDownloadManager(
         manifestAudioRepresentationId: String,
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
+        isIncognito: Boolean = false,
     ): Job = synchronized(activeJobs) {
         activeJobs[downloadId]?.takeIf { it.isActive }?.let { return@synchronized it }
 
         val job = scope.launch(context = Dispatchers.IO, start = CoroutineStart.LAZY) {
-            when {
-                isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                isDash && manifestRepresentationId.isNotBlank() -> downloadDashManifestAndMux(downloadId, fileName, url, manifestRepresentationId, manifestAudioRepresentationId, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, sessionCookieManager, allowGlobalCookieFallback)
+            val encodedOverride = if (requestHeaderContextOverride.isNotEmpty()) {
+                MediaRequestHeaderPolicy.encodeContext(requestHeaderContextOverride)
+            } else {
+                ""
+            }
+            val persisted = if (encodedOverride.isBlank() && !isIncognito) {
+                repository.cleanupExpiredMediaRequestContexts()
+                repository.getMediaRequestContext(downloadId)?.contextData.orEmpty()
+            } else {
+                ""
+            }
+            val requestContexts = MediaRequestHeaderPolicy.decodeContext(
+                encodedOverride.ifBlank { persisted },
+            )
+            withContext(MediaRequestHeaderContextElement(requestContexts)) {
+                when {
+                    isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    isDash && manifestRepresentationId.isNotBlank() -> downloadDashManifestAndMux(downloadId, fileName, url, manifestRepresentationId, manifestAudioRepresentationId, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, sessionCookieManager, allowGlobalCookieFallback)
+                }
+            }
+            val finalStatus = repository.getDownloadById(downloadId)?.status
+            if (finalStatus == "COMPLETED" || finalStatus == "CANCELLED") {
+                repository.deleteMediaRequestContext(downloadId)
             }
         }
         activeJobs[downloadId] = job
@@ -1355,7 +1387,12 @@ class MediaDownloadManager(
             )
             val requestWithCookies = request.newBuilder()
                 .removeHeader("Cookie")
-                .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
+                .apply {
+                    MediaRequestHeaderContextElement.headersForUrl(request.url.toString()).forEach { (name, value) ->
+                        if (header(name).isNullOrBlank()) header(name, value)
+                    }
+                    if (cookie.isNotBlank()) header("Cookie", cookie)
+                }
                 .build()
 
             val response = client.newCall(requestWithCookies).execute()
@@ -1383,6 +1420,7 @@ class MediaDownloadManager(
             if (crossOrigin) {
                 next.removeHeader("Authorization")
                 next.removeHeader("Proxy-Authorization")
+                MediaRequestHeaderPolicy.replayableHeaderNames.forEach(next::removeHeader)
                 val safeReferer = current.newBuilder()
                     .encodedPath("/")
                     .query(null)

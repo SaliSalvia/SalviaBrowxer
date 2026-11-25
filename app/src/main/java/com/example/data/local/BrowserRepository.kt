@@ -57,6 +57,18 @@ class BrowserRepository(private val db: BrowserDatabase) {
 
     suspend fun getDownloadById(id: Long): DownloadEntity? = downloadDao.getById(id)
 
+    suspend fun saveMediaRequestContext(context: MediaDownloadRequestContextEntity) =
+        downloadDao.upsertMediaRequestContext(context)
+
+    suspend fun getMediaRequestContext(downloadId: Long): MediaDownloadRequestContextEntity? =
+        downloadDao.getMediaRequestContext(downloadId, System.currentTimeMillis())
+
+    suspend fun deleteMediaRequestContext(downloadId: Long) =
+        downloadDao.deleteMediaRequestContext(downloadId)
+
+    suspend fun cleanupExpiredMediaRequestContexts() =
+        downloadDao.deleteExpiredMediaRequestContexts(System.currentTimeMillis())
+
     suspend fun getIncognitoDownloads(): List<DownloadEntity> = downloadDao.getIncognitoDownloads()
 
     suspend fun deleteIncognitoDownloads() = downloadDao.deleteIncognitoDownloads()
