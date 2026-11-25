@@ -95,14 +95,18 @@ class MediaSnifferEngine {
         pageTitle: String,
         userAgent: String,
         cookieHeader: String? = null,
+        contentTypeHint: String = "",
     ): DetectedMedia? = withContext(Dispatchers.IO) {
         val normalizedUrl = resolveMediaUrl(pageUrl, mediaUrl)
-        if (!isCandidateMediaUrl(normalizedUrl)) return@withContext null
+        val hintedType = contentTypeHint.substringBefore(";").trim().lowercase()
+        val hintedMedia = hintedType.startsWith("video/") || hintedType.startsWith("audio/") ||
+            hintedType.contains("mpegurl") || hintedType.contains("dash+xml")
+        if (!isCandidateMediaUrl(normalizedUrl) && !hintedMedia) return@withContext null
 
         val lower = normalizedUrl.lowercase()
-        val isHls = lower.contains(".m3u8")
-        val isDash = lower.contains(".mpd")
-        val isAudio = audioExtensions.any { lower.contains(it) }
+        val isHls = lower.contains(".m3u8") || hintedType.contains("mpegurl")
+        val isDash = lower.contains(".mpd") || hintedType.contains("dash+xml")
+        val isAudio = audioExtensions.any { lower.contains(it) } || hintedType.startsWith("audio/")
         val cleanTitle = sanitizeTitle(pageTitle, normalizedUrl)
         val platform = MediaPlatformDetector.detect(pageUrl, normalizedUrl)
         val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(normalizedUrl) }.getOrNull().orEmpty()
@@ -173,7 +177,7 @@ class MediaSnifferEngine {
 
         val probe = headProbe(normalizedUrl, pageUrl, userAgent, cookies)
         val contentLength = probe.first
-        val contentType = probe.second
+        val contentType = probe.second.ifBlank { hintedType }
 
         if (!isAudio && contentLength > 0L && contentLength < MIN_VIDEO_SIZE_BYTES) {
             return@withContext null
