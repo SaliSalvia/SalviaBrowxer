@@ -19,6 +19,9 @@ import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.GeolocationPermissions
+import android.webkit.HttpAuthHandler
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -52,6 +55,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -86,6 +90,21 @@ private data class PendingSslWarning(
     val handler: SslErrorHandler,
 )
 
+private data class PendingHttpAuth(
+    val host: String,
+    val realm: String?,
+    val handler: HttpAuthHandler,
+)
+
+private data class PendingJsDialog(
+    val kind: String,
+    val origin: String,
+    val message: String,
+    val defaultValue: String,
+    val result: JsResult,
+    val promptResult: JsPromptResult? = null,
+)
+
 private data class PendingWebPermission(
     val tabId: String,
     val origin: String,
@@ -113,6 +132,10 @@ fun WebViewContainer(
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
     var popupTitle by remember { mutableStateOf(s.sslPopupDefaultTitle) }
     var pendingWebPermission by remember(tab.id) { mutableStateOf<PendingWebPermission?>(null) }
+    var pendingHttpAuth by remember(tab.id) { mutableStateOf<PendingHttpAuth?>(null) }
+    var authUsername by remember(tab.id) { mutableStateOf("") }
+    var authPassword by remember(tab.id) { mutableStateOf("") }
+    var pendingJsDialog by remember(tab.id) { mutableStateOf<PendingJsDialog?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -487,6 +510,54 @@ fun WebViewContainer(
             )
         }
 
+        pendingHttpAuth?.let { pending ->
+            AlertDialog(
+                onDismissRequest = { pending.handler.cancel(); pendingHttpAuth = null },
+                title = { Text("Sign in to ${pending.host}") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(pending.realm.orEmpty())
+                        OutlinedTextField(value = authUsername, onValueChange = { authUsername = it }, label = { Text("Username") }, singleLine = true)
+                        OutlinedTextField(value = authPassword, onValueChange = { authPassword = it }, label = { Text("Password") }, singleLine = true)
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        pending.handler.proceed(authUsername, authPassword)
+                        authUsername = ""; authPassword = ""; pendingHttpAuth = null
+                    }) { Text("Sign in") }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { pending.handler.cancel(); authUsername = ""; authPassword = ""; pendingHttpAuth = null }) { Text("Cancel") }
+                },
+            )
+        }
+
+        pendingJsDialog?.let { pending ->
+            var promptValue by remember(pending) { mutableStateOf(pending.defaultValue) }
+            AlertDialog(
+                onDismissRequest = { pending.result.cancel(); pendingJsDialog = null },
+                title = { Text(if (pending.kind == "alert") "JavaScript alert" else "JavaScript dialog") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(pending.message)
+                        if (pending.kind == "prompt") {
+                            OutlinedTextField(value = promptValue, onValueChange = { promptValue = it }, singleLine = true)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (pending.kind == "prompt") pending.promptResult?.confirm(promptValue) else pending.result.confirm()
+                        pendingJsDialog = null
+                    }) { Text("OK") }
+                },
+                dismissButton = if (pending.kind == "alert") ({}) else ({
+                    OutlinedButton(onClick = { pending.result.cancel(); pendingJsDialog = null }) { Text("Cancel") }
+                }),
+            )
+        }
+
         // SSL Warning Dialog
         sslWarning?.let { warning ->
             AlertDialog(
@@ -674,6 +745,18 @@ private fun createConfiguredWebView(
                 }
             }
 
+            override fun onReceivedHttpAuthRequest(
+                view: WebView?,
+                handler: HttpAuthHandler,
+                host: String,
+                realm: String?,
+            ) {
+                authUsername = ""
+                authPassword = ""
+                pendingHttpAuth?.handler?.cancel()
+                pendingHttpAuth = PendingHttpAuth(host, realm, handler)
+            }
+
             override fun onReceivedSslError(
                 view: WebView?,
                 handler: SslErrorHandler?,
@@ -686,6 +769,26 @@ private fun createConfiguredWebView(
         }
 
         webChromeClient = object : WebChromeClient() {
+            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                if (result == null) return false
+                pendingJsDialog = PendingJsDialog("alert", url.orEmpty(), message.orEmpty(), "", result)
+                return true
+            }
+
+            override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                if (result == null) return false
+                pendingJsDialog = PendingJsDialog("confirm", url.orEmpty(), message.orEmpty(), "", result)
+                return true
+            }
+
+            override fun onJsPrompt(
+                view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?,
+            ): Boolean {
+                if (result == null) return false
+                pendingJsDialog = PendingJsDialog("prompt", url.orEmpty(), message.orEmpty(), defaultValue.orEmpty(), result, result)
+                return true
+            }
+
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 viewModel.onPageProgress(tabId, newProgress)
             }
