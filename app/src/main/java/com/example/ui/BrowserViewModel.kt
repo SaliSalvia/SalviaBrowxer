@@ -825,8 +825,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isDash = lower.contains(".mpd"),
         )
         val sessionCookieManager = cookieManagerForTab(tab)
-        mediaRequestHeaderStore.markMedia(tab.id, url)
-        val requestHeadersByOrigin = mediaRequestHeaderStore.snapshot(tab.id, url)
+        val lowerPath = runCatching { Uri.parse(url).path?.lowercase().orEmpty() }.getOrDefault("")
+        val isMediaDownload = mimeType.substringBefore(";").trim().lowercase().let {
+            it.startsWith("video/") || it.startsWith("audio/") ||
+                it.contains("mpegurl") || it.contains("dash+xml")
+        } || listOf(".m3u8", ".mpd", ".mp4", ".m4v", ".webm", ".mov", ".mp3", ".m4a", ".aac", ".ogg")
+            .any(lowerPath::endsWith)
+        if (isMediaDownload) mediaRequestHeaderStore.markMedia(tab.id, url)
+        val requestHeadersByOrigin = if (isMediaDownload) {
+            mediaRequestHeaderStore.snapshot(tab.id, url)
+        } else {
+            emptyMap()
+        }
         DownloadRuntime.launchMaintenance {
             runCatching {
                 downloadCoordinator.enqueue(
