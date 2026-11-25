@@ -11,7 +11,7 @@ This change extends the existing MediaDownloadManager and DownloadCoordinator; i
 - Validate HTTP 206 and Content-Range for byte-range requests.
 - Decrypt AES-128 CBC with the sequence-derived IV or explicit IV. Failed decryption is an error; encrypted bytes are never mislabeled as playable output.
 - Keep audio and video playlist staging separate.
-- Require EXT-X-ENDLIST for offline completion. Live/event playlists are not silently saved as complete files.
+- Preserve the existing live-playlist snapshot behavior: the currently listed segments can be downloaded, but the browser does not claim to record future live segments or wait for an ENDLIST.
 
 Unsupported HLS: SAMPLE-AES/DRM and non-identity key formats.
 
@@ -23,7 +23,7 @@ Unsupported HLS: SAMPLE-AES/DRM and non-identity key formats.
 - SIDX byte ranges are expanded before segment download. Nested SIDX references are rejected rather than partially assembled.
 - The existing direct-file DASH path remains available for previously stored downloads that have no representation metadata.
 
-Unsupported DASH: dynamic/live MPDs, DRM/ContentProtection, nested SIDX references, and unsupported/invalid segment templates.
+Unsupported DASH segmented downloads: dynamic/live MPDs, DRM/ContentProtection, nested SIDX references, and unsupported/invalid segment templates. The legacy direct-BaseURL path remains available for compatible direct files
 
 ## Persistence and compatibility
 
