@@ -2,6 +2,7 @@ package com.example.engine
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,12 +55,13 @@ class ManifestSegmentPlannerTest {
             .replace("TOKEN_ID", tokenId)
             .replace("TOKEN_NUMBER", tokenNumber)
             .replace("TOKEN_TIME", tokenTime)
-        val plan = ManifestSegmentPlanner.parseDash("https://cdn.example/master.mpd", xml)
+        val plan = DashManifestParser.parse(xml, "https://cdn.example/master.mpd")
+        assertNull(plan.unsupported)
         val rep = plan.representations.single()
-        assertEquals(4, rep.segments.size)
-        assertTrue(rep.segments.first().initialization)
-        assertEquals("https://cdn.example/video/chunk-007-0.m4s", rep.segments[1].uri)
-        assertEquals("https://cdn.example/video/chunk-009-4.m4s", rep.segments[3].uri)
+        assertEquals(4, rep.urls.size)
+        assertTrue(rep.urls.first().endsWith("init-v1.mp4"))
+        assertEquals("https://cdn.example/video/chunk-007-0.m4s", rep.urls[1])
+        assertEquals("https://cdn.example/video/chunk-009-4.m4s", rep.urls[3])
     }
 
     @Test
@@ -71,8 +73,8 @@ class ManifestSegmentPlannerTest {
               </AdaptationSet></Period>
             </MPD>
         """.trimIndent()
-        val error = runCatching { ManifestSegmentPlanner.parseDash("https://cdn.example/live.mpd", xml) }.exceptionOrNull()
-        assertTrue(error != null)
+        val result = DashManifestParser.parse(xml, "https://cdn.example/live.mpd")
+        assertEquals("LIVE", result.unsupported)
     }
 
     @Test
