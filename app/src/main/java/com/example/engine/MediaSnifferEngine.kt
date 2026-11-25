@@ -30,7 +30,7 @@ class MediaSnifferEngine {
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
-        .followRedirects(true)
+        .followRedirects(false)
         .build()
 
     companion object {
@@ -457,12 +457,9 @@ class MediaSnifferEngine {
                 .url(masterUrl)
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
-            val injectedHeaders = MediaRequestHeaderPolicy.headersForUrl(masterUrl, requestHeadersByOrigin)
-                .filterKeys { it != "origin" }
-            injectedHeaders.forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            val body = executeProbeRequest(reqBuilder.build(), injectedHeaders).use { resp ->
+            val body = executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
                 resp.body?.string().orEmpty()
             }
@@ -567,12 +564,9 @@ class MediaSnifferEngine {
                 .url(mpdUrl)
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
-            val injectedHeaders = MediaRequestHeaderPolicy.headersForUrl(mpdUrl, requestHeadersByOrigin)
-                .filterKeys { it != "origin" }
-            injectedHeaders.forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            val xml = executeProbeRequest(reqBuilder.build(), injectedHeaders).use { resp ->
+            val xml = executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
                 resp.body?.string().orEmpty()
             }
@@ -743,12 +737,9 @@ class MediaSnifferEngine {
                 .head()
                 .header("User-Agent", userAgent)
                 .header("Referer", referer)
-            val injectedHeaders = MediaRequestHeaderPolicy.headersForUrl(url, requestHeadersByOrigin)
-                .filterKeys { it != "origin" }
-            injectedHeaders.forEach { (name, value) -> reqBuilder.header(name, value) }
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            executeProbeRequest(reqBuilder.build(), injectedHeaders).use { resp ->
+            executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 val len = resp.header("Content-Length")?.toLongOrNull() ?: -1L
                 val type = resp.header("Content-Type").orEmpty().substringBefore(";").trim()
                 len to type
@@ -758,22 +749,72 @@ class MediaSnifferEngine {
 
 
     /**
-     * Optional request metadata must never make the existing probe path less reliable.
-     * Retry selected header-related failures once without any helper-injected fields.
+     * Optional request metadata must not weaken the established probe path.
+     * Each redirect hop is origin-checked, and selected header-related failures
+     * retry once without helper fields before the response is accepted.
      */
     private fun executeProbeRequest(
-        request: Request,
-        injectedHeaders: Map<String, String>,
+        initialRequest: Request,
+        contextsByOrigin: Map<String, Map<String, String>>,
     ): okhttp3.Response {
-        val assisted = client.newCall(request).execute()
-        if (!MediaRequestHeaderPolicy.shouldRetryWithoutContext(assisted.code, injectedHeaders.size)) {
-            return assisted
+        var request = initialRequest
+        val redirectCodes = setOf(300, 301, 302, 303, 307, 308)
+
+        repeat(10) { redirectCount ->
+            val helperHeaders = MediaRequestHeaderPolicy.headersForUrl(
+                request.url.toString(),
+                contextsByOrigin,
+            ).filterKeys { it != "origin" }
+            val assistedRequest = request.newBuilder().apply {
+                helperHeaders.forEach { (name, value) ->
+                    if (request.header(name).isNullOrBlank()) header(name, value)
+                }
+            }.build()
+
+            val assistedResponse = client.newCall(assistedRequest).execute()
+            val response = if (
+                MediaRequestHeaderPolicy.shouldRetryWithoutContext(
+                    assistedResponse.code,
+                    helperHeaders.size,
+                )
+            ) {
+                assistedResponse.close()
+                val legacyRequest = request.newBuilder().apply {
+                    helperHeaders.keys.forEach(::removeHeader)
+                }.build()
+                client.newCall(legacyRequest).execute()
+            } else {
+                assistedResponse
+            }
+
+            val location = response.header("Location")
+            if (response.code !in redirectCodes || location.isNullOrBlank()) return response
+
+            val target = response.request.url.resolve(location)
+            if (target == null || (target.scheme != "http" && target.scheme != "https")) return response
+
+            val current = response.request.url
+            if (current.isHttps && !target.isHttps) return response
+            if (redirectCount == 9) {
+                response.close()
+                throw java.net.ProtocolException("Too many media probe redirects")
+            }
+
+            val crossOrigin = current.scheme != target.scheme ||
+                current.host != target.host ||
+                current.port != target.port
+            val next = response.request.newBuilder().url(target)
+            if (crossOrigin) {
+                // Metadata captured for the old origin is never forwarded to another origin.
+                helperHeaders.keys.forEach(next::removeHeader)
+                next.removeHeader("Authorization")
+                next.removeHeader("Proxy-Authorization")
+            }
+            response.close()
+            request = next.build()
         }
-        assisted.close()
-        val legacyRequest = request.newBuilder().apply {
-            injectedHeaders.keys.forEach(::removeHeader)
-        }.build()
-        return client.newCall(legacyRequest).execute()
+
+        throw java.net.ProtocolException("Media probe redirect limit exceeded")
     }
 
     private fun resolveRelativeUrl(base: Uri, relative: String): String {
