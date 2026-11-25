@@ -560,9 +560,11 @@ fun WebViewContainer(
                         pendingJsDialog = null
                     }) { Text("OK") }
                 },
-                dismissButton = if (pending.kind == "alert") ({}) else ({
-                    OutlinedButton(onClick = { pending.result.cancel(); pendingJsDialog = null }) { Text("Cancel") }
-                }),
+                dismissButton = {
+                    if (pending.kind != "alert") {
+                        OutlinedButton(onClick = { pending.result.cancel(); pendingJsDialog = null }) { Text("Cancel") }
+                    }
+                },
             )
         }
 
