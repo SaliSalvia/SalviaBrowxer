@@ -21,8 +21,7 @@ object MediaRequestHeaderPolicy {
                 normalizedName in allowedNames &&
                 normalizedValue.isNotEmpty() &&
                 normalizedValue.length <= 1024 &&
-                '\r' !in normalizedValue &&
-                '\n' !in normalizedValue
+                normalizedValue.none { it.code < 0x20 }
             ) {
                 put(normalizedName, normalizedValue)
             }
