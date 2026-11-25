@@ -815,8 +815,8 @@ class MediaDownloadManager(
                         val tmp = File(staging, file.name + ".tmp")
                         tmp.writeBytes(bytes)
                         if (!tmp.renameTo(file)) {
-                            tmp.copyTo(file, overwrite = true)
                             tmp.delete()
+                            throw IOException("Could not atomically finalize DASH segment")
                         }
                     }
                 }.awaitAll()
@@ -914,8 +914,8 @@ class MediaDownloadManager(
                 val tmp = File(staging, "hls_init.tmp")
                 tmp.writeBytes(bytes)
                 if (!tmp.renameTo(initFile)) {
-                    tmp.copyTo(initFile, overwrite = true)
                     tmp.delete()
+                    throw IOException("Could not atomically finalize HLS init map")
                 }
         }
 
@@ -954,8 +954,8 @@ class MediaDownloadManager(
                         val tmp = File(staging, out.name + ".tmp")
                         tmp.writeBytes(bytes)
                         if (!tmp.renameTo(out)) {
-                            tmp.copyTo(out, overwrite = true)
                             tmp.delete()
+                            throw IOException("Could not atomically finalize HLS segment")
                         }
                     }
                 }.awaitAll()
