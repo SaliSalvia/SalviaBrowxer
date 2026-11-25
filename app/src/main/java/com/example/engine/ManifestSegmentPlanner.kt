@@ -1,339 +1,255 @@
 package com.example.engine
 
-import android.net.Uri
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
 import java.io.StringReader
 import java.net.URI
+import kotlin.math.ceil
 
 /**
- * Conservative HLS/DASH manifest planner.
- *
- * This class only accepts finite, downloadable manifests. It deliberately rejects live,
- * DRM-protected and unsupported template forms instead of producing a misleading partial file.
+ * Parses only finite, non-DRM manifests. Unsupported constructs fail closed instead of
+ * silently creating corrupt media files.
  */
 internal object ManifestSegmentPlanner {
     data class ByteRange(val length: Long, val offset: Long)
-
     data class HlsKey(val method: String, val uri: String = "", val ivHex: String = "")
-    data class HlsSegment(
-        val index: Int,
-        val sequence: Long,
-        val uri: String,
-        val range: ByteRange? = null,
-        val key: HlsKey? = null,
-    )
-    data class HlsPlan(
-        val mediaPlaylistUrl: String,
-        val initUri: String? = null,
-        val initRange: ByteRange? = null,
-        val segments: List<HlsSegment>,
-        val isEndList: Boolean,
-    )
+    data class HlsSegment(val index: Int, val sequence: Long, val uri: String, val range: ByteRange?, val key: HlsKey?)
+    data class HlsPlan(val mediaPlaylistUrl: String, val initUri: String?, val initRange: ByteRange?,
+                       val segments: List<HlsSegment>, val isEndList: Boolean)
+    data class DashSegment(val index: Int, val uri: String, val range: ByteRange? = null, val initialization: Boolean = false)
+    data class DashRepresentation(val id: String, val mimeType: String, val codecs: String,
+                                 val height: Int, val bandwidth: Long, val segments: List<DashSegment>)
+    data class DashPlan(val durationSeconds: Double, val representations: List<DashRepresentation>)
 
-    data class DashSegment(
-        val index: Int,
-        val uri: String,
-        val range: ByteRange? = null,
-        val initialization: Boolean = false,
-    )
-    data class DashRepresentation(
-        val id: String,
-        val mimeType: String,
-        val codecs: String,
-        val height: Int,
-        val bandwidth: Long,
-        val segments: List<DashSegment>,
-    )
-    data class DashPlan(
-        val isStatic: Boolean,
-        val durationSeconds: Double,
-        val representations: List<DashRepresentation>,
-    )
-
-    fun parseHls(playlistUrl: String, text: String): HlsPlan {
-        requireHttpUrl(playlistUrl)
+    fun parseHls(url: String, text: String): HlsPlan {
+        requireHttp(url)
         val lines = text.lineSequence().map(String::trim).toList()
-        require(lines.firstOrNull() == "#EXTM3U") { "Not an HLS playlist" }
-        require(!lines.any { it.startsWith("#EXT-X-STREAM-INF") }) {
-            "Master playlist must be resolved to a media playlist first"
+        require(lines.firstOrNull() == "#EXTM3U") { "Invalid HLS playlist" }
+        require(lines.none { it.startsWith("#EXT-X-STREAM-INF") }) { "Resolve HLS master playlist first" }
+        require(lines.none { it.startsWith("#EXT-X-KEY:") && it.contains("SAMPLE-AES", true) }) {
+            "SAMPLE-AES/DRM HLS is unsupported"
         }
-        require(!lines.any { it.startsWith("#EXT-X-KEY:") && it.contains("METHOD=SAMPLE-AES", true) }) {
-            "DRM/SAMPLE-AES HLS is not supported"
-        }
-
-        var sequence = lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE:") }
+        var seq = lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE:") }
             ?.substringAfter(':')?.toLongOrNull() ?: 0L
-        var nextRangeOffset = 0L
-        var initUri: String? = null
-        var initRange: ByteRange? = null
         var key: HlsKey? = null
+        var init: String? = null
+        var initRange: ByteRange? = null
+        var rangeText: String? = null
+        var previousRangeUri = ""
+        var nextRangeOffset = 0L
         val segments = mutableListOf<HlsSegment>()
-        var pendingRange: ByteRange? = null
-
         for (line in lines) {
             when {
                 line.startsWith("#EXT-X-KEY:") -> {
-                    val attrs = attributes(line.substringAfter(':'))
-                    val method = attrs["METHOD"].orEmpty().uppercase()
-                    key = when (method) {
+                    val a = attrs(line.substringAfter(':'))
+                    key = when (a["METHOD"]?.uppercase()) {
                         "NONE" -> null
                         "AES-128" -> {
-                            val rawUri = attrs["URI"] ?: error("AES-128 key URI missing")
-                            val resolved = resolve(playlistUrl, rawUri)
-                            requireHttpUrl(resolved)
-                            HlsKey(method, resolved, attrs["IV"].orEmpty().removePrefix("0x"))
+                            val keyUri = a["URI"] ?: error("HLS AES-128 key URI missing")
+                            val resolved = resolve(url, keyUri)
+                            requireHttp(resolved)
+                            HlsKey("AES-128", resolved, a["IV"].orEmpty().removePrefix("0x"))
                         }
-                        else -> error("Unsupported HLS encryption method: $method")
+                        else -> error("Unsupported HLS encryption method")
                     }
                 }
                 line.startsWith("#EXT-X-MAP:") -> {
-                    val attrs = attributes(line.substringAfter(':'))
-                    initUri = attrs["URI"]?.let { resolve(playlistUrl, it) }
-                    initRange = attrs["BYTERANGE"]?.let { parseRange(it, nextRangeOffset).also { r -> nextRangeOffset = r.offset + r.length } }
+                    val a = attrs(line.substringAfter(':'))
+                    init = a["URI"]?.let { resolve(url, it) }
+                    initRange = a["BYTERANGE"]?.let { parseRange(it, 0L) }
                 }
-                line.startsWith("#EXT-X-BYTERANGE:") -> {
-                    pendingRange = parseRange(line.substringAfter(':'), nextRangeOffset)
-                    nextRangeOffset = pendingRange!!.offset + pendingRange!!.length
-                }
+                line.startsWith("#EXT-X-BYTERANGE:") -> rangeText = line.substringAfter(':')
                 line.isNotEmpty() && !line.startsWith("#") -> {
-                    val resolved = resolve(playlistUrl, line)
-                    requireHttpUrl(resolved)
-                    segments += HlsSegment(segments.size, sequence, resolved, pendingRange, key)
-                    sequence++
-                    pendingRange = null
-                    if (pendingRange == null && !line.startsWith("#")) nextRangeOffset = 0L
+                    val segmentUrl = resolve(url, line)
+                    requireHttp(segmentUrl)
+                    val range = rangeText?.let { raw ->
+                        val p = raw.split('@', limit = 2)
+                        val length = p[0].toLongOrNull() ?: error("Invalid HLS byte range")
+                        val offset = if (p.size == 2) p[1].toLongOrNull() ?: error("Invalid HLS byte-range offset")
+                            else if (previousRangeUri == segmentUrl) nextRangeOffset else 0L
+                        ByteRange(length, offset).also {
+                            require(it.length > 0L && it.offset >= 0L)
+                            previousRangeUri = segmentUrl
+                            nextRangeOffset = it.offset + it.length
+                        }
+                    }
+                    if (range == null) {
+                        previousRangeUri = ""
+                        nextRangeOffset = 0L
+                    }
+                    segments.add(HlsSegment(segments.size, seq++, segmentUrl, range, key))
+                    rangeText = null
                 }
             }
         }
-        require(segments.isNotEmpty()) { "HLS playlist has no media segments" }
-        return HlsPlan(playlistUrl, initUri, initRange, segments, lines.any { it == "#EXT-X-ENDLIST" })
+        require(segments.isNotEmpty()) { "HLS playlist has no segments" }
+        return HlsPlan(url, init, initRange, segments, lines.any { it == "#EXT-X-ENDLIST" })
     }
 
-    fun parseDash(mpdUrl: String, xml: String): DashPlan {
-        requireHttpUrl(mpdUrl)
-        val parser = Xml.newPullParser()
-        parser.setInput(StringReader(xml))
-        var staticMpd = false
-        var duration = 0.0
-        var mpdBase = mpdUrl
-        var periodBase = ""
-        var adaptBase = ""
-        var adaptMime = ""
-        var adaptCodecs = ""
-        var adaptTemplate: Template? = null
-        var adaptList: SegmentList? = null
+    fun parseDash(url: String, xml: String): DashPlan {
+        requireHttp(url)
+        val p = Xml.newPullParser()
+        p.setInput(StringReader(xml))
+        var isStatic = false
+        var totalDuration = 0.0
+        var rootBase = url
+        var periodBase = url
+        var adaptationBase = url
+        var adaptationMime = ""
+        var adaptationCodecs = ""
+        var adaptationTemplate: Template? = null
         var current: Rep? = null
+        var timelineTarget: Template? = null
+        var timelineTime = 0L
         val reps = mutableListOf<DashRepresentation>()
-
-        var event = parser.eventType
+        var event = p.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
             when (event) {
-                XmlPullParser.START_TAG -> when (parser.name) {
+                XmlPullParser.START_TAG -> when (p.name) {
                     "MPD" -> {
-                        staticMpd = parser.getAttributeValue(null, "type").orEmpty().equals("static", true)
-                        duration = parseDuration(parser.getAttributeValue(null, "mediaPresentationDuration").orEmpty())
+                        isStatic = p.getAttributeValue(null, "type").equals("static", true)
+                        totalDuration = duration(p.getAttributeValue(null, "mediaPresentationDuration").orEmpty())
+                    }
+                    "Period" -> { periodBase = rootBase; adaptationBase = rootBase }
+                    "AdaptationSet" -> {
+                        adaptationMime = p.getAttributeValue(null, "mimeType").orEmpty()
+                        adaptationCodecs = p.getAttributeValue(null, "codecs").orEmpty()
+                        adaptationBase = periodBase
+                        adaptationTemplate = null
                     }
                     "BaseURL" -> {
-                        val value = parser.nextText().trim()
+                        val value = p.nextText().trim()
                         if (value.isNotEmpty()) {
-                            val parent = when {
-                                current != null -> current!!.base
-                                adaptMime.isNotEmpty() -> adaptBase.ifBlank { periodBase }
-                                periodBase.isNotEmpty() -> periodBase
-                                else -> mpdBase
-                            }
+                            val parent = current?.base ?: if (adaptationMime.isNotEmpty()) adaptationBase else periodBase
                             val resolved = resolve(parent, value)
                             if (current != null) current!!.base = resolved
-                            else if (adaptMime.isNotEmpty()) adaptBase = resolved
-                            else if (periodBase.isNotEmpty()) periodBase = resolved
-                            else mpdBase = resolved
+                            else if (adaptationMime.isNotEmpty()) adaptationBase = resolved
+                            else { rootBase = resolved; periodBase = resolved }
                         }
                     }
-                    "Period" -> {
-                        periodBase = mpdBase
-                        adaptBase = ""
-                    }
-                    "AdaptationSet" -> {
-                        adaptMime = parser.getAttributeValue(null, "mimeType").orEmpty()
-                        adaptCodecs = parser.getAttributeValue(null, "codecs").orEmpty()
-                        adaptBase = periodBase
-                        adaptTemplate = null
-                        adaptList = null
-                    }
                     "SegmentTemplate" -> {
-                        val t = readTemplate(parser)
-                        adaptTemplate = t
-                        if (current != null) current!!.template = t
-                    }
-                    "SegmentList" -> {
-                        val list = readSegmentList(parser)
-                        adaptList = list
-                        if (current != null) current!!.list = list
-                    }
-                    "Representation" -> {
-                        current = Rep(
-                            id = parser.getAttributeValue(null, "id").orEmpty(),
-                            mime = parser.getAttributeValue(null, "mimeType").orEmpty().ifBlank { adaptMime },
-                            codecs = parser.getAttributeValue(null, "codecs").orEmpty().ifBlank { adaptCodecs },
-                            height = parser.getAttributeValue(null, "height")?.toIntOrNull() ?: 0,
-                            bandwidth = parser.getAttributeValue(null, "bandwidth")?.toLongOrNull() ?: 0L,
-                            base = adaptBase.ifBlank { periodBase },
-                            template = adaptTemplate,
-                            list = adaptList,
+                        val t = Template(
+                            initialization = p.getAttributeValue(null, "initialization").orEmpty(),
+                            media = p.getAttributeValue(null, "media").orEmpty(),
+                            timescale = p.getAttributeValue(null, "timescale")?.toLongOrNull()?.coerceAtLeast(1L) ?: 1L,
+                            duration = p.getAttributeValue(null, "duration")?.toLongOrNull() ?: 0L,
+                            startNumber = p.getAttributeValue(null, "startNumber")?.toLongOrNull() ?: 1L,
+                            timeline = mutableListOf()
                         )
+                        require(t.media.isNotBlank()) { "DASH SegmentTemplate media missing" }
+                        adaptationTemplate = t
+                        current?.template = t
                     }
-                    "Initialization" -> {
-                        val attrs = attributesFromParser(parser)
-                        current?.list?.initialization = attrs["sourceURL"]?.let { resolve(current!!.base, it) }
-                        current?.list?.initializationRange = attrs["range"]?.let { parseRange(it, 0L) }
+                    "SegmentTimeline" -> { timelineTarget = current?.template ?: adaptationTemplate; timelineTime = 0L }
+                    "S" -> {
+                        val t = timelineTarget
+                        if (t != null) {
+                            val start = p.getAttributeValue(null, "t")?.toLongOrNull() ?: timelineTime
+                            val d = p.getAttributeValue(null, "d")?.toLongOrNull() ?: error("DASH S@d missing")
+                            val r = p.getAttributeValue(null, "r")?.toIntOrNull() ?: 0
+                            require(d > 0L && r >= 0) { "Negative DASH timeline repeat is not supported" }
+                            t.timeline.add(TimelineEntry(start, d, r))
+                            timelineTime = start + d * (r + 1L)
+                        }
                     }
-                    "SegmentURL" -> {
-                        val attrs = attributesFromParser(parser)
-                        val media = attrs["media"]
-                        if (!media.isNullOrBlank()) current?.list?.urls?.add(
-                            DashSegment(current!!.list!!.urls.size, resolve(current!!.base, media),
-                                attrs["mediaRange"]?.let { parseRange(it, 0L) })
-                        )
-                    }
+                    "Representation" -> current = Rep(
+                        id = p.getAttributeValue(null, "id").orEmpty(),
+                        mime = p.getAttributeValue(null, "mimeType").orEmpty().ifBlank { adaptationMime },
+                        codecs = p.getAttributeValue(null, "codecs").orEmpty().ifBlank { adaptationCodecs },
+                        height = p.getAttributeValue(null, "height")?.toIntOrNull() ?: 0,
+                        bandwidth = p.getAttributeValue(null, "bandwidth")?.toLongOrNull() ?: 0L,
+                        base = adaptationBase,
+                        template = adaptationTemplate
+                    )
                 }
-                XmlPullParser.END_TAG -> when (parser.name) {
+                XmlPullParser.END_TAG -> when (p.name) {
+                    "SegmentTimeline" -> timelineTarget = null
                     "Representation" -> {
-                        current?.let { rep ->
-                            val segments = buildDashSegments(rep, staticMpd, duration)
-                            if (segments.isNotEmpty()) reps += DashRepresentation(
-                                rep.id, rep.mime, rep.codecs, rep.height, rep.bandwidth, segments
-                            )
+                        val r = current
+                        if (r != null && isStatic) {
+                            val segments = buildSegments(r, totalDuration)
+                            if (segments.isNotEmpty()) reps.add(DashRepresentation(r.id, r.mime, r.codecs, r.height, r.bandwidth, segments))
                         }
                         current = null
                     }
-                    "AdaptationSet" -> {
-                        adaptMime = ""
-                        adaptCodecs = ""
-                        adaptTemplate = null
-                        adaptList = null
-                        adaptBase = ""
-                    }
+                    "AdaptationSet" -> { adaptationMime = ""; adaptationCodecs = ""; adaptationTemplate = null }
                 }
             }
-            event = parser.next()
+            event = p.next()
         }
-        require(staticMpd) { "Dynamic/live DASH manifests are not supported for offline downloads" }
-        require(reps.isNotEmpty()) { "No supported DASH segment plan found" }
-        return DashPlan(staticMpd, duration, reps)
+        require(isStatic) { "Live/Dynamic DASH is not eligible for offline download" }
+        require(reps.isNotEmpty()) { "No supported DASH SegmentTemplate representation" }
+        return DashPlan(totalDuration, reps)
     }
 
-    private data class Template(
-        val initialization: String,
-        val media: String,
-        val timescale: Long,
-        val duration: Long,
-        val startNumber: Long,
-        val timeline: List<Pair<Long, Int>>?,
-    )
-    private data class SegmentList(
-        var initialization: String? = null,
-        var initializationRange: ByteRange? = null,
-        val urls: MutableList<DashSegment> = mutableListOf(),
-    )
-    private data class Rep(
-        val id: String,
-        val mime: String,
-        val codecs: String,
-        val height: Int,
-        val bandwidth: Long,
-        var base: String,
-        var template: Template?,
-        var list: SegmentList?,
-    )
+    private data class Template(val initialization: String, val media: String, val timescale: Long,
+                               val duration: Long, val startNumber: Long, val timeline: MutableList<TimelineEntry>)
+    private data class TimelineEntry(val start: Long, val duration: Long, val repeat: Int)
+    private data class Rep(val id: String, val mime: String, val codecs: String, val height: Int,
+                           val bandwidth: Long, var base: String, var template: Template?)
 
-    private fun readTemplate(p: XmlPullParser): Template {
-        val init = p.getAttributeValue(null, "initialization").orEmpty()
-        val media = p.getAttributeValue(null, "media").orEmpty()
-        require(media.isNotBlank()) { "DASH SegmentTemplate media missing" }
-        val timescale = p.getAttributeValue(null, "timescale")?.toLongOrNull()?.coerceAtLeast(1L) ?: 1L
-        val duration = p.getAttributeValue(null, "duration")?.toLongOrNull() ?: 0L
-        val start = p.getAttributeValue(null, "startNumber")?.toLongOrNull() ?: 1L
-        val timeline = mutableListOf<Pair<Long, Int>>()
-        // SegmentTimeline children are parsed in a second pass by the timeline reader below.
-        return Template(init, media, timescale, duration, start, timeline.takeIf { it.isNotEmpty() })
-    }
-
-    private fun readSegmentList(p: XmlPullParser): SegmentList = SegmentList()
-
-    private fun buildDashSegments(rep: Rep, isStatic: Boolean, durationSeconds: Double): List<DashSegment> {
-        rep.list?.let { list ->
-            val result = mutableListOf<DashSegment>()
-            list.initialization?.let { result += DashSegment(-1, it, list.initializationRange, true) }
-            result += list.urls
-            return result
-        }
+    private fun buildSegments(rep: Rep, totalDuration: Double): List<DashSegment> {
         val t = rep.template ?: return emptyList()
-        if (!isStatic || t.media.contains("\\$Time\\$") && t.timeline.isNullOrEmpty()) return emptyList()
         val result = mutableListOf<DashSegment>()
-        if (t.initialization.isNotBlank()) {
-            result += DashSegment(-1, templateUrl(rep, t.initialization, t.startNumber, 0L), initialization = true)
-        }
-        val count = when {
-            t.duration > 0L && durationSeconds > 0.0 ->
-                kotlin.math.ceil(durationSeconds * t.timescale / t.duration).toInt().coerceIn(1, 100_000)
-            else -> 0
-        }
-        if (count == 0) return emptyList()
-        repeat(count) { i ->
-            result += DashSegment(i, templateUrl(rep, t.media, t.startNumber + i, i * t.duration))
+        if (t.initialization.isNotBlank()) result.add(
+            DashSegment(-1, templateUrl(rep, t.initialization, t.startNumber, 0L), initialization = true))
+        if (t.timeline.isNotEmpty()) {
+            var index = 0
+            for (entry in t.timeline) repeat(entry.repeat + 1) { n ->
+                require(index < 100_000) { "DASH timeline exceeds safety limit" }
+                val time = entry.start + entry.duration * n
+                result.add(DashSegment(index, templateUrl(rep, t.media, t.startNumber + index, time)))
+                index++
+            }
+        } else {
+            require(t.duration > 0L && totalDuration > 0.0) { "DASH template requires finite duration or SegmentTimeline" }
+            val count = ceil(totalDuration * t.timescale / t.duration).toInt().coerceIn(1, 100_000)
+            repeat(count) { i -> result.add(DashSegment(i, templateUrl(rep, t.media, t.startNumber + i, i * t.duration))) }
         }
         return result
     }
 
-    private fun templateUrl(rep: Rep, template: String, number: Long, time: Long): String {
-        val expanded = template
-            .replace("$$", "\u0000")
-            .replace(Regex("\\$RepresentationID\\$"), rep.id)
-            .replace(Regex("\\$Bandwidth\\$"), rep.bandwidth.toString())
-            .replace(Regex("\\$Number(?:%0(\\d+)d)?\\$")) { m ->
-                val width = m.groupValues.getOrNull(1)?.toIntOrNull() ?: 0
-                if (width > 0) number.toString().padStart(width, '0') else number.toString()
-            }
-            .replace(Regex("\\$Time\\$"), time.toString())
-            .replace("\u0000", "$")
-        return resolve(rep.base, expanded)
+    private fun templateUrl(rep: Rep, raw: String, number: Long, time: Long): String {
+        val dollar = "$"
+        var s = raw.replace(dollar + dollar, "\u0000")
+        s = s.replace(dollar + "RepresentationID" + dollar, rep.id)
+        s = s.replace(dollar + "Bandwidth" + dollar, rep.bandwidth.toString())
+        s = Regex(Regex.escape(dollar) + "Number(?:%0(\\d+)d)?" + Regex.escape(dollar)).replace(s) { m ->
+            val width = m.groupValues.getOrNull(1)?.toIntOrNull() ?: 0
+            if (width > 0) number.toString().padStart(width, '0') else number.toString()
+        }
+        s = s.replace(dollar + "Time" + dollar, time.toString()).replace("\u0000", dollar)
+        require(!s.contains(dollar + "RepresentationID" + dollar) &&
+                !s.contains(dollar + "Bandwidth" + dollar) &&
+                !s.contains(dollar + "Number" + dollar) &&
+                !s.contains(dollar + "Time" + dollar)) { "Unsupported DASH template token" }
+        return resolve(rep.base, s)
     }
 
-    private fun parseDuration(value: String): Double {
-        if (value.isBlank()) return 0.0
+    private fun duration(s: String): Double {
         val m = Regex("PT(?:(\\d+(?:\\.\\d+)?)H)?(?:(\\d+(?:\\.\\d+)?)M)?(?:(\\d+(?:\\.\\d+)?)S)?")
-            .matchEntire(value) ?: return 0.0
+            .matchEntire(s) ?: return 0.0
         return (m.groupValues[1].toDoubleOrNull() ?: 0.0) * 3600 +
             (m.groupValues[2].toDoubleOrNull() ?: 0.0) * 60 +
             (m.groupValues[3].toDoubleOrNull() ?: 0.0)
     }
 
-    private fun attributes(value: String): Map<String, String> =
+    private fun attrs(s: String): Map<String, String> =
         Regex("([A-Z0-9-]+)=\"([^\"]*)\"|([A-Z0-9-]+)=([^,]*)", RegexOption.IGNORE_CASE)
-            .findAll(value).associate { m ->
-                (m.groupValues[1].ifBlank { m.groupValues[3] }) to
-                    m.groupValues[2].ifBlank { m.groupValues[4] }.trim()
-            }
+            .findAll(s).associate { it.groupValues[1].ifBlank { it.groupValues[3] } to
+                it.groupValues[2].ifBlank { it.groupValues[4] }.trim() }
 
-    private fun attributesFromParser(p: XmlPullParser): Map<String, String> =
-        (0 until p.attributeCount).associate { p.getAttributeName(it) to p.getAttributeValue(it) }
-
-    private fun parseRange(value: String, defaultOffset: Long): ByteRange {
-        val parts = value.split('@', limit = 2)
-        val length = parts[0].toLongOrNull() ?: value.substringBefore('-').toLongOrNull()
-            ?: error("Invalid byte range")
+    private fun parseRange(s: String, defaultOffset: Long): ByteRange {
+        val parts = s.split('@', limit = 2)
+        val length = parts[0].toLongOrNull() ?: error("Invalid byte range")
         val offset = if (parts.size == 2) parts[1].toLongOrNull() ?: error("Invalid range offset") else defaultOffset
-        require(length > 0 && offset >= 0) { "Invalid byte range values" }
+        require(length > 0L && offset >= 0L)
         return ByteRange(length, offset)
     }
 
-    private fun resolve(base: String, relative: String): String =
-        URI(base).resolve(URI(relative)).normalize().toString()
-
-    private fun requireHttpUrl(url: String) {
+    private fun resolve(base: String, relative: String): String = URI(base).resolve(URI(relative)).normalize().toString()
+    private fun requireHttp(url: String) {
         val uri = URI(url)
-        require(uri.scheme.equals("https", true) || uri.scheme.equals("http", true))
-        require(!uri.host.isNullOrBlank())
+        require((uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) && !uri.host.isNullOrBlank())
     }
 }
