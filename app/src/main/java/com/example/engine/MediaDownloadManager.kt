@@ -1390,7 +1390,7 @@ class MediaDownloadManager(
                 .removeHeader("Cookie")
                 .apply {
                     MediaRequestHeaderContextElement.headersForUrl(request.url.toString()).forEach { (name, value) ->
-                        if (header(name).isNullOrBlank()) header(name, value)
+                        if (request.header(name).isNullOrBlank()) header(name, value)
                     }
                     if (cookie.isNotBlank()) header("Cookie", cookie)
                 }
