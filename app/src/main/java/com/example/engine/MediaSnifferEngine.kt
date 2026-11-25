@@ -567,7 +567,7 @@ class MediaSnifferEngine {
             // Parse finite DASH manifests with SegmentTemplate, SegmentTimeline, SegmentList,
             // and SegmentBase metadata. DRM/live manifests are rejected before the legacy path.
             val parsedDash = runCatching { DashManifestParser.parse(xml, mpdUrl) }.getOrNull()
-            if (parsedDash?.unsupported == "DRM" || parsedDash?.unsupported == "LIVE") {
+            if (parsedDash?.unsupported == "DRM") {
                 return@runCatching emptyList()
             }
             if (parsedDash != null && parsedDash.unsupported == null) {
