@@ -553,6 +553,16 @@ private fun createConfiguredWebView(
                     viewModel.onHookedResource(tabId, url, titleHint, contentType)
                 }
 
+                @JavascriptInterface
+                fun onMseBufferObserved(mimeType: String, byteLength: Int) {
+                    viewModel.onConsoleLog(
+                        tabId = tabId,
+                        level = "INFO",
+                        message = "MSE SourceBuffer append observed: $mimeType, $byteLength bytes (payload not captured)",
+                        source = "Media Intelligence",
+                    )
+                }
+
             },
             "NavaMediaBridge",
         )
