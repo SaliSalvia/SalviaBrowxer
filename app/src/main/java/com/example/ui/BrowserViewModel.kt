@@ -153,6 +153,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    fun onPopupBlocked() {
+        _statusToast.value = "Popup blocked: a direct user gesture is required."
+    }
+
     fun consumeSavedTabState(tabId: String): Bundle? {
         val state = savedTabStates.remove(tabId)
         updateTab(tabId) { it.copy(isHibernated = false) }
