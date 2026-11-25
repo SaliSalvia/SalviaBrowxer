@@ -90,6 +90,10 @@ object MediaRequestHeaderPolicy {
         return decoded.mapValues { sanitize(it.value) }.filterValues { it.isNotEmpty() }
     }
 
+    /** Header-related failures get one legacy-path retry only when assistance was injected. */
+    fun shouldRetryWithoutContext(responseCode: Int, injectedHeaderCount: Int): Boolean =
+        injectedHeaderCount > 0 && responseCode in setOf(400, 403, 406, 415)
+
     /** Diagnostic-only output preserves the former safe Referer/User-Agent summary; these are not replayed. */
     fun safeSummary(headers: Map<String, String>): String {
         val summary = linkedMapOf<String, String>()

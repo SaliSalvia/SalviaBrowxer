@@ -65,6 +65,17 @@ class MediaRequestHeaderPolicyTest {
     }
 
     @Test
+    fun `legacy path retry is enabled only for header related failures with injected context`() {
+        assertTrue(MediaRequestHeaderPolicy.shouldRetryWithoutContext(403, 1))
+        assertTrue(MediaRequestHeaderPolicy.shouldRetryWithoutContext(406, 2))
+        assertTrue(MediaRequestHeaderPolicy.shouldRetryWithoutContext(415, 1))
+        assertFalse(MediaRequestHeaderPolicy.shouldRetryWithoutContext(403, 0))
+        assertFalse(MediaRequestHeaderPolicy.shouldRetryWithoutContext(401, 2))
+        assertFalse(MediaRequestHeaderPolicy.shouldRetryWithoutContext(404, 2))
+        assertFalse(MediaRequestHeaderPolicy.shouldRetryWithoutContext(500, 2))
+    }
+
+    @Test
     fun `request context is replayed only to the exact canonical origin`() {
         val context = mapOf(
             "https://cdn.example.test" to mapOf(

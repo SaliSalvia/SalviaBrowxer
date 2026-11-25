@@ -1386,17 +1386,33 @@ class MediaDownloadManager(
                 sessionCookieManager,
                 allowGlobalCookieFallback,
             )
+            val injectedHeaders = MediaRequestHeaderContextElement.headersForUrl(request.url.toString())
+                .filterKeys { request.header(it).isNullOrBlank() }
             val requestWithCookies = request.newBuilder()
                 .removeHeader("Cookie")
                 .apply {
-                    MediaRequestHeaderContextElement.headersForUrl(request.url.toString()).forEach { (name, value) ->
-                        if (request.header(name).isNullOrBlank()) header(name, value)
-                    }
+                    injectedHeaders.forEach { (name, value) -> header(name, value) }
                     if (cookie.isNotBlank()) header("Cookie", cookie)
                 }
                 .build()
 
-            val response = client.newCall(requestWithCookies).execute()
+            val assistedResponse = client.newCall(requestWithCookies).execute()
+            val response = if (
+                MediaRequestHeaderPolicy.shouldRetryWithoutContext(
+                    assistedResponse.code,
+                    injectedHeaders.size,
+                )
+            ) {
+                // Additive helper must not replace the proven legacy request path.
+                assistedResponse.close()
+                val legacyRequest = request.newBuilder()
+                    .removeHeader("Cookie")
+                    .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
+                    .build()
+                client.newCall(legacyRequest).execute()
+            } else {
+                assistedResponse
+            }
             val location = response.header("Location")
             if (response.code !in redirectCodes || location.isNullOrBlank()) return response
 
