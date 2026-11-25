@@ -22,6 +22,8 @@ data class MediaQualityOption(
     val bandwidthBps: Long = 0L,
     val isHls: Boolean = false,
     val isDash: Boolean = false,
+    val manifestRepresentationId: String = "",
+    val manifestAudioRepresentationId: String = "",
 ) {
     val isVerifiedDownloadSource: Boolean
         get() = MediaSourceUrlPolicy.isVerifiedHttpUrl(url) &&
