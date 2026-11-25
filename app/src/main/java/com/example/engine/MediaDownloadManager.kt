@@ -139,7 +139,7 @@ class MediaDownloadManager(
         cancelTransferWhenCallerCancelled: Boolean = true,
     ): DownloadEntity? {
         val download = repository.getDownloadById(downloadId) ?: return null
-        if (download.status in setOf("COMPLETED", "CANCELLED", "FAILED")) return download
+        if (download.status in setOf("COMPLETED", "CANCELLED")) return download
 
         // A fresh explicit resume must not inherit an old scheduler-stop marker.
         pausedIds.remove(downloadId)
@@ -667,7 +667,7 @@ class MediaDownloadManager(
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
         } catch (_: Exception) {
-            tempDir.deleteRecursively()
+            // Preserve atomically completed HLS segment files for explicit retry/resume.
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
             // activeJobs is cleared by the central Job completion handler.
@@ -842,6 +842,7 @@ class MediaDownloadManager(
                 ?: throw IOException("Could not fetch selected HLS media playlist")
         }
         val plan = ManifestSegmentPlanner.parseHls(mediaUrl, text)
+        if (!plan.isEndList) throw IOException("Live HLS playlist is not complete; wait for ENDLIST")
         val keyCache = ConcurrentHashMap<String, ByteArray>()
         val initFile = File(staging, "hls_init.bin")
         if (plan.initUri != null && (!initFile.exists() || initFile.length() == 0L)) {
@@ -880,8 +881,9 @@ class MediaDownloadManager(
                         val segment = plan.segments[index]
                         val out = segmentFiles[index]
                         val expectedRangeLength = segment.range?.length
+                        val encryptedRange = segment.key != null
                         if (out.exists() && out.length() > 0L &&
-                            (expectedRangeLength == null || out.length() == expectedRangeLength)) {
+                            (expectedRangeLength == null || encryptedRange || out.length() == expectedRangeLength)) {
                             return@async
                         }
                         out.delete()
