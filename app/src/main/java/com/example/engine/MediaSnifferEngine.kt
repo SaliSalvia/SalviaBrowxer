@@ -919,6 +919,27 @@ class MediaSnifferEngine {
                 });
                 return origSend.apply(this, arguments);
             };
+
+            // Observe MSE append metadata only. The browser-owned bytes are never copied or exported.
+            if (window.MediaSource && window.SourceBuffer && !window.__salviaMseHook) {
+                window.__salviaMseHook = true;
+                var originalAddSourceBuffer = MediaSource.prototype.addSourceBuffer;
+                MediaSource.prototype.addSourceBuffer = function(mimeType) {
+                    var buffer = originalAddSourceBuffer.apply(this, arguments);
+                    try {
+                        var originalAppend = buffer.appendBuffer;
+                        buffer.appendBuffer = function(data) {
+                            try {
+                                if (window.NavaMediaBridge) {
+                                    window.NavaMediaBridge.onMseBufferObserved(String(mimeType || ''), data && data.byteLength || 0);
+                                }
+                            } catch (e) {}
+                            return originalAppend.apply(this, arguments);
+                        };
+                    } catch (e) {}
+                    return buffer;
+                };
+            }
         })();
     """.trimIndent()
 
