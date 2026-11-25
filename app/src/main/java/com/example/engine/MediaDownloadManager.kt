@@ -107,6 +107,8 @@ class MediaDownloadManager(
                 supportsResume = !quality.isHls && !quality.isDash,
                 isIncognito = isIncognito,
                 isDesktopMode = isDesktopMode,
+                manifestRepresentationId = quality.manifestRepresentationId,
+                manifestAudioRepresentationId = quality.manifestAudioRepresentationId,
             ),
         )
     }
@@ -152,6 +154,8 @@ class MediaDownloadManager(
             mimeType = download.mimeType,
             isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
             isDash = download.isDashStream || download.url.lowercase().contains(".mpd"),
+            manifestRepresentationId = download.manifestRepresentationId,
+            manifestAudioRepresentationId = download.manifestAudioRepresentationId,
             sessionCookieManager = sessionCookieManager,
             allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
         )
@@ -222,6 +226,8 @@ class MediaDownloadManager(
                 mimeType = download.mimeType,
                 isHls = download.isHlsStream || download.url.lowercase().contains(".m3u8"),
                 isDash = download.isDashStream,
+                manifestRepresentationId = download.manifestRepresentationId,
+                manifestAudioRepresentationId = download.manifestAudioRepresentationId,
                 sessionCookieManager = sessionCookieManager,
                 allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
             )
@@ -264,6 +270,8 @@ class MediaDownloadManager(
         mimeType: String,
         isHls: Boolean,
         isDash: Boolean,
+        manifestRepresentationId: String,
+        manifestAudioRepresentationId: String,
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
     ): Job = synchronized(activeJobs) {
@@ -272,6 +280,7 @@ class MediaDownloadManager(
         val job = scope.launch(context = Dispatchers.IO, start = CoroutineStart.LAZY) {
             when {
                 isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                isDash && manifestRepresentationId.isNotBlank() -> downloadDashManifestAndMux(downloadId, fileName, url, manifestRepresentationId, manifestAudioRepresentationId, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, sessionCookieManager, allowGlobalCookieFallback)
             }
