@@ -706,7 +706,7 @@ class MediaDownloadManager(
                 out.use { stream -> FileInputStream(audioOnly).use { it.copyTo(stream) } }
                 val bytes = audioOnly.length()
                 tempDir.deleteRecursively()
-                repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, true)
+                repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, audioResumeSupported)
                 return
             }
 
@@ -735,7 +735,7 @@ class MediaDownloadManager(
             out.use { stream -> FileInputStream(source).use { it.copyTo(stream) } }
             val bytes = source.length()
             tempDir.deleteRecursively()
-            repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, true)
+            repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, supportsResume)
         } catch (_: CancellationException) {
             if (pausedIds.remove(downloadId)) {
                 repository.updateDownloadStatus(downloadId, "PAUSED")
