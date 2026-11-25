@@ -564,16 +564,17 @@ class MediaSnifferEngine {
                 resp.body?.string().orEmpty()
             }
             if (!xml.contains("<MPD", ignoreCase = true)) return emptyList()
-            // Prefer manifest-aware finite segment plans. Keep the legacy BaseURL path below
-            // as a compatibility fallback for simple direct-file MPDs.
-            val manifestPlan = runCatching { ManifestSegmentPlanner.parseDash(mpdUrl, xml) }.getOrNull()
-            if (manifestPlan != null) {
-                val video = manifestPlan.representations
-                    .filter { it.mimeType.contains("video", true) || it.height > 0 }
-                    .sortedByDescending { if (it.height > 0) it.height.toLong() else it.bandwidth }
-                val audio = manifestPlan.representations
-                    .filter { it.mimeType.contains("audio", true) }
-                    .maxByOrNull { it.bandwidth }
+            // Parse finite DASH manifests with SegmentTemplate, SegmentTimeline, SegmentList,
+            // and SegmentBase metadata. DRM/live manifests are rejected before the legacy path.
+            val parsedDash = runCatching { DashManifestParser.parse(xml, mpdUrl) }.getOrNull()
+            if (parsedDash?.unsupported == "DRM" || parsedDash?.unsupported == "LIVE") {
+                return@runCatching emptyList()
+            }
+            if (parsedDash?.unsupported == null) {
+                val video = parsedDash.representations.filter { it.isVideo }
+                    .sortedWith(compareByDescending<com.example.engine.DashRepresentation> { it.height }
+                        .thenByDescending { it.bandwidth })
+                val audio = parsedDash.pickAudio(null)
                 if (video.isNotEmpty()) {
                     return@runCatching video.map { rep ->
                         val label = when {
