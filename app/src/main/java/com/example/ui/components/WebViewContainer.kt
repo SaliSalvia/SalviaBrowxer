@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.print.PrintAttributes
 import android.print.PrintManager
 import android.widget.Toast
@@ -383,7 +384,7 @@ fun WebViewContainer(
         // Native Android print pipeline; the system print UI also exposes "Save as PDF".
         IconButton(
             onClick = {
-                val activity = context as? Activity
+                val activity = context.findActivity()
                 val activeWebView = viewModel.getWebView(tab.id)
                 val printManager = activity?.getSystemService(Context.PRINT_SERVICE) as? PrintManager
                 if (activity == null || activeWebView == null || printManager == null) {
@@ -927,4 +928,10 @@ private fun createPopupWebView(
             }
         }
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
