@@ -690,20 +690,22 @@ class MediaDownloadManager(
             repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
             val xml = fetchText(mpdUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                 ?: throw IOException("Could not fetch DASH MPD")
-            val plan = ManifestSegmentPlanner.parseDash(mpdUrl, xml)
-            val videoRep = plan.representations.firstOrNull { it.id == videoRepresentationId }
-                ?: throw IOException("Selected DASH video representation no longer exists")
+            val manifest = DashManifestParser.parse(xml, mpdUrl)
+            if (manifest.unsupported != null) throw IOException("DASH manifest unsupported: " + manifest.unsupported)
+            val videoRep = manifest.representations.firstOrNull { it.isVideo && it.id == videoRepresentationId }
+                ?: throw IOException("Selected DASH video representation is no longer available")
             val videoFile = File(tempDir, "dash_video_" + safeSegmentName(videoRep.id) + ".mp4")
-            downloadDashRepresentation(videoRep.segments, videoFile, tempDir, "video", referer, userAgent,
+            downloadDashRepresentation(videoRep, videoFile, tempDir, "video", referer, userAgent,
                 sessionCookieManager, allowGlobalCookieFallback, downloadId)
 
             var audioFile: File? = null
             if (audioRepresentationId.isNotBlank()) {
-                val audioRep = plan.representations.firstOrNull { it.id == audioRepresentationId }
-                    ?: throw IOException("Selected DASH audio representation no longer exists")
-                audioFile = File(tempDir, "dash_audio_" + safeSegmentName(audioRep.id) + ".m4a")
-                downloadDashRepresentation(audioRep.segments, audioFile, tempDir, "audio", referer, userAgent,
-                    sessionCookieManager, allowGlobalCookieFallback, downloadId)
+                val audioRep = manifest.representations.firstOrNull { !it.isVideo && it.id == audioRepresentationId }
+                if (audioRep != null) {
+                    audioFile = File(tempDir, "dash_audio_" + safeSegmentName(audioRep.id) + ".m4a")
+                    downloadDashRepresentation(audioRep, audioFile, tempDir, "audio", referer, userAgent,
+                        sessionCookieManager, allowGlobalCookieFallback, downloadId)
+                }
             }
 
             val muxed = File(tempDir, "dash_muxed.mp4")
@@ -723,14 +725,13 @@ class MediaDownloadManager(
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
         } catch (_: Exception) {
-            // Keep atomically completed segment files for a future retry; incomplete .tmp files
-            // are ignored and replaced on the next attempt.
+            // Keep completed segment files; a user retry can reuse them.
             repository.updateDownloadStatus(downloadId, "FAILED")
         }
     }
 
     private suspend fun downloadDashRepresentation(
-        segments: List<ManifestSegmentPlanner.DashSegment>,
+        representation: DashRepresentation,
         target: File,
         staging: File,
         label: String,
@@ -740,21 +741,58 @@ class MediaDownloadManager(
         allowGlobalCookieFallback: Boolean,
         downloadId: Long,
     ) {
-        require(segments.isNotEmpty()) { "Empty DASH representation" }
-        val files = segments.map { segment ->
-            File(staging, "dash_" + label + "_" + if (segment.initialization) "init" else segment.index.toString() + ".part")
+        var rep = representation
+        if (rep.sidxUrl != null && rep.sidxRange != null) {
+            val indexRange = rep.sidxRange
+            val indexBytes = fetchHlsBytes(
+                rep.sidxUrl,
+                ManifestSegmentPlanner.ByteRange(indexRange.last - indexRange.first + 1L, indexRange.first),
+                referer, userAgent, sessionCookieManager, allowGlobalCookieFallback,
+            )
+            val sidx = runCatching { SidxParser.parse(indexBytes) }.getOrNull()
+                ?: throw IOException("Invalid DASH sidx index")
+            require(sidx.entries.none { it.isSubsegment }) { "Nested DASH sidx references are not supported safely" }
+            val urls = mutableListOf<String>()
+            val ranges = mutableListOf<LongRange?>()
+            if (rep.initRange != null) {
+                urls.add(rep.sidxUrl)
+                ranges.add(rep.initRange)
+            } else if (indexRange.first > 0L) {
+                urls.add(rep.sidxUrl)
+                ranges.add(0L..(indexRange.first - 1L))
+            }
+            var cursor = indexRange.last + 1L + sidx.boxSize + sidx.firstOffset
+            for (entry in sidx.entries) {
+                urls.add(rep.sidxUrl)
+                ranges.add(cursor..(cursor + entry.size - 1L))
+                cursor += entry.size
+            }
+            rep = rep.copy(urls = urls, byteRanges = ranges, isSingleFile = false,
+                sidxUrl = null, sidxRange = null, initRange = null)
         }
-        for (group in segments.indices.toList().chunked(4)) {
+
+        if (rep.isSingleFile && rep.byteRanges.isEmpty()) {
+            downloadUrlToFile(rep.urls.first(), target, referer, userAgent,
+                sessionCookieManager, allowGlobalCookieFallback) { dl, total, speed ->
+                repository.updateDownloadProgress(downloadId, dl, total, speed, "DOWNLOADING", supportsResume = true)
+            }
+            return
+        }
+
+        val ranges = rep.byteRanges.ifEmpty { List(rep.urls.size) { null } }
+        val files = rep.urls.indices.map { File(staging, "dash_" + label + "_" + it + ".part") }
+        for (group in rep.urls.indices.toList().chunked(4)) {
             coroutineScope {
                 group.map { index ->
                     async(Dispatchers.IO) {
-                        val segment = segments[index]
+                        val range = ranges.getOrNull(index)
                         val file = files[index]
                         if (file.exists() && file.length() > 0L &&
-                            (segment.range == null || file.length() == segment.range.length)) return@async
+                            (range == null || file.length() == range.last - range.first + 1L)) return@async
                         file.delete()
-                        val bytes = fetchHlsBytes(segment.uri, segment.range, referer, userAgent,
-                            sessionCookieManager, allowGlobalCookieFallback)
+                        val bytes = fetchHlsBytes(rep.urls[index], range?.let {
+                            ManifestSegmentPlanner.ByteRange(it.last - it.first + 1L, it.first)
+                        }, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
                         val tmp = File(staging, file.name + ".tmp")
                         tmp.writeBytes(bytes)
                         if (!tmp.renameTo(file)) {
@@ -767,7 +805,7 @@ class MediaDownloadManager(
             val total = files.sumOf { if (it.exists()) it.length() else 0L }
             repository.updateDownloadProgress(downloadId, total, -1L, 0L, "DOWNLOADING", supportsResume = true)
         }
-        if (files.any { !it.exists() || it.length() == 0L }) throw IOException("DASH segments incomplete")
+        if (files.any { !it.exists() || it.length() == 0L }) throw IOException("DASH representation is incomplete")
         FileOutputStream(target, false).use { out ->
             files.forEach { file -> FileInputStream(file).use { it.copyTo(out) } }
         }
