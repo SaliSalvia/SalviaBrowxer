@@ -50,7 +50,10 @@ internal object ManifestSegmentPlanner {
                     val a = attributes(line.substringAfter(':'))
                     initUri = a["URI"]?.let { resolve(url, it) }
                     initUri?.let { requireHttp(it) }
-                    initRange = a["BYTERANGE"]?.let { parseRange(it, 0L) }
+                    initRange = a["BYTERANGE"]?.let {
+                        require(it.contains('@')) { "Implicit HLS init-map byte range is unsupported" }
+                        parseRange(it, 0L)
+                    }
                     initKey = key
                 }
                 line.startsWith("#EXT-X-BYTERANGE:") -> pendingRange = line.substringAfter(':')
