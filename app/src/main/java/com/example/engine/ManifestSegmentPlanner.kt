@@ -49,6 +49,7 @@ internal object ManifestSegmentPlanner {
                 line.startsWith("#EXT-X-MAP:") -> {
                     val a = attributes(line.substringAfter(':'))
                     initUri = a["URI"]?.let { resolve(url, it) }
+                    initUri?.let { requireHttp(it) }
                     initRange = a["BYTERANGE"]?.let { parseRange(it, 0L) }
                     initKey = key
                 }
