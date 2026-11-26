@@ -56,6 +56,19 @@ class MediaRequestHeaderStoreTest {
     }
 
     @Test
+    fun `clear all removes transient headers from every tab`() {
+        val store = MediaRequestHeaderStore()
+        val headers = mapOf("Accept" to "video/*")
+        store.capture("tab-a", "https://a.example/video", "GET", false, headers, true)
+        store.capture("tab-b", "https://b.example/video", "GET", false, headers, true)
+
+        store.clearAll()
+
+        assertTrue(store.snapshot("tab-a", "https://a.example/video").isEmpty())
+        assertTrue(store.snapshot("tab-b", "https://b.example/video").isEmpty())
+    }
+
+    @Test
     fun `non get and main frame requests are not retained`() {
         val store = MediaRequestHeaderStore()
         val headers = mapOf("Accept" to "video/*")

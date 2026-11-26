@@ -24,6 +24,21 @@ class SitePermissionStoreTest {
     }
 
     @Test
+    fun `clear all removes every persisted site grant`() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("site_permission_store_v1", 0).edit().clear().commit()
+        val store = SitePermissionStore(context)
+        store.rememberGrant("https://a.example", listOf("CAMERA", "MICROPHONE"))
+        store.rememberGrant("https://b.example", listOf("GEOLOCATION"))
+
+        store.clearAll()
+
+        assertFalse(store.isGranted("https://a.example", "CAMERA"))
+        assertFalse(store.isGranted("https://a.example", "MICROPHONE"))
+        assertFalse(store.isGranted("https://b.example", "GEOLOCATION"))
+    }
+
+    @Test
     fun `clear origin revokes all resources for that origin only`() {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("site_permission_store_v1", 0).edit().clear().commit()

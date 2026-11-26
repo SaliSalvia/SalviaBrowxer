@@ -1273,6 +1273,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearAllBrowsingData() {
+        // Clear newly introduced origin grants and transient observed request metadata too.
+        SitePermissionStore(getApplication()).clearAll()
+        mediaRequestHeaderStore.clearAll()
         val liveList = webViews.values.toList()
         liveList.forEach { wv ->
             runCatching {

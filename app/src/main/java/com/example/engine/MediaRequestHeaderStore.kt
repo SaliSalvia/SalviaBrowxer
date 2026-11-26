@@ -92,6 +92,11 @@ class MediaRequestHeaderStore(
         synchronized(lock) { tabIds.forEach(tabs::remove) }
     }
 
+    /** Removes all transient request metadata when browsing data is cleared. */
+    fun clearAll() {
+        synchronized(lock) { tabs.clear() }
+    }
+
     private fun purgeExpired(now: Long) {
         val tabsIterator = tabs.entries.iterator()
         while (tabsIterator.hasNext()) {

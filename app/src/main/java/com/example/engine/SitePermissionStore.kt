@@ -41,6 +41,11 @@ class SitePermissionStore(context: Context) {
         }
     }
 
+    /** Removes every persisted site grant when the user clears all browsing data. */
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
+
     private fun key(origin: String, resource: String): String? {
         if (resource.isBlank() || resource.length > 128) return null
         return normalizeOrigin(origin)?.let { "$it|$resource" }
