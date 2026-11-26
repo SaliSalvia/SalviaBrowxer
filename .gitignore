@@ -21,3 +21,4 @@ debug.keystore
 *.keystore
 *.apk
 *.aab
+/generated-artifacts/
