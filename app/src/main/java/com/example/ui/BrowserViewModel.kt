@@ -31,6 +31,7 @@ import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.MediaRequestHeaderPolicy
 import com.example.engine.MediaRequestHeaderStore
+import com.example.engine.SitePermissionStore
 import com.example.engine.MseNetworkAttributionPolicy
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
