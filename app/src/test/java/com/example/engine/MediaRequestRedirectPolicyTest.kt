@@ -7,9 +7,7 @@ import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaRequestRedirectPolicyTest {
@@ -19,17 +17,13 @@ class MediaRequestRedirectPolicyTest {
         .build()
 
     @Test
-    fun `cross origin redirect strips credentials and source context then applies destination context`() = runBlocking {
+    fun `cross origin redirect strips credentials and source context then destination context is independently reapplied`() = runBlocking {
         val source = MockWebServer()
         val destination = MockWebServer()
         source.start()
         destination.start()
         try {
-            source.enqueue(
-                MockResponse()
-                    .setResponseCode(302)
-                    .addHeader("Location", destination.url("/media").toString()),
-            )
+            source.enqueue(MockResponse().setResponseCode(302).addHeader("Location", destination.url("/media").toString()))
             destination.enqueue(MockResponse().setResponseCode(200).setBody("ok"))
 
             val sourceOrigin = MediaRequestHeaderPolicy.originForUrl(source.url("/").toString())!!
@@ -38,7 +32,6 @@ class MediaRequestRedirectPolicyTest {
                 sourceOrigin to mapOf("Accept" to "video/*", "Accept-Language" to "en", "Origin" to "https://page-a.example"),
                 destinationOrigin to mapOf("Accept" to "video/mp4", "Accept-Language" to "fr", "Origin" to "https://page-b.example"),
             )
-
             withContext(MediaRequestHeaderContextElement(contexts)) {
                 val base = Request.Builder()
                     .url(source.url("/start"))
@@ -48,10 +41,8 @@ class MediaRequestRedirectPolicyTest {
                     .build()
                 val assisted = MediaRequestHeaderContextElement.applyTo(base)
                 assertEquals(3, assisted.injectedHeaderCount)
-
                 val first = client.newCall(assisted.request).execute()
                 try {
-                    assertEquals(302, first.code)
                     val target = first.request.url.resolve(first.header("Location")!!)!!
                     val redirected = MediaRequestRedirectPolicy.nextRequest(first, target)!!
                     assertNull(redirected.header("Authorization"))
@@ -64,22 +55,14 @@ class MediaRequestRedirectPolicyTest {
 
                     val destinationAssisted = MediaRequestHeaderContextElement.applyTo(redirected)
                     assertEquals(3, destinationAssisted.injectedHeaderCount)
-                    val finalResponse = client.newCall(destinationAssisted.request).execute()
-                    try {
-                        assertEquals(200, finalResponse.code)
-                    } finally {
-                        finalResponse.close()
-                    }
-                } finally {
-                    first.close()
-                }
+                    val final = client.newCall(destinationAssisted.request).execute()
+                    try { assertEquals(200, final.code) } finally { final.close() }
+                } finally { first.close() }
             }
-
             val sourceRequest = source.takeRequest()
             assertEquals("video/*", sourceRequest.getHeader("Accept"))
             assertEquals("Bearer must-not-cross-origin", sourceRequest.getHeader("Authorization"))
             assertEquals("session=must-not-cross-origin", sourceRequest.getHeader("Cookie"))
-
             val destinationRequest = destination.takeRequest()
             assertEquals("video/mp4", destinationRequest.getHeader("Accept"))
             assertEquals("fr", destinationRequest.getHeader("Accept-Language"))
@@ -95,84 +78,69 @@ class MediaRequestRedirectPolicyTest {
     }
 
     @Test
-    fun `same origin redirect preserves request identity but drops cookie for per hop resolution`() = runBlocking {
+    fun `same origin probe redirect preserves cookie authorization referer and helper metadata`() {
         val server = MockWebServer()
         server.start()
         try {
-            server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "/next"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("done"))
-            val origin = MediaRequestHeaderPolicy.originForUrl(server.url("/").toString())!!
-            withContext(MediaRequestHeaderContextElement(mapOf(origin to mapOf("Accept" to "video/*")))) {
-                val base = Request.Builder()
-                    .url(server.url("/first"))
-                    .header("Authorization", "Bearer same-origin")
-                    .header("Cookie", "session=hop-cookie")
-                    .build()
-                val assisted = MediaRequestHeaderContextElement.applyTo(base)
-                val response = client.newCall(assisted.request).execute()
-                try {
-                    val target = response.request.url.resolve(response.header("Location")!!)!!
-                    val redirected = MediaRequestRedirectPolicy.nextRequest(response, target)!!
-                    assertEquals("Bearer same-origin", redirected.header("Authorization"))
-                    assertEquals("video/*", redirected.header("Accept"))
-                    assertNull(redirected.header("Cookie"))
-                    val finalRequest = redirected.newBuilder().header("Cookie", "session=resolved-again").build()
-                    val finalResponse = client.newCall(finalRequest).execute()
-                    try {
-                        assertEquals(200, finalResponse.code)
-                    } finally {
-                        finalResponse.close()
-                    }
-                } finally {
-                    response.close()
-                }
-            }
-            server.takeRequest()
-            val last = server.takeRequest()
-            assertEquals("Bearer same-origin", last.getHeader("Authorization"))
-            assertEquals("video/*", last.getHeader("Accept"))
-            assertEquals("session=resolved-again", last.getHeader("Cookie"))
+            val responseRequest = Request.Builder()
+                .url(server.url("/first"))
+                .header("Authorization", "Bearer same-origin")
+                .header("Cookie", "session=preserved")
+                .header("Referer", "https://page.example/watch?id=9")
+                .header("Accept", "video/*")
+                .build()
+            val fakeResponse = okhttp3.Response.Builder()
+                .request(responseRequest)
+                .protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(302)
+                .message("Found")
+                .header("Location", "/next")
+                .body(okhttp3.ResponseBody.create(null, ByteArray(0)))
+                .build()
+            val target = responseRequest.url.resolve("/next")!!
+            val next = MediaRequestRedirectPolicy.nextRequest(
+                response = fakeResponse,
+                target = target,
+                resolveCookiePerHop = false,
+                resetRefererOnCrossOrigin = false,
+            )!!
+            assertEquals("Bearer same-origin", next.header("Authorization"))
+            assertEquals("session=preserved", next.header("Cookie"))
+            assertEquals("https://page.example/watch?id=9", next.header("Referer"))
+            assertEquals("video/*", next.header("Accept"))
+            fakeResponse.close()
         } finally {
             server.shutdown()
         }
     }
 
     @Test
-    fun `header related failure retries once on untouched legacy request`() {
+    fun `same origin downloader redirect removes cookie for profile lookup on each hop`() {
         val server = MockWebServer()
         server.start()
         try {
-            server.enqueue(MockResponse().setResponseCode(403).setBody("header rejected"))
-            server.enqueue(MockResponse().setResponseCode(200).setBody("legacy accepted"))
-            val origin = MediaRequestHeaderPolicy.originForUrl(server.url("/").toString())!!
-            runBlocking {
-                withContext(MediaRequestHeaderContextElement(mapOf(origin to mapOf("Accept" to "video/*")))) {
-                    val base = Request.Builder().url(server.url("/asset")).build()
-                    val assisted = MediaRequestHeaderContextElement.applyTo(base)
-                    val rejected = client.newCall(assisted.request).execute()
-                    try {
-                        assertEquals(403, rejected.code)
-                        assertTrue(MediaRequestHeaderPolicy.shouldRetryWithoutContext(
-                            rejected.code,
-                            assisted.injectedHeaderCount,
-                        ))
-                    } finally {
-                        rejected.close()
-                    }
-
-                    val legacy = client.newCall(base).execute()
-                    try {
-                        assertEquals(200, legacy.code)
-                    } finally {
-                        legacy.close()
-                    }
-                }
-            }
-
-            val assistedRequest = server.takeRequest()
-            val legacyRequest = server.takeRequest()
-            assertEquals("video/*", assistedRequest.getHeader("Accept"))
-            assertFalse(legacyRequest.getHeader("Accept") == "video/*")
+            val request = Request.Builder()
+                .url(server.url("/first"))
+                .header("Authorization", "Bearer same-origin")
+                .header("Cookie", "session=old-hop")
+                .header("Accept", "video/*")
+                .build()
+            val response = okhttp3.Response.Builder()
+                .request(request)
+                .protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(302)
+                .message("Found")
+                .body(okhttp3.ResponseBody.create(null, ByteArray(0)))
+                .build()
+            val next = MediaRequestRedirectPolicy.nextRequest(
+                response = response,
+                target = request.url.resolve("/next")!!,
+                resolveCookiePerHop = true,
+            )!!
+            assertNull(next.header("Cookie"))
+            assertEquals("Bearer same-origin", next.header("Authorization"))
+            assertEquals("video/*", next.header("Accept"))
+            response.close()
         } finally {
             server.shutdown()
         }

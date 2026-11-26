@@ -17,7 +17,11 @@ object MseNetworkAttributionPolicy {
         responseContentType: String,
         sourceUrl: String,
         byteLength: Int,
+        responseStatus: Int,
+        contentRange: String,
     ): String? {
+        // Partial/range responses are fragments, not independently downloadable resources.
+        if (responseStatus != 200 || contentRange.isNotBlank()) return null
         if (byteLength <= 0 || sourceUrl.isBlank() || sourceUrl.length > 8192) return null
         val sourceMime = sourceBufferMimeType.substringBefore(';').trim().lowercase()
         val responseMime = responseContentType.substringBefore(';').trim().lowercase()

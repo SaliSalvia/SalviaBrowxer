@@ -728,6 +728,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         responseContentType: String,
         sourceUrl: String,
         byteLength: Int,
+        responseStatus: Int,
+        contentRange: String,
     ) {
         val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
         val resolved = mediaSniffer.resolveMediaUrl(tab.url, sourceUrl)
@@ -736,6 +738,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             responseContentType = responseContentType,
             sourceUrl = resolved,
             byteLength = byteLength,
+            responseStatus = responseStatus,
+            contentRange = contentRange,
         ) ?: return
         onHookedResource(
             tabId = tabId,

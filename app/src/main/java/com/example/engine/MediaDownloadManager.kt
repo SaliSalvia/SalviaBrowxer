@@ -1380,35 +1380,24 @@ class MediaDownloadManager(
         var request = initialRequest.newBuilder().removeHeader("Cookie").build()
         val redirectCodes = setOf(300, 301, 302, 303, 307, 308)
 
+        var previouslyInjectedHeaderNames = emptySet<String>()
         repeat(10) { redirectCount ->
             val cookie = resolveCookieHeader(
                 request.url.toString(),
                 sessionCookieManager,
                 allowGlobalCookieFallback,
             )
-            val baseRequest = request.newBuilder().removeHeader("Cookie").build()
-            val assisted = MediaRequestHeaderContextElement.applyTo(baseRequest)
-            val requestWithCookies = assisted.request.newBuilder()
+            val requestWithCookies = request.newBuilder()
                 .removeHeader("Cookie")
                 .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
                 .build()
-
-            val assistedResponse = client.newCall(requestWithCookies).execute()
-            val response = if (
-                MediaRequestHeaderPolicy.shouldRetryWithoutContext(
-                    assistedResponse.code,
-                    assisted.injectedHeaderCount,
-                )
-            ) {
-                // Additive helper must not replace the proven legacy request path.
-                assistedResponse.close()
-                val legacyRequest = baseRequest.newBuilder()
-                    .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
-                    .build()
-                client.newCall(legacyRequest).execute()
-            } else {
-                assistedResponse
-            }
+            val execution = MediaRequestHeaderExecution.execute(
+                client = client,
+                baseRequest = requestWithCookies,
+                contextsByOrigin = MediaRequestHeaderContextElement.currentContexts(),
+                previouslyInjectedHeaderNames = previouslyInjectedHeaderNames,
+            )
+            val response = execution.response
             val location = response.header("Location")
             if (response.code !in redirectCodes || location.isNullOrBlank()) return response
 
@@ -1423,9 +1412,15 @@ class MediaDownloadManager(
                 throw ProtocolException("Too many redirects")
             }
 
-            val next = MediaRequestRedirectPolicy.nextRequest(response, target)
-                ?: return response
+            val next = MediaRequestRedirectPolicy.nextRequest(
+                response = response,
+                target = target,
+                resolveCookiePerHop = true,
+            ) ?: return response
 
+            val sameOrigin = MediaRequestHeaderPolicy.originForUrl(response.request.url.toString()) ==
+                MediaRequestHeaderPolicy.originForUrl(target.toString())
+            previouslyInjectedHeaderNames = if (sameOrigin) execution.injectedHeaderNames else emptySet()
             response.close()
             request = next
         }

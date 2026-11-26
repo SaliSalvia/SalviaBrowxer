@@ -760,58 +760,36 @@ class MediaSnifferEngine {
         var request = initialRequest
         val redirectCodes = setOf(300, 301, 302, 303, 307, 308)
 
+        var previouslyInjectedHeaderNames = emptySet<String>()
         repeat(10) { redirectCount ->
-            val helperHeaders = MediaRequestHeaderPolicy.headersForUrl(
-                request.url.toString(),
-                contextsByOrigin,
-            ).filterKeys { it != "origin" }
-            val assistedRequest = request.newBuilder().apply {
-                helperHeaders.forEach { (name, value) ->
-                    if (request.header(name).isNullOrBlank()) header(name, value)
-                }
-            }.build()
-
-            val assistedResponse = client.newCall(assistedRequest).execute()
-            val response = if (
-                MediaRequestHeaderPolicy.shouldRetryWithoutContext(
-                    assistedResponse.code,
-                    helperHeaders.size,
-                )
-            ) {
-                assistedResponse.close()
-                val legacyRequest = request.newBuilder().apply {
-                    helperHeaders.keys.forEach(::removeHeader)
-                }.build()
-                client.newCall(legacyRequest).execute()
-            } else {
-                assistedResponse
-            }
-
+            val execution = MediaRequestHeaderExecution.execute(
+                client = client,
+                baseRequest = request,
+                contextsByOrigin = contextsByOrigin,
+                previouslyInjectedHeaderNames = previouslyInjectedHeaderNames,
+            )
+            val response = execution.response
             val location = response.header("Location")
             if (response.code !in redirectCodes || location.isNullOrBlank()) return response
 
-            val target = response.request.url.resolve(location)
-            if (target == null || (target.scheme != "http" && target.scheme != "https")) return response
+            val target = response.request.url.resolve(location) ?: return response
+            val next = MediaRequestRedirectPolicy.nextRequest(
+                response = response,
+                target = target,
+                resolveCookiePerHop = false,
+                resetRefererOnCrossOrigin = false,
+            ) ?: return response
 
-            val current = response.request.url
-            if (current.isHttps && !target.isHttps) return response
             if (redirectCount == 9) {
                 response.close()
                 throw java.net.ProtocolException("Too many media probe redirects")
             }
 
-            val crossOrigin = current.scheme != target.scheme ||
-                current.host != target.host ||
-                current.port != target.port
-            val next = response.request.newBuilder().url(target)
-            if (crossOrigin) {
-                // Metadata captured for the old origin is never forwarded to another origin.
-                helperHeaders.keys.forEach(next::removeHeader)
-                next.removeHeader("Authorization")
-                next.removeHeader("Proxy-Authorization")
-            }
+            val sameOrigin = MediaRequestHeaderPolicy.originForUrl(response.request.url.toString()) ==
+                MediaRequestHeaderPolicy.originForUrl(target.toString())
+            previouslyInjectedHeaderNames = if (sameOrigin) execution.injectedHeaderNames else emptySet()
             response.close()
-            request = next.build()
+            request = next
         }
 
         throw java.net.ProtocolException("Media probe redirect limit exceeded")
@@ -937,32 +915,38 @@ class MediaSnifferEngine {
 
             function safeNetworkSource(url) {
                 try {
-                    var parsed = new URL(String(url || ''), document.baseURI);
+                    var rawUrl = String(url || '').trim();
+                    if (!/^https?:\/\//i.test(rawUrl)) return '';
+                    var parsed = new URL(rawUrl);
                     if ((parsed.protocol !== 'https:' && parsed.protocol !== 'http:') || adFilter.test(parsed.href)) return '';
                     return parsed.href;
                 } catch (e) { return ''; }
             }
 
-            function rememberBuffer(buffer, url, contentType) {
+            function rememberBuffer(buffer, url, contentType, status, contentRange) {
                 try {
                     if (!(buffer instanceof ArrayBuffer)) return;
                     var safeUrl = safeNetworkSource(url);
                     if (!safeUrl) return;
                     networkBufferSources.set(buffer, {
                         url: safeUrl,
-                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase()
+                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase(),
+                        status: Number(status || 0),
+                        contentRange: String(contentRange || '')
                     });
                 } catch (e) {}
             }
 
-            function rememberBlob(blob, url, contentType) {
+            function rememberBlob(blob, url, contentType, status, contentRange) {
                 try {
                     if (!(blob instanceof Blob)) return;
                     var safeUrl = safeNetworkSource(url);
                     if (!safeUrl) return;
                     networkBlobSources.set(blob, {
                         url: safeUrl,
-                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase()
+                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase(),
+                        status: Number(status || 0),
+                        contentRange: String(contentRange || '')
                     });
                 } catch (e) {}
             }
@@ -977,7 +961,9 @@ class MediaSnifferEngine {
                         rememberBuffer(
                             buffer,
                             response.url,
-                            response.headers && response.headers.get ? response.headers.get('content-type') : ''
+                            response.headers && response.headers.get ? response.headers.get('content-type') : '',
+                            response.status,
+                            response.headers && response.headers.get ? response.headers.get('content-range') : ''
                         );
                         return buffer;
                     });
@@ -993,7 +979,9 @@ class MediaSnifferEngine {
                         rememberBlob(
                             blob,
                             response.url,
-                            response.headers && response.headers.get ? response.headers.get('content-type') : ''
+                            response.headers && response.headers.get ? response.headers.get('content-type') : '',
+                            response.status,
+                            response.headers && response.headers.get ? response.headers.get('content-range') : ''
                         );
                         return blob;
                     });
@@ -1007,7 +995,7 @@ class MediaSnifferEngine {
                     var blob = this;
                     return originalBlobArrayBuffer.apply(this, arguments).then(function(buffer) {
                         var source = networkBlobSources.get(blob);
-                        if (source) rememberBuffer(buffer, source.url, source.contentType);
+                        if (source) rememberBuffer(buffer, source.url, source.contentType, source.status, source.contentRange);
                         return buffer;
                     });
                 };
@@ -1064,11 +1052,12 @@ class MediaSnifferEngine {
                 xhr.addEventListener('load', function() {
                     try {
                         var xhrType = xhr.getResponseHeader('content-type') || '';
-                        var finalXhrUrl = xhr.responseURL || xhr.__salviaUrl || '';
+                        var responseXhrUrl = xhr.responseURL || '';
+                        var finalXhrUrl = responseXhrUrl || xhr.__salviaUrl || '';
                         if (xhr.responseType === 'arraybuffer' && xhr.response instanceof ArrayBuffer) {
-                            rememberBuffer(xhr.response, finalXhrUrl, xhrType);
+                            rememberBuffer(xhr.response, responseXhrUrl, xhrType, xhr.status, xhr.getResponseHeader('content-range') || '');
                         } else if (xhr.responseType === 'blob' && xhr.response instanceof Blob) {
-                            rememberBlob(xhr.response, finalXhrUrl, xhrType);
+                            rememberBlob(xhr.response, responseXhrUrl, xhrType, xhr.status, xhr.getResponseHeader('content-range') || '');
                         }
                         if (finalXhrUrl && (/^video\//i.test(xhrType) || /^audio\//i.test(xhrType) || /mpegurl|dash\+xml/i.test(xhrType)) && !adFilter.test(finalXhrUrl) && window.NavaMediaBridge) {
                             window.NavaMediaBridge.onHookedResource(finalXhrUrl, document.title || '', xhrType);
@@ -1105,7 +1094,9 @@ class MediaSnifferEngine {
                                         String(mimeType || ''),
                                         data && data.byteLength || 0,
                                         source ? source.url : '',
-                                        source ? source.contentType : ''
+                                        source ? source.contentType : '',
+                                        source ? source.status : 0,
+                                        source ? source.contentRange : ''
                                     );
                                 }
                             } catch (e) {}

@@ -22,6 +22,8 @@ internal class MediaRequestHeaderContextElement(
 
         fun applyTo(request: Request): AppliedMediaRequestContext =
             MediaRequestHeaderPolicy.applyContextHeaders(request, local.get().orEmpty())
+
+        fun currentContexts(): Map<String, Map<String, String>> = local.get().orEmpty()
     }
 
     override fun updateThreadContext(context: CoroutineContext): Map<String, Map<String, String>>? {

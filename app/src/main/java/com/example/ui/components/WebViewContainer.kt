@@ -675,6 +675,8 @@ private fun createConfiguredWebView(
                     byteLength: Int,
                     sourceUrl: String,
                     responseContentType: String,
+                    responseStatus: Int,
+                    contentRange: String,
                 ) {
                     viewModel.onMseNetworkSourceObserved(
                         tabId = tabId,
@@ -682,6 +684,8 @@ private fun createConfiguredWebView(
                         responseContentType = responseContentType,
                         sourceUrl = sourceUrl,
                         byteLength = byteLength,
+                        responseStatus = responseStatus,
+                        contentRange = contentRange,
                     )
                 }
 

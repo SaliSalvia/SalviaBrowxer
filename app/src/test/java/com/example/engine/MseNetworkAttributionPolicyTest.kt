@@ -15,6 +15,8 @@ class MseNetworkAttributionPolicyTest {
                 responseContentType = "video/mp4; charset=binary",
                 sourceUrl = "https://cdn.example.test/media?id=42&sig=abc",
                 byteLength = 256_000,
+                responseStatus = 200,
+                contentRange = "",
             ),
         )
         assertEquals(
@@ -24,6 +26,8 @@ class MseNetworkAttributionPolicyTest {
                 responseContentType = "application/octet-stream",
                 sourceUrl = "https://audio.example.test/live-object",
                 byteLength = 64_000,
+                responseStatus = 200,
+                contentRange = "",
             ),
         )
     }
@@ -37,7 +41,16 @@ class MseNetworkAttributionPolicyTest {
             "javascript:alert(1)",
             "",
         ).forEach { url ->
-            assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("video/mp4", "video/mp4", url, 4096))
+            assertNull(
+                MseNetworkAttributionPolicy.verifiedSourceUrl(
+                    sourceBufferMimeType = "video/mp4",
+                    responseContentType = "video/mp4",
+                    sourceUrl = url,
+                    byteLength = 4096,
+                    responseStatus = 200,
+                    contentRange = "",
+                ),
+            )
         }
     }
 
@@ -50,6 +63,8 @@ class MseNetworkAttributionPolicyTest {
                     responseContentType = "video/mp4",
                     sourceUrl = "https://cdn.example.test/$path",
                     byteLength = 128_000,
+                    responseStatus = 200,
+                    contentRange = "",
                 ),
             )
         }
@@ -57,10 +72,34 @@ class MseNetworkAttributionPolicyTest {
 
     @Test
     fun `mismatched mime invalid lengths and oversized urls fail closed`() {
-        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("video/mp4", "image/jpeg", "https://cdn.example.test/a", 4096))
-        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("text/plain", "video/mp4", "https://cdn.example.test/a", 4096))
-        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("video/mp4", "video/mp4", "https://cdn.example.test/a", 0))
-        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("video/mp4", "video/mp4", "https://cdn.example.test/" + "a".repeat(9000), 4096))
+        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("video/mp4", "image/jpeg", "https://cdn.example.test/a", 4096, 200, ""))
+        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("text/plain", "video/mp4", "https://cdn.example.test/a", 4096, 200, ""))
+        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("video/mp4", "video/mp4", "https://cdn.example.test/a", 0, 200, ""))
+        assertNull(MseNetworkAttributionPolicy.verifiedSourceUrl("video/mp4", "video/mp4", "https://cdn.example.test/" + "a".repeat(9000), 4096, 200, ""))
+    }
+
+    @Test
+    fun `partial range responses are rejected even when MIME types look valid`() {
+        assertNull(
+            MseNetworkAttributionPolicy.verifiedSourceUrl(
+                sourceBufferMimeType = "video/mp4",
+                responseContentType = "video/mp4",
+                sourceUrl = "https://cdn.example.test/whole-looking-url",
+                byteLength = 900_000,
+                responseStatus = 206,
+                contentRange = "bytes 0-899999/9000000",
+            ),
+        )
+        assertNull(
+            MseNetworkAttributionPolicy.verifiedSourceUrl(
+                sourceBufferMimeType = "video/mp4",
+                responseContentType = "video/mp4",
+                sourceUrl = "https://cdn.example.test/whole-looking-url",
+                byteLength = 900_000,
+                responseStatus = 200,
+                contentRange = "bytes 0-899999/9000000",
+            ),
+        )
     }
 
     @Test
@@ -70,6 +109,8 @@ class MseNetworkAttributionPolicyTest {
             responseContentType = "application/octet-stream",
             sourceUrl = "https://cdn.example.test/stream?token=short-lived",
             byteLength = 16_384,
+            responseStatus = 200,
+            contentRange = "",
         )
         assertTrue(verified?.startsWith("https://cdn.example.test/") == true)
     }

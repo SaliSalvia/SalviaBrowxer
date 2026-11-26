@@ -12,7 +12,12 @@ import okhttp3.Response
  * can be added afresh only after an independent origin match.
  */
 object MediaRequestRedirectPolicy {
-    fun nextRequest(response: Response, target: HttpUrl): Request? {
+    fun nextRequest(
+        response: Response,
+        target: HttpUrl,
+        resolveCookiePerHop: Boolean = false,
+        resetRefererOnCrossOrigin: Boolean = true,
+    ): Request? {
         val current = response.request.url
         if (target.scheme != "http" && target.scheme != "https") return null
         if (current.isHttps && !target.isHttps) return null
@@ -20,20 +25,21 @@ object MediaRequestRedirectPolicy {
         val crossOrigin = current.scheme != target.scheme ||
             current.host != target.host ||
             current.port != target.port
-        val next = response.request.newBuilder()
-            .url(target)
-            .removeHeader("Cookie")
+        val next = response.request.newBuilder().url(target)
+        if (crossOrigin || resolveCookiePerHop) next.removeHeader("Cookie")
 
         if (crossOrigin) {
             next.removeHeader("Authorization")
             next.removeHeader("Proxy-Authorization")
             MediaRequestHeaderPolicy.replayableHeaderNames.forEach(next::removeHeader)
-            val safeReferer = current.newBuilder()
-                .encodedPath("/")
-                .query(null)
-                .fragment(null)
-                .build()
-            next.header("Referer", safeReferer.toString())
+            if (resetRefererOnCrossOrigin) {
+                val safeReferer = current.newBuilder()
+                    .encodedPath("/")
+                    .query(null)
+                    .fragment(null)
+                    .build()
+                next.header("Referer", safeReferer.toString())
+            }
         }
         return next.build()
     }

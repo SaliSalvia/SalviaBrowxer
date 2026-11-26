@@ -104,7 +104,7 @@ object MediaRequestHeaderPolicy {
         val assisted = request.newBuilder().apply {
             injected.forEach { (name, value) -> header(name, value) }
         }.build()
-        return AppliedMediaRequestContext(assisted, injected.size)
+        return AppliedMediaRequestContext(assisted, injected.keys)
     }
 
     /** Header-related failures get one legacy-path retry only when assistance was injected. */
@@ -134,5 +134,7 @@ object MediaRequestHeaderPolicy {
 /** Request plus the count of headers added by the optional media-context helper. */
 data class AppliedMediaRequestContext(
     val request: Request,
-    val injectedHeaderCount: Int,
-)
+    val injectedHeaderNames: Set<String>,
+) {
+    val injectedHeaderCount: Int get() = injectedHeaderNames.size
+}
