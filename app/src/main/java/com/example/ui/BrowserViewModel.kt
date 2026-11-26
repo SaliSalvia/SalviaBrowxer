@@ -31,6 +31,7 @@ import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.MediaRequestHeaderPolicy
 import com.example.engine.MediaRequestHeaderStore
+import com.example.engine.MseNetworkAttributionPolicy
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
@@ -714,6 +715,40 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(resolved)) return
         mediaRequestHeaderStore.markMedia(tabId, resolved)
         probeAndAttachNetworkMedia(tabId, resolved, tab.url, titleHint.ifBlank { tab.title }, mime)
+    }
+
+    /**
+     * MSE attribution is accepted only when the exact ArrayBuffer/Blob-derived backing buffer
+     * observed from a network response is passed to SourceBuffer.appendBuffer. Temporal or
+     * same-origin guesses are never promoted to downloadable candidates.
+     */
+    fun onMseNetworkSourceObserved(
+        tabId: String,
+        sourceBufferMimeType: String,
+        responseContentType: String,
+        sourceUrl: String,
+        byteLength: Int,
+    ) {
+        val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val resolved = mediaSniffer.resolveMediaUrl(tab.url, sourceUrl)
+        val verified = MseNetworkAttributionPolicy.verifiedSourceUrl(
+            sourceBufferMimeType = sourceBufferMimeType,
+            responseContentType = responseContentType,
+            sourceUrl = resolved,
+            byteLength = byteLength,
+        ) ?: return
+        onHookedResource(
+            tabId = tabId,
+            mediaUrl = verified,
+            titleHint = tab.title,
+            contentType = sourceBufferMimeType,
+        )
+        onConsoleLog(
+            tabId = tabId,
+            level = "INFO",
+            message = "MSE buffer provenance matched an exact HTTP(S) response; existing media probe invoked (payload not captured)",
+            source = "Media Intelligence",
+        )
     }
 
     private fun probeAndAttachNetworkMedia(

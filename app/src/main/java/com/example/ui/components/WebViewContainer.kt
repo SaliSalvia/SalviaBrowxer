@@ -670,12 +670,18 @@ private fun createConfiguredWebView(
                 }
 
                 @JavascriptInterface
-                fun onMseBufferObserved(mimeType: String, byteLength: Int) {
-                    viewModel.onConsoleLog(
+                fun onMseBufferObserved(
+                    mimeType: String,
+                    byteLength: Int,
+                    sourceUrl: String,
+                    responseContentType: String,
+                ) {
+                    viewModel.onMseNetworkSourceObserved(
                         tabId = tabId,
-                        level = "INFO",
-                        message = "MSE SourceBuffer append observed: $mimeType, $byteLength bytes (payload not captured)",
-                        source = "Media Intelligence",
+                        sourceBufferMimeType = mimeType,
+                        responseContentType = responseContentType,
+                        sourceUrl = sourceUrl,
+                        byteLength = byteLength,
                     )
                 }
 

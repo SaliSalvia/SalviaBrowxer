@@ -4,6 +4,7 @@ import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import okhttp3.Request
 
 /** Strict allow-list for low-risk metadata. Credentials are never captured or replayed. */
 object MediaRequestHeaderPolicy {
@@ -90,6 +91,22 @@ object MediaRequestHeaderPolicy {
         return decoded.mapValues { sanitize(it.value) }.filterValues { it.isNotEmpty() }
     }
 
+    /**
+     * Adds only this request URL's allow-listed context and reports exactly how many
+     * headers were newly injected. Existing caller-owned headers are never overwritten.
+     */
+    fun applyContextHeaders(
+        request: Request,
+        contextsByOrigin: Map<String, Map<String, String>>,
+    ): AppliedMediaRequestContext {
+        val injected = headersForUrl(request.url.toString(), contextsByOrigin)
+            .filterKeys { request.header(it).isNullOrBlank() }
+        val assisted = request.newBuilder().apply {
+            injected.forEach { (name, value) -> header(name, value) }
+        }.build()
+        return AppliedMediaRequestContext(assisted, injected.size)
+    }
+
     /** Header-related failures get one legacy-path retry only when assistance was injected. */
     fun shouldRetryWithoutContext(responseCode: Int, injectedHeaderCount: Int): Boolean =
         injectedHeaderCount > 0 && responseCode in setOf(400, 403, 406, 415)
@@ -112,3 +129,10 @@ object MediaRequestHeaderPolicy {
         return summary.entries.joinToString(" • ") { (name, value) -> "$name: $value" }
     }
 }
+
+
+/** Request plus the count of headers added by the optional media-context helper. */
+data class AppliedMediaRequestContext(
+    val request: Request,
+    val injectedHeaderCount: Int,
+)

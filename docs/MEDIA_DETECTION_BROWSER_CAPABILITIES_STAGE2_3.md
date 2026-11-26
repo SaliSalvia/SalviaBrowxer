@@ -6,7 +6,7 @@ This branch is additive on top of the merged manifest download engine. It preser
 
 Implemented:
 - MIME-verified discovery for extensionless HTTP(S) audio/video resources observed through page fetch() and XMLHttpRequest. MIME hints flow into the existing probe path, and the normal HTTP(S) source verification is still required.
-- MSE MediaSource.addSourceBuffer() and SourceBuffer.appendBuffer() metadata observation (MIME type and byte count only). Browser-owned MSE payload bytes are not copied, exported, or reconstructed.
+- MSE MediaSource.addSourceBuffer() and SourceBuffer.appendBuffer() provenance observation. A WeakMap associates the exact ArrayBuffer returned by fetch/XHR (or an ArrayBuffer obtained from a response Blob) with that response's final HTTP(S) URL. The URL is reported only when that same backing buffer is passed to appendBuffer; byte data is never read, copied, exported, or reconstructed. New/transformed allocations without exact provenance remain un-attributed rather than guessed. Common HLS/DASH segment suffixes are not promoted as standalone downloads.
 - Existing Confidence and MediaCandidateRanker logic remains intact. The helper does not replace URL discovery, DOM scanning, probing, candidate ranking, manifest parsing, segment planning, or existing downloader paths.
 - A bounded, short-lived, per-tab observer captures only allow-listed, non-credential metadata from real GET/HEAD subresource requests. A request is promoted only after independent URL or MIME evidence identifies it as media.
 - Only Accept, Accept-Language, and a validated HTTP(S) Origin value are eligible for the helper. User-Agent and Referer retain their existing browser/downloader path; Cookie remains dynamically resolved from the selected WebView profile. Authorization, Proxy-Authorization, Cookie, Sec-* and arbitrary custom headers are never copied into this helper context.
@@ -35,4 +35,5 @@ Implemented:
 - The earlier head b559f4e passed the configured Unit Test, Debug APK, Release APK, artifact verification, and artifact upload workflow stages.
 - The latest head must also pass the same workflow before this PR is considered CI-validated.
 - Physical-device verification is still required for real-site media behavior, Room 5→6 migration using an existing database, Incognito isolation, HTTP auth, JavaScript dialogs, camera/microphone/geolocation permissions, popup behavior, and Print-to-PDF.
-- Controlled-server checks should cover same-origin/cross-origin requests, redirects, extensionless media, HLS variants/segments, DASH representations, helper retry, expiry, and Incognito cleanup.
+- JVM MockWebServer integration tests exercise same-origin and cross-origin redirects, exact origin-context reapplication, credential/cookie stripping, and the one-time legacy retry after a header-related failure. MSE policy tests cover extensionless URLs, MIME agreement, opaque URLs, and segment rejection.
+- Controlled Android/WebView tests are still required to verify real player behavior across fetch/XHR/Blob implementations, transformed buffers, HLS/DASH variants/segments, Room migration, Incognito lifecycle, browser callbacks, and Print-to-PDF.

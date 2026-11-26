@@ -930,6 +930,89 @@ class MediaSnifferEngine {
             var urlRegex = /https?:\/\/[^\s"'<>\\]+\.(m3u8|mpd|mp4|m4v|webm|m4a)(\?[^\s"'<>\\]*)?/gi;
             var adFilter = /(doubleclick|googlesyndication|imasdk|vast|vmap|preroll|midroll|bumper|tapsell|sabavision)/i;
 
+            // Provenance is associated with the exact returned buffer object, never by timing,
+            // page origin, or URL proximity. WeakMaps do not retain media payloads.
+            var networkBufferSources = new WeakMap();
+            var networkBlobSources = new WeakMap();
+
+            function safeNetworkSource(url) {
+                try {
+                    var parsed = new URL(String(url || ''), document.baseURI);
+                    if ((parsed.protocol !== 'https:' && parsed.protocol !== 'http:') || adFilter.test(parsed.href)) return '';
+                    return parsed.href;
+                } catch (e) { return ''; }
+            }
+
+            function rememberBuffer(buffer, url, contentType) {
+                try {
+                    if (!(buffer instanceof ArrayBuffer)) return;
+                    var safeUrl = safeNetworkSource(url);
+                    if (!safeUrl) return;
+                    networkBufferSources.set(buffer, {
+                        url: safeUrl,
+                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase()
+                    });
+                } catch (e) {}
+            }
+
+            function rememberBlob(blob, url, contentType) {
+                try {
+                    if (!(blob instanceof Blob)) return;
+                    var safeUrl = safeNetworkSource(url);
+                    if (!safeUrl) return;
+                    networkBlobSources.set(blob, {
+                        url: safeUrl,
+                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase()
+                    });
+                } catch (e) {}
+            }
+
+            // Response.arrayBuffer() preserves the exact ArrayBuffer delivered to the player.
+            if (window.Response && Response.prototype.arrayBuffer && !window.__salviaResponseArrayBufferHook) {
+                window.__salviaResponseArrayBufferHook = true;
+                var originalResponseArrayBuffer = Response.prototype.arrayBuffer;
+                Response.prototype.arrayBuffer = function() {
+                    var response = this;
+                    return originalResponseArrayBuffer.apply(this, arguments).then(function(buffer) {
+                        rememberBuffer(
+                            buffer,
+                            response.url,
+                            response.headers && response.headers.get ? response.headers.get('content-type') : ''
+                        );
+                        return buffer;
+                    });
+                };
+            }
+
+            if (window.Response && Response.prototype.blob && !window.__salviaResponseBlobHook) {
+                window.__salviaResponseBlobHook = true;
+                var originalResponseBlob = Response.prototype.blob;
+                Response.prototype.blob = function() {
+                    var response = this;
+                    return originalResponseBlob.apply(this, arguments).then(function(blob) {
+                        rememberBlob(
+                            blob,
+                            response.url,
+                            response.headers && response.headers.get ? response.headers.get('content-type') : ''
+                        );
+                        return blob;
+                    });
+                };
+            }
+
+            if (window.Blob && Blob.prototype.arrayBuffer && !window.__salviaBlobArrayBufferHook) {
+                window.__salviaBlobArrayBufferHook = true;
+                var originalBlobArrayBuffer = Blob.prototype.arrayBuffer;
+                Blob.prototype.arrayBuffer = function() {
+                    var blob = this;
+                    return originalBlobArrayBuffer.apply(this, arguments).then(function(buffer) {
+                        var source = networkBlobSources.get(blob);
+                        if (source) rememberBuffer(buffer, source.url, source.contentType);
+                        return buffer;
+                    });
+                };
+            }
+
             function reportTextUrls(text) {
                 try {
                     if (!text || text.length > 500000 || !window.NavaMediaBridge) return;
@@ -957,8 +1040,9 @@ class MediaSnifferEngine {
                     return origFetch.apply(this, arguments).then(function(resp) {
                         try {
                             var ct = resp.headers && resp.headers.get ? (resp.headers.get('content-type') || '') : '';
-                            if ((/^video\//i.test(ct) || /^audio\//i.test(ct) || /mpegurl|dash\+xml/i.test(ct)) && window.NavaMediaBridge && reqUrl) {
-                                window.NavaMediaBridge.onHookedResource(reqUrl, document.title || '', ct);
+                            var finalUrl = resp.url || '';
+                            if ((/^video\//i.test(ct) || /^audio\//i.test(ct) || /mpegurl|dash\+xml/i.test(ct)) && window.NavaMediaBridge && finalUrl) {
+                                window.NavaMediaBridge.onHookedResource(finalUrl, document.title || '', ct);
                             }
                             if (ct.includes('json') || ct.includes('mpegurl') || ct.includes('dash')) {
                                 resp.clone().text().then(reportTextUrls).catch(function(){});
@@ -980,8 +1064,14 @@ class MediaSnifferEngine {
                 xhr.addEventListener('load', function() {
                     try {
                         var xhrType = xhr.getResponseHeader('content-type') || '';
-                        if (xhr.__salviaUrl && (/^video\//i.test(xhrType) || /^audio\//i.test(xhrType) || /mpegurl|dash\+xml/i.test(xhrType)) && !adFilter.test(xhr.__salviaUrl) && window.NavaMediaBridge) {
-                            window.NavaMediaBridge.onHookedResource(xhr.__salviaUrl, document.title || '', xhrType);
+                        var finalXhrUrl = xhr.responseURL || xhr.__salviaUrl || '';
+                        if (xhr.responseType === 'arraybuffer' && xhr.response instanceof ArrayBuffer) {
+                            rememberBuffer(xhr.response, finalXhrUrl, xhrType);
+                        } else if (xhr.responseType === 'blob' && xhr.response instanceof Blob) {
+                            rememberBlob(xhr.response, finalXhrUrl, xhrType);
+                        }
+                        if (finalXhrUrl && (/^video\//i.test(xhrType) || /^audio\//i.test(xhrType) || /mpegurl|dash\+xml/i.test(xhrType)) && !adFilter.test(finalXhrUrl) && window.NavaMediaBridge) {
+                            window.NavaMediaBridge.onHookedResource(finalXhrUrl, document.title || '', xhrType);
                         }
                         if (xhr.__salviaUrl && /\.(m3u8|mpd|mp4|webm|m4a)/i.test(xhr.__salviaUrl) && !adFilter.test(xhr.__salviaUrl) && window.NavaMediaBridge) {
                             window.NavaMediaBridge.onHookedUrl(xhr.__salviaUrl, document.title || '');
@@ -994,7 +1084,9 @@ class MediaSnifferEngine {
                 return origSend.apply(this, arguments);
             };
 
-            // Observe MSE append metadata only. The browser-owned bytes are never copied or exported.
+            // Observe MSE metadata and attribute only the exact network-backed buffer object.
+            // No bytes are inspected, copied, exported, or reconstructed. If the player transforms
+            // data into a new allocation, provenance is intentionally lost rather than guessed.
             if (window.MediaSource && window.SourceBuffer && !window.__salviaMseHook) {
                 window.__salviaMseHook = true;
                 var originalAddSourceBuffer = MediaSource.prototype.addSourceBuffer;
@@ -1004,8 +1096,17 @@ class MediaSnifferEngine {
                         var originalAppend = buffer.appendBuffer;
                         buffer.appendBuffer = function(data) {
                             try {
+                                var backingBuffer = data instanceof ArrayBuffer
+                                    ? data
+                                    : (ArrayBuffer.isView(data) ? data.buffer : null);
+                                var source = backingBuffer ? networkBufferSources.get(backingBuffer) : null;
                                 if (window.NavaMediaBridge) {
-                                    window.NavaMediaBridge.onMseBufferObserved(String(mimeType || ''), data && data.byteLength || 0);
+                                    window.NavaMediaBridge.onMseBufferObserved(
+                                        String(mimeType || ''),
+                                        data && data.byteLength || 0,
+                                        source ? source.url : '',
+                                        source ? source.contentType : ''
+                                    );
                                 }
                             } catch (e) {}
                             return originalAppend.apply(this, arguments);

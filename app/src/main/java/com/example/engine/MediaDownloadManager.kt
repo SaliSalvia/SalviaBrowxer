@@ -1386,27 +1386,23 @@ class MediaDownloadManager(
                 sessionCookieManager,
                 allowGlobalCookieFallback,
             )
-            val injectedHeaders = MediaRequestHeaderContextElement.headersForUrl(request.url.toString())
-                .filterKeys { request.header(it).isNullOrBlank() }
-            val requestWithCookies = request.newBuilder()
+            val baseRequest = request.newBuilder().removeHeader("Cookie").build()
+            val assisted = MediaRequestHeaderContextElement.applyTo(baseRequest)
+            val requestWithCookies = assisted.request.newBuilder()
                 .removeHeader("Cookie")
-                .apply {
-                    injectedHeaders.forEach { (name, value) -> header(name, value) }
-                    if (cookie.isNotBlank()) header("Cookie", cookie)
-                }
+                .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
                 .build()
 
             val assistedResponse = client.newCall(requestWithCookies).execute()
             val response = if (
                 MediaRequestHeaderPolicy.shouldRetryWithoutContext(
                     assistedResponse.code,
-                    injectedHeaders.size,
+                    assisted.injectedHeaderCount,
                 )
             ) {
                 // Additive helper must not replace the proven legacy request path.
                 assistedResponse.close()
-                val legacyRequest = request.newBuilder()
-                    .removeHeader("Cookie")
+                val legacyRequest = baseRequest.newBuilder()
                     .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
                     .build()
                 client.newCall(legacyRequest).execute()
@@ -1427,27 +1423,11 @@ class MediaDownloadManager(
                 throw ProtocolException("Too many redirects")
             }
 
-            val crossOrigin = current.scheme != target.scheme ||
-                current.host != target.host ||
-                current.port != target.port
-            val next = response.request.newBuilder()
-                .url(target)
-                .removeHeader("Cookie")
-
-            if (crossOrigin) {
-                next.removeHeader("Authorization")
-                next.removeHeader("Proxy-Authorization")
-                MediaRequestHeaderPolicy.replayableHeaderNames.forEach(next::removeHeader)
-                val safeReferer = current.newBuilder()
-                    .encodedPath("/")
-                    .query(null)
-                    .fragment(null)
-                    .build()
-                next.header("Referer", safeReferer.toString())
-            }
+            val next = MediaRequestRedirectPolicy.nextRequest(response, target)
+                ?: return response
 
             response.close()
-            request = next.build()
+            request = next
         }
 
         throw ProtocolException("Redirect limit exceeded")

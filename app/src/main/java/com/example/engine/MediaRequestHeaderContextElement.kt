@@ -1,6 +1,7 @@
 package com.example.engine
 
 import kotlinx.coroutines.ThreadContextElement
+import okhttp3.Request
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
@@ -18,6 +19,9 @@ internal class MediaRequestHeaderContextElement(
 
         fun headersForUrl(url: String): Map<String, String> =
             MediaRequestHeaderPolicy.headersForUrl(url, local.get().orEmpty())
+
+        fun applyTo(request: Request): AppliedMediaRequestContext =
+            MediaRequestHeaderPolicy.applyContextHeaders(request, local.get().orEmpty())
     }
 
     override fun updateThreadContext(context: CoroutineContext): Map<String, Map<String, String>>? {
