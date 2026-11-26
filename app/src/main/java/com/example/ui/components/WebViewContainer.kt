@@ -72,6 +72,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -531,7 +534,14 @@ fun WebViewContainer(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(pending.realm.orEmpty())
                         OutlinedTextField(value = authUsername, onValueChange = { authUsername = it }, label = { Text("Username") }, singleLine = true)
-                        OutlinedTextField(value = authPassword, onValueChange = { authPassword = it }, label = { Text("Password") }, singleLine = true)
+                        OutlinedTextField(
+                            value = authPassword,
+                            onValueChange = { authPassword = it },
+                            label = { Text("Password") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        )
                     }
                 },
                 confirmButton = {
