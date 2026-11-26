@@ -75,11 +75,24 @@ class MediaRequestHeaderStore(
             val entries = tabs[tabId]?.values.orEmpty()
                 .filter { it.isMediaEvidence && it.headers.isNotEmpty() }
             if (entries.none { it.origin == selectedOrigin }) return emptyMap()
+
+            // Prefer the exact selected resource's observed headers. A later HLS/DASH
+            // segment on the same origin may use a different Accept value and must not
+            // silently replace the manifest/direct-resource context.
+            val exactSelected = tabs[tabId]?.get(selectedMediaUrl)
+                ?.takeIf { it.isMediaEvidence && it.origin == selectedOrigin && it.headers.isNotEmpty() }
+                ?.headers
             val grouped = entries.groupBy { it.origin }
                 .mapValues { (_, values) -> values.maxByOrNull { it.capturedAt }!!.headers }
-            val orderedOrigins = listOf(selectedOrigin) + grouped.keys.filter { it != selectedOrigin }.sorted()
+            val selectedHeaders = MediaRequestHeaderPolicy.sanitize(
+                exactSelected ?: grouped[selectedOrigin].orEmpty(),
+            )
+            val otherOrigins = grouped.keys.filter { it != selectedOrigin }.sorted()
+            val orderedOrigins = listOf(selectedOrigin) + otherOrigins
             return orderedOrigins.take(8).associateWith { origin ->
-                MediaRequestHeaderPolicy.sanitize(grouped[origin].orEmpty())
+                MediaRequestHeaderPolicy.sanitize(
+                    if (origin == selectedOrigin) selectedHeaders else grouped[origin].orEmpty(),
+                )
             }.filterValues { it.isNotEmpty() }
         }
     }

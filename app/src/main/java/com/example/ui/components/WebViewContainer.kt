@@ -270,7 +270,7 @@ fun WebViewContainer(
                                     resources = resources,
                                     permissionRequest = request,
                                     onGrant = { granted ->
-                                        if (!tab.isIncognito) sitePermissions.rememberGrant(origin, resources)
+                                        if (!tab.isIncognito) sitePermissions.rememberGrant(origin, granted)
                                         request.grant(granted.toTypedArray())
                                     },
                                     onDeny = { request.deny() },
@@ -520,7 +520,12 @@ fun WebViewContainer(
 
         pendingHttpAuth?.let { pending ->
             AlertDialog(
-                onDismissRequest = { pending.handler.cancel(); pendingHttpAuth = null },
+                onDismissRequest = {
+                    pending.handler.cancel()
+                    authUsername = ""
+                    authPassword = ""
+                    pendingHttpAuth = null
+                },
                 title = { Text("Sign in to ${pending.host}") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

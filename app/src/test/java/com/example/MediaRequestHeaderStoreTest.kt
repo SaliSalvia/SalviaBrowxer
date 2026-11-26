@@ -69,6 +69,20 @@ class MediaRequestHeaderStoreTest {
     }
 
     @Test
+    fun `selected media resource headers take precedence over later same-origin segment headers`() {
+        val store = MediaRequestHeaderStore(clock = { 1_000L })
+        val selected = "https://cdn.example.test/master.m3u8"
+        val segment = "https://cdn.example.test/video/part.m4s"
+        store.capture("tab", selected, "GET", false, mapOf("Accept" to "application/vnd.apple.mpegurl"), true)
+        store.capture("tab", segment, "GET", false, mapOf("Accept" to "video/mp4"), true)
+
+        assertEquals(
+            mapOf("https://cdn.example.test" to mapOf("accept" to "application/vnd.apple.mpegurl")),
+            store.snapshot("tab", selected),
+        )
+    }
+
+    @Test
     fun `non get and main frame requests are not retained`() {
         val store = MediaRequestHeaderStore()
         val headers = mapOf("Accept" to "video/*")
