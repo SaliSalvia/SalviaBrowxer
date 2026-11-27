@@ -14,6 +14,7 @@ data class MediaQualityOption(
     val id: String = UUID.randomUUID().toString(),
     val label: String,        // e.g. "1080p Full HD", "720p HD", "480p", "Audio Only (M4A)"
     val resolutionHeight: Int, // 1080, 720, 480, 360, 0 for audio
+    val resolutionWidth: Int = 0, // Source frame width when the extractor reports it
     val url: String,
     val audioUrl: String = "", // Optional separate audio stream URL (HLS/DASH) for muxing into MP4
     val format: String,        // "MP4", "HLS", "DASH", "WEBM", "M4A", "MP3"
@@ -36,6 +37,7 @@ enum class MediaDetectionSource {
     JSON_LD,
     OPEN_GRAPH,
     MSE_REFERENCE,
+    PLATFORM_EXTRACTOR,
     UNKNOWN,
 }
 

@@ -231,6 +231,68 @@ class MediaSnifferEngine {
         )
     }
 
+    /**
+     * Platform extraction pass for public Instagram, TikTok, and X post pages.
+     *
+     * Strictly additive to the generic pipeline: it only runs when the page URL is a
+     * recognized post page, reuses the browser's probe client (redirect, origin, header
+     * context, and cookie policies included), and returns null when nothing public and
+     * verifiable can be extracted.
+     */
+    suspend fun probePlatformPage(
+        pageUrl: String,
+        pageTitle: String,
+        userAgent: String,
+        cookieHeader: String? = null,
+        requestHeadersByOrigin: Map<String, Map<String, String>> = emptyMap(),
+    ): DetectedMedia? = withContext(Dispatchers.IO) {
+        if (!PlatformMediaExtractors.isSupported(pageUrl)) return@withContext null
+        val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(pageUrl) }.getOrNull().orEmpty()
+        val pageHost = pageHostOf(pageUrl)
+        val extraction = PlatformMediaExtractors.extract(pageUrl) { url ->
+            val reqBuilder = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .header("Referer", pageUrl)
+                .header("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
+            // Session cookies only ever travel to the post page's own site: auxiliary hosts
+            // (for example X's public syndication endpoint) are fetched anonymously so the
+            // extraction pass can never leak credentials cross-origin.
+            if (cookies.isNotBlank() && isSameSiteHost(pageHost, pageHostOf(url))) {
+                reqBuilder.header("Cookie", cookies)
+            }
+            executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
+                if (!resp.isSuccessful) null else resp.body?.string()?.takeIf { it.isNotBlank() }
+            }
+        } ?: return@withContext null
+        val platform = MediaPlatformDetector.detect(pageUrl, extraction.primaryUrl)
+        DetectedMedia(
+            id = normalizeMediaKey(extraction.primaryUrl),
+            title = sanitizeTitle(extraction.title.ifBlank { pageTitle }, extraction.primaryUrl),
+            sourcePageUrl = pageUrl,
+            primaryUrl = extraction.primaryUrl,
+            thumbnailUrl = extraction.thumbnailUrl,
+            durationSeconds = extraction.durationSeconds,
+            width = extraction.width,
+            height = extraction.height,
+            priorityScore = 96 + (extraction.height / 100),
+            isMainVideo = !extraction.isAudioOnly,
+            isAudioOnly = extraction.isAudioOnly,
+            detectionSource = MediaDetectionSource.PLATFORM_EXTRACTOR,
+            captureStatus = MediaCaptureStatus.DOWNLOADABLE,
+            confidenceScore = extraction.confidenceScore.coerceIn(0, 100),
+            platformLabel = platform.label,
+            qualities = extraction.qualities,
+        )
+    }
+
+    private fun pageHostOf(url: String): String =
+        runCatching { Uri.parse(url).host }.getOrNull().orEmpty().lowercase()
+
+    private fun isSameSiteHost(pageHost: String, requestHost: String): Boolean =
+        pageHost.isNotEmpty() &&
+            (requestHost == pageHost || requestHost.endsWith(".$pageHost"))
+
     fun parseDomMediaPayload(
         jsonPayload: String,
         pageUrl: String,
@@ -867,6 +929,7 @@ class MediaSnifferEngine {
         var confidence = when (source) {
             MediaDetectionSource.HTML5_ELEMENT -> 70
             MediaDetectionSource.NETWORK_HOOK -> 68
+            MediaDetectionSource.PLATFORM_EXTRACTOR -> 68
             MediaDetectionSource.JSON_LD -> 60
             MediaDetectionSource.OPEN_GRAPH -> 48
             MediaDetectionSource.MSE_REFERENCE -> 40
@@ -883,6 +946,7 @@ class MediaSnifferEngine {
     private fun evidenceStrength(source: MediaDetectionSource): Int = when (source) {
         MediaDetectionSource.HTML5_ELEMENT -> 5
         MediaDetectionSource.NETWORK_HOOK -> 4
+        MediaDetectionSource.PLATFORM_EXTRACTOR -> 4
         MediaDetectionSource.JSON_LD -> 3
         MediaDetectionSource.OPEN_GRAPH -> 2
         MediaDetectionSource.MSE_REFERENCE -> 1

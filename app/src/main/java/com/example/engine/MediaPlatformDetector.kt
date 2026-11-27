@@ -46,6 +46,21 @@ object MediaPlatformDetector {
             label = "Twitch",
             hosts = setOf("twitch.tv", "ttvnw.net", "jtvnw.net"),
         ),
+        Rule(
+            id = "instagram",
+            label = "Instagram",
+            hosts = setOf("instagram.com", "instagr.am", "cdninstagram.com"),
+        ),
+        Rule(
+            id = "tiktok",
+            label = "TikTok",
+            hosts = setOf("tiktok.com", "tiktokcdn.com", "tiktokv.com"),
+        ),
+        Rule(
+            id = "twitter",
+            label = "X (Twitter)",
+            hosts = setOf("twitter.com", "x.com", "twimg.com"),
+        ),
     )
 
     fun detect(pageUrl: String, mediaUrl: String): Match {

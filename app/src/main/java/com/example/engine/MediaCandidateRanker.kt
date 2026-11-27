@@ -108,6 +108,11 @@ internal object MediaCandidateRanker {
         )
         val networkEvidence = media.detectionSource == MediaDetectionSource.NETWORK_HOOK &&
             media.priorityScore >= 85
+        // Platform extractors only emit verified public media from a supported post page, so a
+        // high-confidence hit is first-class main-video evidence (not a secondary candidate).
+        val platformEvidence = media.detectionSource == MediaDetectionSource.PLATFORM_EXTRACTOR &&
+            media.isDownloadable &&
+            media.confidenceScore >= 74
         val manifestEvidence = media.qualities.size > 1 &&
             media.qualities.any { it.isHls || it.isDash }
         val legacyEvidence = media.detectionSource == MediaDetectionSource.UNKNOWN &&
@@ -117,6 +122,7 @@ internal object MediaCandidateRanker {
             strongDomEvidence ||
             structuredMetadataEvidence ||
             networkEvidence ||
+            platformEvidence ||
             manifestEvidence ||
             legacyEvidence
         ) {
