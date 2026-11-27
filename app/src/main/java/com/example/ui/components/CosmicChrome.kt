@@ -60,15 +60,25 @@ fun CosmicSpaceBackdrop(
             .fillMaxSize()
             .background(if (isDark) ObsidianBg else MaterialTheme.colorScheme.background),
     ) {
+        // The starfield is the browser's canvas in both themes: full strength on the dark
+        // cosmic chrome, and a faint veil behind the light theme's light scrim so content
+        // stays perfectly readable.
+        Image(
+            painter = painterResource(id = R.drawable.bg_cosmic_space),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(
+                    when {
+                        !isDark -> 0.20f
+                        isIncognito -> 0.74f
+                        else -> 0.94f
+                    },
+                ),
+        )
+
         if (isDark) {
-            Image(
-                painter = painterResource(id = R.drawable.bg_cosmic_space),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(if (isIncognito) 0.74f else 0.94f),
-            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -103,6 +113,21 @@ fun CosmicSpaceBackdrop(
                             ),
                         )
                     },
+            )
+        } else {
+            // Light theme keeps the starfield as a subtle texture instead of a dark canvas.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.80f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.90f),
+                            ),
+                        ),
+                    ),
             )
         }
 

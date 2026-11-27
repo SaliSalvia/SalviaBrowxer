@@ -157,10 +157,11 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
             isIncognito = activeTab.isIncognito,
         ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            val renderCosmicScaffold = activeTab.isStartPage
             val scaffoldContent: @Composable () -> Unit = {
                 Scaffold(
-                    containerColor = if (renderCosmicScaffold) Color.Transparent else androidx.compose.material3.MaterialTheme.colorScheme.background,
+                    // The starfield backdrop is the browser canvas for every tab, so the
+                    // scaffold itself stays transparent and lets it show through the chrome.
+                    containerColor = Color.Transparent,
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     topBar = {
                         BrowserTopBar(
@@ -235,14 +236,10 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
             }
             }
 
-            if (renderCosmicScaffold) {
-                CosmicSpaceBackdrop(
-                    isIncognito = activeTab.isIncognito,
-                    showEmblemWatermark = true,
-                ) {
-                    scaffoldContent()
-                }
-            } else {
+            CosmicSpaceBackdrop(
+                isIncognito = activeTab.isIncognito,
+                showEmblemWatermark = activeTab.isStartPage,
+            ) {
                 scaffoldContent()
             }
 
