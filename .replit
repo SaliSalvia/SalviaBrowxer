@@ -1,0 +1,6 @@
+[nix]
+channel = "stable-25_05"
+packages = ["jdk21", "gradle", "android-tools"]
+
+[agent]
+expertMode = true
