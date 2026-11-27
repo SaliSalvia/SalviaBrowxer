@@ -31,6 +31,10 @@ import com.example.engine.DownloadRuntime
 import com.example.engine.MediaSnifferEngine
 import com.example.engine.UrlInputNormalizer
 import com.example.engine.WebViewConfigurator
+import com.example.engine.MediaRequestHeaderPolicy
+import com.example.engine.MediaRequestHeaderStore
+import com.example.engine.SitePermissionStore
+import com.example.engine.MseNetworkAttributionPolicy
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +58,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val repository = BrowserRepository(db)
     private val prefsRepository = PreferencesRepository(application)
     private val mediaSniffer = MediaSnifferEngine()
+    private val mediaRequestHeaderStore = MediaRequestHeaderStore()
     private val downloadCoordinator = DownloadCoordinator(application)
 
     private val webViews = ConcurrentHashMap<String, WebView>()
@@ -151,6 +156,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _statusToast.value = getApplication<Application>().getString(
             com.example.R.string.incognito_isolation_unavailable,
         )
+    }
+
+    fun onPopupBlocked() {
+        _statusToast.value = "Popup blocked: a direct user gesture is required."
     }
 
     fun consumeSavedTabState(tabId: String): Bundle? {
@@ -282,6 +291,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         savedTabStates.remove(tabId)
         networkBuffers.remove(tabId)
         consoleBuffers.remove(tabId)
+        mediaRequestHeaderStore.clearTab(tabId)
         synchronized(tabMruOrder) { tabMruOrder.remove(tabId) }
         pendingProbedUrls.removeIf { it.startsWith("$tabId|") }
 
@@ -309,6 +319,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             savedTabStates.remove(id)
             networkBuffers.remove(id)
             consoleBuffers.remove(id)
+            mediaRequestHeaderStore.clearTab(id)
             synchronized(tabMruOrder) { tabMruOrder.remove(id) }
             pendingProbedUrls.removeIf { it.startsWith("$id|") }
         }
@@ -575,6 +586,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
 
         val isCandidateMedia = !decision.isBlocked && mediaSniffer.isCandidateMediaUrl(requestUrl)
+        if (!decision.isBlocked) {
+            mediaRequestHeaderStore.capture(
+                tabId = tabId,
+                url = requestUrl,
+                method = method,
+                isMainFrame = isMainFrame,
+                headers = headers,
+                mediaEvidence = isCandidateMedia || isLikelyMediaSegmentUrl(requestUrl),
+            )
+        }
         if (isCandidateMedia) {
             probeAndAttachNetworkMedia(tabId, requestUrl, tabUrl, tab?.title.orEmpty())
         }
@@ -601,7 +622,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isBlocked = decision.isBlocked,
             blockReason = decision.matchedRule.orEmpty(),
             isMediaDetected = isCandidateMedia,
-            headersSummary = headers.entries.take(4).joinToString(" • ") { "${it.key}: ${it.value}" },
+            headersSummary = MediaRequestHeaderPolicy.safeSummary(headers),
         )
         val buf = networkBuffers.getOrPut(tabId) { ArrayDeque() }
         synchronized(buf) {
@@ -621,6 +642,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
         pendingAdsDelta.incrementAndGet()
         scheduleBlockedStatsFlush()
+    }
+
+
+    private fun isLikelyMediaSegmentUrl(url: String): Boolean {
+        val path = runCatching { Uri.parse(url).path?.lowercase().orEmpty() }.getOrDefault("")
+        return listOf(".ts", ".m4s", ".cmfv", ".cmfa", ".aac", ".vtt").any(path::endsWith)
     }
 
     private fun scheduleBlockedStatsFlush() {
@@ -654,6 +681,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
         val resolvedMediaUrl = mediaSniffer.resolveMediaUrl(tab.url, mediaUrl)
         if (!mediaSniffer.isCandidateMediaUrl(resolvedMediaUrl)) return
+        mediaRequestHeaderStore.markMedia(tabId, resolvedMediaUrl)
         probeAndAttachNetworkMedia(
             tabId,
             resolvedMediaUrl,
@@ -662,11 +690,63 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    /** Accepts extensionless network resources only when the browser observed a media MIME type. */
+    fun onHookedResource(tabId: String, mediaUrl: String, titleHint: String, contentType: String) {
+        val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val mime = contentType.substringBefore(";").trim().lowercase()
+        if (!(mime.startsWith("video/") || mime.startsWith("audio/") ||
+                mime.contains("mpegurl") || mime.contains("dash+xml"))
+        ) return
+        val resolved = mediaSniffer.resolveMediaUrl(tab.url, mediaUrl)
+        if (!MediaSourceUrlPolicy.isVerifiedHttpUrl(resolved)) return
+        mediaRequestHeaderStore.markMedia(tabId, resolved)
+        probeAndAttachNetworkMedia(tabId, resolved, tab.url, titleHint.ifBlank { tab.title }, mime)
+    }
+
+    /**
+     * MSE attribution is accepted only when the exact ArrayBuffer/Blob-derived backing buffer
+     * observed from a network response is passed to SourceBuffer.appendBuffer. Temporal or
+     * same-origin guesses are never promoted to downloadable candidates.
+     */
+    fun onMseNetworkSourceObserved(
+        tabId: String,
+        sourceBufferMimeType: String,
+        responseContentType: String,
+        sourceUrl: String,
+        byteLength: Int,
+        responseStatus: Int,
+        contentRange: String,
+    ) {
+        val tab = _tabs.value.firstOrNull { it.id == tabId } ?: return
+        val resolved = mediaSniffer.resolveMediaUrl(tab.url, sourceUrl)
+        val verified = MseNetworkAttributionPolicy.verifiedSourceUrl(
+            sourceBufferMimeType = sourceBufferMimeType,
+            responseContentType = responseContentType,
+            sourceUrl = resolved,
+            byteLength = byteLength,
+            responseStatus = responseStatus,
+            contentRange = contentRange,
+        ) ?: return
+        onHookedResource(
+            tabId = tabId,
+            mediaUrl = verified,
+            titleHint = tab.title,
+            contentType = sourceBufferMimeType,
+        )
+        onConsoleLog(
+            tabId = tabId,
+            level = "INFO",
+            message = "MSE buffer provenance matched an exact HTTP(S) response; existing media probe invoked (payload not captured)",
+            source = "Media Intelligence",
+        )
+    }
+
     private fun probeAndAttachNetworkMedia(
         tabId: String,
         mediaUrl: String,
         pageUrl: String,
         pageTitle: String,
+        contentTypeHint: String = "",
     ) {
         val cacheKey = "$tabId|$mediaUrl"
         if (!pendingProbedUrls.add(cacheKey)) return
@@ -676,6 +756,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             desktopMode = sourceTab.isDesktopMode,
         )
         val cookieHeader = cookieHeaderForTab(sourceTab, mediaUrl)
+        val requestHeadersByOrigin = mediaRequestHeaderStore.snapshot(tabId, mediaUrl)
         viewModelScope.launch(Dispatchers.IO) {
             val detected = mediaSniffer.probeNetworkMedia(
                 mediaUrl = mediaUrl,
@@ -683,6 +764,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 pageTitle = pageTitle,
                 userAgent = ua,
                 cookieHeader = cookieHeader,
+                contentTypeHint = contentTypeHint,
+                requestHeadersByOrigin = requestHeadersByOrigin,
             )
             if (detected != null) {
                 updateTab(tabId) { current ->
@@ -706,6 +789,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             current.copy(detectedMedia = merged)
         }
         items.forEach { media ->
+            mediaRequestHeaderStore.markMedia(tabId, media.primaryUrl)
             media.qualities.filter { it.isHls || it.isDash }.forEach { streamOpt ->
                 probeAndAttachNetworkMedia(tabId, streamOpt.url, tab.url, media.title)
             }
@@ -722,6 +806,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tab = getCurrentTab()
         val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
         val sessionCookieManager = cookieManagerForTab(tab)
+        val requestHeadersByOrigin = mediaRequestHeaderStore.snapshot(tab.id, quality.url)
         DownloadRuntime.launchMaintenance {
             runCatching {
                 downloadCoordinator.enqueue(
@@ -732,6 +817,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     sessionCookieManager = sessionCookieManager,
                     isIncognito = tab.isIncognito,
                     isDesktopMode = tab.isDesktopMode,
+                    requestHeadersByOrigin = requestHeadersByOrigin,
                 )
             }.onFailure {
                 withContext(Dispatchers.Main) {
@@ -764,6 +850,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             isDash = lower.contains(".mpd"),
         )
         val sessionCookieManager = cookieManagerForTab(tab)
+        val lowerPath = runCatching { Uri.parse(url).path?.lowercase().orEmpty() }.getOrDefault("")
+        val isMediaDownload = mimeType.substringBefore(";").trim().lowercase().let {
+            it.startsWith("video/") || it.startsWith("audio/") ||
+                it.contains("mpegurl") || it.contains("dash+xml")
+        } || listOf(".m3u8", ".mpd", ".mp4", ".m4v", ".webm", ".mov", ".mp3", ".m4a", ".aac", ".ogg")
+            .any(lowerPath::endsWith)
+        if (isMediaDownload) mediaRequestHeaderStore.markMedia(tab.id, url)
+        val requestHeadersByOrigin = if (isMediaDownload) {
+            mediaRequestHeaderStore.snapshot(tab.id, url)
+        } else {
+            emptyMap()
+        }
         DownloadRuntime.launchMaintenance {
             runCatching {
                 downloadCoordinator.enqueue(
@@ -774,6 +872,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     sessionCookieManager = sessionCookieManager,
                     isIncognito = tab.isIncognito,
                     isDesktopMode = tab.isDesktopMode,
+                    requestHeadersByOrigin = requestHeadersByOrigin,
                 )
             }.onFailure {
                 withContext(Dispatchers.Main) {
@@ -813,6 +912,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         } else {
             CookieManager.getInstance()
         }
+        val privateRequestHeadersByOrigin = if (download.isIncognito && sessionTab != null) {
+            mediaRequestHeaderStore.snapshot(sessionTab.id, download.url)
+        } else {
+            emptyMap()
+        }
         if (download.isIncognito && sessionCookieManager == null) {
             _statusToast.value = getApplication<Application>().getString(
                 com.example.R.string.incognito_isolation_unavailable,
@@ -824,6 +928,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 download = download,
                 privateCookieManager = sessionCookieManager,
                 privateUserAgent = ua,
+                privateRequestHeadersByOrigin = privateRequestHeadersByOrigin,
             )
         }
     }
@@ -1154,6 +1259,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearAllBrowsingData() {
+        // Clear newly introduced origin grants and transient observed request metadata too.
+        SitePermissionStore(getApplication()).clearAll()
+        mediaRequestHeaderStore.clearAll()
         val liveList = webViews.values.toList()
         liveList.forEach { wv ->
             runCatching {

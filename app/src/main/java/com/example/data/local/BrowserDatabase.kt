@@ -18,8 +18,9 @@ import kotlinx.coroutines.launch
         ExtensionEntity::class,
         DownloadEntity::class,
         AdBlockRuleEntity::class,
+        MediaDownloadRequestContextEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class BrowserDatabase : RoomDatabase() {
@@ -30,6 +31,22 @@ abstract class BrowserDatabase : RoomDatabase() {
     abstract fun adBlockRuleDao(): AdBlockRuleDao
 
     companion object {
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS media_download_request_contexts (" +
+                        "downloadId INTEGER NOT NULL, contextData TEXT NOT NULL, expiresAt INTEGER NOT NULL, " +
+                        "createdAt INTEGER NOT NULL, PRIMARY KEY(downloadId), " +
+                        "FOREIGN KEY(downloadId) REFERENCES downloads(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_media_download_request_contexts_expiresAt " +
+                        "ON media_download_request_contexts(expiresAt)",
+                )
+            }
+        }
+
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE downloads ADD COLUMN manifestRepresentationId TEXT NOT NULL DEFAULT ''")
@@ -63,7 +80,7 @@ abstract class BrowserDatabase : RoomDatabase() {
                     BrowserDatabase::class.java,
                     "salvia_browser_db",
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

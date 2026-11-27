@@ -78,6 +78,19 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): DownloadEntity?
 
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertMediaRequestContext(context: MediaDownloadRequestContextEntity)
+
+    @Query("SELECT * FROM media_download_request_contexts WHERE downloadId = :downloadId AND expiresAt > :now LIMIT 1")
+    suspend fun getMediaRequestContext(downloadId: Long, now: Long): MediaDownloadRequestContextEntity?
+
+    @Query("DELETE FROM media_download_request_contexts WHERE downloadId = :downloadId")
+    suspend fun deleteMediaRequestContext(downloadId: Long)
+
+    @Query("DELETE FROM media_download_request_contexts WHERE expiresAt <= :now")
+    suspend fun deleteExpiredMediaRequestContexts(now: Long)
+
     @Query("SELECT * FROM downloads WHERE isIncognito = 1 ORDER BY createdAt DESC")
     suspend fun getIncognitoDownloads(): List<DownloadEntity>
 

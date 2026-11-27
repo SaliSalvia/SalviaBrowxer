@@ -30,7 +30,7 @@ class MediaSnifferEngine {
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
-        .followRedirects(true)
+        .followRedirects(false)
         .build()
 
     companion object {
@@ -95,20 +95,25 @@ class MediaSnifferEngine {
         pageTitle: String,
         userAgent: String,
         cookieHeader: String? = null,
+        contentTypeHint: String = "",
+        requestHeadersByOrigin: Map<String, Map<String, String>> = emptyMap(),
     ): DetectedMedia? = withContext(Dispatchers.IO) {
         val normalizedUrl = resolveMediaUrl(pageUrl, mediaUrl)
-        if (!isCandidateMediaUrl(normalizedUrl)) return@withContext null
+        val hintedType = contentTypeHint.substringBefore(";").trim().lowercase()
+        val hintedMedia = hintedType.startsWith("video/") || hintedType.startsWith("audio/") ||
+            hintedType.contains("mpegurl") || hintedType.contains("dash+xml")
+        if (!isCandidateMediaUrl(normalizedUrl) && !hintedMedia) return@withContext null
 
         val lower = normalizedUrl.lowercase()
-        val isHls = lower.contains(".m3u8")
-        val isDash = lower.contains(".mpd")
-        val isAudio = audioExtensions.any { lower.contains(it) }
+        val isHls = lower.contains(".m3u8") || hintedType.contains("mpegurl")
+        val isDash = lower.contains(".mpd") || hintedType.contains("dash+xml")
+        val isAudio = audioExtensions.any { lower.contains(it) } || hintedType.startsWith("audio/")
         val cleanTitle = sanitizeTitle(pageTitle, normalizedUrl)
         val platform = MediaPlatformDetector.detect(pageUrl, normalizedUrl)
         val cookies = cookieHeader ?: runCatching { CookieManager.getInstance().getCookie(normalizedUrl) }.getOrNull().orEmpty()
 
         if (isHls) {
-            val qualities = parseHlsPlaylist(normalizedUrl, pageUrl, userAgent, cookies)
+            val qualities = parseHlsPlaylist(normalizedUrl, pageUrl, userAgent, cookies, requestHeadersByOrigin)
             if (qualities.isEmpty()) {
                 return@withContext DetectedMedia(
                     id = normalizeMediaKey(normalizedUrl),
@@ -151,7 +156,7 @@ class MediaSnifferEngine {
         }
 
         if (isDash) {
-            val qualities = parseDashManifest(normalizedUrl, pageUrl, userAgent, cookies)
+            val qualities = parseDashManifest(normalizedUrl, pageUrl, userAgent, cookies, requestHeadersByOrigin)
             if (qualities.isNotEmpty()) {
                 val topRes = qualities.maxOfOrNull { it.resolutionHeight } ?: 720
                 return@withContext DetectedMedia(
@@ -171,9 +176,9 @@ class MediaSnifferEngine {
             }
         }
 
-        val probe = headProbe(normalizedUrl, pageUrl, userAgent, cookies)
+        val probe = headProbe(normalizedUrl, pageUrl, userAgent, cookies, requestHeadersByOrigin)
         val contentLength = probe.first
-        val contentType = probe.second
+        val contentType = probe.second.ifBlank { hintedType }
 
         if (!isAudio && contentLength > 0L && contentLength < MIN_VIDEO_SIZE_BYTES) {
             return@withContext null
@@ -445,6 +450,7 @@ class MediaSnifferEngine {
         referer: String,
         userAgent: String,
         cookies: String,
+        requestHeadersByOrigin: Map<String, Map<String, String>>,
     ): List<MediaQualityOption> {
         return runCatching {
             val reqBuilder = Request.Builder()
@@ -453,7 +459,7 @@ class MediaSnifferEngine {
                 .header("Referer", referer)
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            val body = client.newCall(reqBuilder.build()).execute().use { resp ->
+            val body = executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
                 resp.body?.string().orEmpty()
             }
@@ -551,6 +557,7 @@ class MediaSnifferEngine {
         referer: String,
         userAgent: String,
         cookies: String,
+        requestHeadersByOrigin: Map<String, Map<String, String>>,
     ): List<MediaQualityOption> {
         return runCatching {
             val reqBuilder = Request.Builder()
@@ -559,7 +566,7 @@ class MediaSnifferEngine {
                 .header("Referer", referer)
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            val xml = client.newCall(reqBuilder.build()).execute().use { resp ->
+            val xml = executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
                 resp.body?.string().orEmpty()
             }
@@ -722,6 +729,7 @@ class MediaSnifferEngine {
         referer: String,
         userAgent: String,
         cookies: String,
+        requestHeadersByOrigin: Map<String, Map<String, String>>,
     ): Pair<Long, String> {
         return runCatching {
             val reqBuilder = Request.Builder()
@@ -731,12 +739,60 @@ class MediaSnifferEngine {
                 .header("Referer", referer)
             if (cookies.isNotBlank()) reqBuilder.header("Cookie", cookies)
 
-            client.newCall(reqBuilder.build()).execute().use { resp ->
+            executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 val len = resp.header("Content-Length")?.toLongOrNull() ?: -1L
                 val type = resp.header("Content-Type").orEmpty().substringBefore(";").trim()
                 len to type
             }
         }.getOrDefault(-1L to "")
+    }
+
+
+    /**
+     * Optional request metadata must not weaken the established probe path.
+     * Each redirect hop is origin-checked, and selected header-related failures
+     * retry once without helper fields before the response is accepted.
+     */
+    private fun executeProbeRequest(
+        initialRequest: Request,
+        contextsByOrigin: Map<String, Map<String, String>>,
+    ): okhttp3.Response {
+        var request = initialRequest
+        val redirectCodes = setOf(300, 301, 302, 303, 307, 308)
+
+        var previouslyInjectedHeaderNames = emptySet<String>()
+        repeat(10) { redirectCount ->
+            val execution = MediaRequestHeaderExecution.execute(
+                client = client,
+                baseRequest = request,
+                contextsByOrigin = contextsByOrigin,
+                previouslyInjectedHeaderNames = previouslyInjectedHeaderNames,
+            )
+            val response = execution.response
+            val location = response.header("Location")
+            if (response.code !in redirectCodes || location.isNullOrBlank()) return response
+
+            val target = response.request.url.resolve(location) ?: return response
+            val next = MediaRequestRedirectPolicy.nextRequest(
+                response = response,
+                target = target,
+                resolveCookiePerHop = false,
+                resetRefererOnCrossOrigin = false,
+            ) ?: return response
+
+            if (redirectCount == 9) {
+                response.close()
+                throw java.net.ProtocolException("Too many media probe redirects")
+            }
+
+            val sameOrigin = MediaRequestHeaderPolicy.originForUrl(response.request.url.toString()) ==
+                MediaRequestHeaderPolicy.originForUrl(target.toString())
+            previouslyInjectedHeaderNames = if (sameOrigin) execution.injectedHeaderNames else emptySet()
+            response.close()
+            request = next
+        }
+
+        throw java.net.ProtocolException("Media probe redirect limit exceeded")
     }
 
     private fun resolveRelativeUrl(base: Uri, relative: String): String {
@@ -852,6 +908,99 @@ class MediaSnifferEngine {
             var urlRegex = /https?:\/\/[^\s"'<>\\]+\.(m3u8|mpd|mp4|m4v|webm|m4a)(\?[^\s"'<>\\]*)?/gi;
             var adFilter = /(doubleclick|googlesyndication|imasdk|vast|vmap|preroll|midroll|bumper|tapsell|sabavision)/i;
 
+            // Provenance is associated with the exact returned buffer object, never by timing,
+            // page origin, or URL proximity. WeakMaps do not retain media payloads.
+            var networkBufferSources = new WeakMap();
+            var networkBlobSources = new WeakMap();
+
+            function safeNetworkSource(url) {
+                try {
+                    var rawUrl = String(url || '').trim();
+                    if (!/^https?:\/\//i.test(rawUrl)) return '';
+                    var parsed = new URL(rawUrl);
+                    if ((parsed.protocol !== 'https:' && parsed.protocol !== 'http:') || adFilter.test(parsed.href)) return '';
+                    return parsed.href;
+                } catch (e) { return ''; }
+            }
+
+            function rememberBuffer(buffer, url, contentType, status, contentRange) {
+                try {
+                    if (!(buffer instanceof ArrayBuffer)) return;
+                    var safeUrl = safeNetworkSource(url);
+                    if (!safeUrl) return;
+                    networkBufferSources.set(buffer, {
+                        url: safeUrl,
+                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase(),
+                        status: Number(status || 0),
+                        contentRange: String(contentRange || '')
+                    });
+                } catch (e) {}
+            }
+
+            function rememberBlob(blob, url, contentType, status, contentRange) {
+                try {
+                    if (!(blob instanceof Blob)) return;
+                    var safeUrl = safeNetworkSource(url);
+                    if (!safeUrl) return;
+                    networkBlobSources.set(blob, {
+                        url: safeUrl,
+                        contentType: String(contentType || '').split(';')[0].trim().toLowerCase(),
+                        status: Number(status || 0),
+                        contentRange: String(contentRange || '')
+                    });
+                } catch (e) {}
+            }
+
+            // Response.arrayBuffer() preserves the exact ArrayBuffer delivered to the player.
+            if (window.Response && Response.prototype.arrayBuffer && !window.__salviaResponseArrayBufferHook) {
+                window.__salviaResponseArrayBufferHook = true;
+                var originalResponseArrayBuffer = Response.prototype.arrayBuffer;
+                Response.prototype.arrayBuffer = function() {
+                    var response = this;
+                    return originalResponseArrayBuffer.apply(this, arguments).then(function(buffer) {
+                        rememberBuffer(
+                            buffer,
+                            response.url,
+                            response.headers && response.headers.get ? response.headers.get('content-type') : '',
+                            response.status,
+                            response.headers && response.headers.get ? response.headers.get('content-range') : ''
+                        );
+                        return buffer;
+                    });
+                };
+            }
+
+            if (window.Response && Response.prototype.blob && !window.__salviaResponseBlobHook) {
+                window.__salviaResponseBlobHook = true;
+                var originalResponseBlob = Response.prototype.blob;
+                Response.prototype.blob = function() {
+                    var response = this;
+                    return originalResponseBlob.apply(this, arguments).then(function(blob) {
+                        rememberBlob(
+                            blob,
+                            response.url,
+                            response.headers && response.headers.get ? response.headers.get('content-type') : '',
+                            response.status,
+                            response.headers && response.headers.get ? response.headers.get('content-range') : ''
+                        );
+                        return blob;
+                    });
+                };
+            }
+
+            if (window.Blob && Blob.prototype.arrayBuffer && !window.__salviaBlobArrayBufferHook) {
+                window.__salviaBlobArrayBufferHook = true;
+                var originalBlobArrayBuffer = Blob.prototype.arrayBuffer;
+                Blob.prototype.arrayBuffer = function() {
+                    var blob = this;
+                    return originalBlobArrayBuffer.apply(this, arguments).then(function(buffer) {
+                        var source = networkBlobSources.get(blob);
+                        if (source) rememberBuffer(buffer, source.url, source.contentType, source.status, source.contentRange);
+                        return buffer;
+                    });
+                };
+            }
+
             function reportTextUrls(text) {
                 try {
                     if (!text || text.length > 500000 || !window.NavaMediaBridge) return;
@@ -879,6 +1028,10 @@ class MediaSnifferEngine {
                     return origFetch.apply(this, arguments).then(function(resp) {
                         try {
                             var ct = resp.headers && resp.headers.get ? (resp.headers.get('content-type') || '') : '';
+                            var finalUrl = resp.url || '';
+                            if ((/^video\//i.test(ct) || /^audio\//i.test(ct) || /mpegurl|dash\+xml/i.test(ct)) && window.NavaMediaBridge && finalUrl) {
+                                window.NavaMediaBridge.onHookedResource(finalUrl, document.title || '', ct);
+                            }
                             if (ct.includes('json') || ct.includes('mpegurl') || ct.includes('dash')) {
                                 resp.clone().text().then(reportTextUrls).catch(function(){});
                             }
@@ -898,6 +1051,17 @@ class MediaSnifferEngine {
                 var xhr = this;
                 xhr.addEventListener('load', function() {
                     try {
+                        var xhrType = xhr.getResponseHeader('content-type') || '';
+                        var responseXhrUrl = xhr.responseURL || '';
+                        var finalXhrUrl = responseXhrUrl || xhr.__salviaUrl || '';
+                        if (xhr.responseType === 'arraybuffer' && xhr.response instanceof ArrayBuffer) {
+                            rememberBuffer(xhr.response, responseXhrUrl, xhrType, xhr.status, xhr.getResponseHeader('content-range') || '');
+                        } else if (xhr.responseType === 'blob' && xhr.response instanceof Blob) {
+                            rememberBlob(xhr.response, responseXhrUrl, xhrType, xhr.status, xhr.getResponseHeader('content-range') || '');
+                        }
+                        if (finalXhrUrl && (/^video\//i.test(xhrType) || /^audio\//i.test(xhrType) || /mpegurl|dash\+xml/i.test(xhrType)) && !adFilter.test(finalXhrUrl) && window.NavaMediaBridge) {
+                            window.NavaMediaBridge.onHookedResource(finalXhrUrl, document.title || '', xhrType);
+                        }
                         if (xhr.__salviaUrl && /\.(m3u8|mpd|mp4|webm|m4a)/i.test(xhr.__salviaUrl) && !adFilter.test(xhr.__salviaUrl) && window.NavaMediaBridge) {
                             window.NavaMediaBridge.onHookedUrl(xhr.__salviaUrl, document.title || '');
                         }
@@ -908,6 +1072,40 @@ class MediaSnifferEngine {
                 });
                 return origSend.apply(this, arguments);
             };
+
+            // Observe MSE metadata and attribute only the exact network-backed buffer object.
+            // No bytes are inspected, copied, exported, or reconstructed. If the player transforms
+            // data into a new allocation, provenance is intentionally lost rather than guessed.
+            if (window.MediaSource && window.SourceBuffer && !window.__salviaMseHook) {
+                window.__salviaMseHook = true;
+                var originalAddSourceBuffer = MediaSource.prototype.addSourceBuffer;
+                MediaSource.prototype.addSourceBuffer = function(mimeType) {
+                    var buffer = originalAddSourceBuffer.apply(this, arguments);
+                    try {
+                        var originalAppend = buffer.appendBuffer;
+                        buffer.appendBuffer = function(data) {
+                            try {
+                                var backingBuffer = data instanceof ArrayBuffer
+                                    ? data
+                                    : (ArrayBuffer.isView(data) ? data.buffer : null);
+                                var source = backingBuffer ? networkBufferSources.get(backingBuffer) : null;
+                                if (window.NavaMediaBridge) {
+                                    window.NavaMediaBridge.onMseBufferObserved(
+                                        String(mimeType || ''),
+                                        data && data.byteLength || 0,
+                                        source ? source.url : '',
+                                        source ? source.contentType : '',
+                                        source ? source.status : 0,
+                                        source ? source.contentRange : ''
+                                    );
+                                }
+                            } catch (e) {}
+                            return originalAppend.apply(this, arguments);
+                        };
+                    } catch (e) {}
+                    return buffer;
+                };
+            }
         })();
     """.trimIndent()
 

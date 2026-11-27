@@ -1,6 +1,12 @@
 package com.example.ui.components
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.widget.Toast
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.Manifest
@@ -14,6 +20,9 @@ import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.GeolocationPermissions
+import android.webkit.HttpAuthHandler
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -37,6 +46,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -46,6 +56,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -61,6 +72,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -69,6 +83,7 @@ import com.example.data.local.BrowserSettings
 import com.example.engine.AdBlockerEngine
 import com.example.engine.WebViewConfigurator
 import com.example.engine.WebPermissionPolicy
+import com.example.engine.SitePermissionStore
 import com.example.R
 import com.example.ui.BrowserTab
 import com.example.ui.BrowserViewModel
@@ -77,6 +92,21 @@ import com.example.ui.i18n.LocalAppStrings
 private data class PendingSslWarning(
     val url: String,
     val handler: SslErrorHandler,
+)
+
+private data class PendingHttpAuth(
+    val host: String,
+    val realm: String?,
+    val handler: HttpAuthHandler,
+)
+
+private data class PendingJsDialog(
+    val kind: String,
+    val origin: String,
+    val message: String,
+    val defaultValue: String,
+    val result: JsResult,
+    val promptResult: JsPromptResult? = null,
 )
 
 private data class PendingWebPermission(
@@ -106,6 +136,10 @@ fun WebViewContainer(
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
     var popupTitle by remember { mutableStateOf(s.sslPopupDefaultTitle) }
     var pendingWebPermission by remember(tab.id) { mutableStateOf<PendingWebPermission?>(null) }
+    var pendingHttpAuth by remember(tab.id) { mutableStateOf<PendingHttpAuth?>(null) }
+    var authUsername by remember(tab.id) { mutableStateOf("") }
+    var authPassword by remember(tab.id) { mutableStateOf("") }
+    var pendingJsDialog by remember(tab.id) { mutableStateOf<PendingJsDialog?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -197,15 +231,30 @@ fun WebViewContainer(
                     onSslWarning = { url, handler ->
                         sslWarning = PendingSslWarning(url, handler)
                     },
+                    onRequestHttpAuth = { pending ->
+                        authUsername = ""
+                        authPassword = ""
+                        pendingHttpAuth?.handler?.cancel()
+                        pendingHttpAuth = pending
+                    },
+                    onRequestJsDialog = { pending -> pendingJsDialog = pending },
                     onRequestWebPermission = { request, currentUrl ->
                         val resources = request.resources.toList()
                         val androidPermissions = WebPermissionPolicy.androidPermissionsForCapture(resources)
                         val origin = request.origin.toString()
+                        val sitePermissions = SitePermissionStore(context)
+                        val rememberedGrant = !tab.isIncognito && resources.isNotEmpty() &&
+                            resources.all { sitePermissions.isGranted(origin, it) } &&
+                            androidPermissions?.all { permission ->
+                                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                            } == true
                         if (
                             androidPermissions == null ||
                             !WebPermissionPolicy.isSameSecureOrigin(origin, currentUrl.orEmpty())
                         ) {
                             request.deny()
+                        } else if (rememberedGrant) {
+                            request.grant(resources.toTypedArray())
                         } else {
                             val description = when {
                                 resources.contains(WebPermissionPolicy.CAMERA_RESOURCE) &&
@@ -223,15 +272,26 @@ fun WebViewContainer(
                                     androidPermissions = androidPermissions,
                                     resources = resources,
                                     permissionRequest = request,
-                                    onGrant = { granted -> request.grant(granted.toTypedArray()) },
+                                    onGrant = { granted ->
+                                        if (!tab.isIncognito) sitePermissions.rememberGrant(origin, granted)
+                                        request.grant(granted.toTypedArray())
+                                    },
                                     onDeny = { request.deny() },
                                 ),
                             )
                         }
                     },
                     onRequestGeolocation = { origin, currentUrl, callback ->
+                        val sitePermissions = SitePermissionStore(context)
+                        val geoPermissionsAvailable = WebPermissionPolicy.locationAndroidPermissions.any { permission ->
+                            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                        }
                         if (!WebPermissionPolicy.isSameSecureOrigin(origin, currentUrl.orEmpty())) {
                             callback.invoke(origin, false, false)
+                        } else if (!tab.isIncognito && geoPermissionsAvailable &&
+                            sitePermissions.isGranted(origin, "GEOLOCATION")
+                        ) {
+                            callback.invoke(origin, true, true)
                         } else {
                             showPermissionPrompt(
                                 PendingWebPermission(
@@ -239,7 +299,10 @@ fun WebViewContainer(
                                     origin = origin,
                                     description = context.getString(R.string.web_permission_location),
                                     androidPermissions = WebPermissionPolicy.locationAndroidPermissions,
-                                    onGrant = { callback.invoke(origin, true, false) },
+                                    onGrant = {
+                                        if (!tab.isIncognito) sitePermissions.rememberGrant(origin, listOf("GEOLOCATION"))
+                                        callback.invoke(origin, true, true)
+                                    },
                                     onDeny = { callback.invoke(origin, false, false) },
                                 ),
                             )
@@ -270,7 +333,10 @@ fun WebViewContainer(
                         fullscreenCallback?.onCustomViewHidden()
                         fullscreenCallback = null
                     },
-                    onOpenPopup = { resultMsg ->
+                    onOpenPopup = { resultMsg, isUserGesture ->
+                        if (!isUserGesture) {
+                            viewModel.onPopupBlocked()
+                        } else {
                         val popup = createPopupWebView(
                             context = context,
                             tab = tab,
@@ -284,6 +350,7 @@ fun WebViewContainer(
                         val transport = resultMsg.obj as? WebView.WebViewTransport
                         transport?.webView = popup
                         resultMsg.sendToTarget()
+                        }
                     },
                 ).also { created ->
                     val savedBundle = viewModel.consumeSavedTabState(tab.id)
@@ -316,6 +383,33 @@ fun WebViewContainer(
                 )
             },
         )
+
+        // Native Android print pipeline; the system print UI also exposes "Save as PDF".
+        IconButton(
+            onClick = {
+                val activity = context.findActivity()
+                val activeWebView = viewModel.getWebView(tab.id)
+                val printManager = activity?.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+                if (activity == null || activeWebView == null || printManager == null) {
+                    Toast.makeText(context, "Printing is unavailable for this tab.", Toast.LENGTH_SHORT).show()
+                } else {
+                    runCatching {
+                        printManager.print(
+                            "SalviaBrowser-${tab.id.take(8)}",
+                            activeWebView.createPrintDocumentAdapter("SalviaBrowser"),
+                            PrintAttributes.Builder().build(),
+                        )
+                    }.onFailure {
+                        Toast.makeText(context, "Unable to start printing.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).background(
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.88f), RoundedCornerShape(24.dp),
+            ),
+        ) {
+            Icon(Icons.Default.Print, contentDescription = "Print or save as PDF")
+        }
 
         // OAuth / Google Sign-In / Multi-Window Popup Overlay
         popupWebView?.let { popup ->
@@ -427,6 +521,68 @@ fun WebViewContainer(
             )
         }
 
+        pendingHttpAuth?.let { pending ->
+            AlertDialog(
+                onDismissRequest = {
+                    pending.handler.cancel()
+                    authUsername = ""
+                    authPassword = ""
+                    pendingHttpAuth = null
+                },
+                title = { Text("Sign in to ${pending.host}") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(pending.realm.orEmpty())
+                        OutlinedTextField(value = authUsername, onValueChange = { authUsername = it }, label = { Text("Username") }, singleLine = true)
+                        OutlinedTextField(
+                            value = authPassword,
+                            onValueChange = { authPassword = it },
+                            label = { Text("Password") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        pending.handler.proceed(authUsername, authPassword)
+                        authUsername = ""; authPassword = ""; pendingHttpAuth = null
+                    }) { Text("Sign in") }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { pending.handler.cancel(); authUsername = ""; authPassword = ""; pendingHttpAuth = null }) { Text("Cancel") }
+                },
+            )
+        }
+
+        pendingJsDialog?.let { pending ->
+            var promptValue by remember(pending) { mutableStateOf(pending.defaultValue) }
+            AlertDialog(
+                onDismissRequest = { pending.result.cancel(); pendingJsDialog = null },
+                title = { Text(if (pending.kind == "alert") "JavaScript alert" else "JavaScript dialog") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(pending.message)
+                        if (pending.kind == "prompt") {
+                            OutlinedTextField(value = promptValue, onValueChange = { promptValue = it }, singleLine = true)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (pending.kind == "prompt") pending.promptResult?.confirm(promptValue) else pending.result.confirm()
+                        pendingJsDialog = null
+                    }) { Text("OK") }
+                },
+                dismissButton = {
+                    if (pending.kind != "alert") {
+                        OutlinedButton(onClick = { pending.result.cancel(); pendingJsDialog = null }) { Text("Cancel") }
+                    }
+                },
+            )
+        }
+
         // SSL Warning Dialog
         sslWarning?.let { warning ->
             AlertDialog(
@@ -482,13 +638,15 @@ private fun createConfiguredWebView(
     viewModel: BrowserViewModel,
     onShowFileChooser: (ValueCallback<Array<Uri>>) -> Unit,
     onSslWarning: (String, SslErrorHandler) -> Unit,
+    onRequestHttpAuth: (PendingHttpAuth) -> Unit,
+    onRequestJsDialog: (PendingJsDialog) -> Unit,
     onRequestWebPermission: (PermissionRequest, String?) -> Unit,
     onRequestGeolocation: (String, String?, GeolocationPermissions.Callback) -> Unit,
     onCancelWebPermission: (PermissionRequest) -> Unit,
     onCancelGeolocation: () -> Unit,
     onEnterFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     onExitFullscreen: () -> Unit,
-    onOpenPopup: (Message) -> Unit,
+    onOpenPopup: (Message, Boolean) -> Unit,
 ): WebView {
     val tabId = tab.id
     return WebView(context).apply {
@@ -520,6 +678,32 @@ private fun createConfiguredWebView(
                 fun onHookedUrl(url: String, titleHint: String) {
                     viewModel.onHookedMediaUrl(tabId, url, titleHint)
                 }
+
+                @JavascriptInterface
+                fun onHookedResource(url: String, titleHint: String, contentType: String) {
+                    viewModel.onHookedResource(tabId, url, titleHint, contentType)
+                }
+
+                @JavascriptInterface
+                fun onMseBufferObserved(
+                    mimeType: String,
+                    byteLength: Int,
+                    sourceUrl: String,
+                    responseContentType: String,
+                    responseStatus: Int,
+                    contentRange: String,
+                ) {
+                    viewModel.onMseNetworkSourceObserved(
+                        tabId = tabId,
+                        sourceBufferMimeType = mimeType,
+                        responseContentType = responseContentType,
+                        sourceUrl = sourceUrl,
+                        byteLength = byteLength,
+                        responseStatus = responseStatus,
+                        contentRange = contentRange,
+                    )
+                }
+
             },
             "NavaMediaBridge",
         )
@@ -598,6 +782,15 @@ private fun createConfiguredWebView(
                 }
             }
 
+            override fun onReceivedHttpAuthRequest(
+                view: WebView?,
+                handler: HttpAuthHandler,
+                host: String,
+                realm: String?,
+            ) {
+                onRequestHttpAuth(PendingHttpAuth(host, realm, handler))
+            }
+
             override fun onReceivedSslError(
                 view: WebView?,
                 handler: SslErrorHandler?,
@@ -610,6 +803,26 @@ private fun createConfiguredWebView(
         }
 
         webChromeClient = object : WebChromeClient() {
+            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                if (result == null) return false
+                onRequestJsDialog(PendingJsDialog("alert", url.orEmpty(), message.orEmpty(), "", result))
+                return true
+            }
+
+            override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                if (result == null) return false
+                onRequestJsDialog(PendingJsDialog("confirm", url.orEmpty(), message.orEmpty(), "", result))
+                return true
+            }
+
+            override fun onJsPrompt(
+                view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?,
+            ): Boolean {
+                if (result == null) return false
+                onRequestJsDialog(PendingJsDialog("prompt", url.orEmpty(), message.orEmpty(), defaultValue.orEmpty(), result, result))
+                return true
+            }
+
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 viewModel.onPageProgress(tabId, newProgress)
             }
@@ -643,8 +856,8 @@ private fun createConfiguredWebView(
                 resultMsg: Message?,
             ): Boolean {
                 if (resultMsg != null) {
-                    onOpenPopup(resultMsg)
-                    return true
+                    onOpenPopup(resultMsg, isUserGesture)
+                    return isUserGesture
                 }
                 return false
             }
@@ -742,4 +955,10 @@ private fun createPopupWebView(
             }
         }
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

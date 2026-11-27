@@ -16,6 +16,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.example.data.local.BrowserRepository
 import com.example.data.local.DownloadEntity
+import com.example.data.local.MediaDownloadRequestContextEntity
 import com.example.ui.MediaQualityOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -46,6 +47,7 @@ class DownloadCoordinator(context: Context) {
         sessionCookieManager: CookieManager?,
         isIncognito: Boolean,
         isDesktopMode: Boolean,
+        requestHeadersByOrigin: Map<String, Map<String, String>> = emptyMap(),
     ): Long = withContext(Dispatchers.IO) {
         require(quality.isVerifiedDownloadSource) {
             "Download sources must use absolute HTTP(S) URLs"
@@ -59,18 +61,31 @@ class DownloadCoordinator(context: Context) {
         )
 
         try {
+            val encodedHeaders = MediaRequestHeaderPolicy.encodeContext(requestHeadersByOrigin)
             if (isIncognito) {
-                // No persistent scheduler or cookie transfer for private sessions.
+                // Private request metadata stays in this call's memory only; never in Room.
                 manager.executePersistedDownloadAsync(
                     downloadId = id,
                     userAgent = userAgent,
                     sessionCookieManager = sessionCookieManager,
                     allowGlobalCookieFallback = false,
+                    requestHeaderContextOverride = MediaRequestHeaderPolicy.decodeContext(encodedHeaders),
                 )
             } else {
+                if (encodedHeaders.isNotBlank()) {
+                    repository.cleanupExpiredMediaRequestContexts()
+                    repository.saveMediaRequestContext(
+                        MediaDownloadRequestContextEntity(
+                            downloadId = id,
+                            contextData = encodedHeaders,
+                            expiresAt = System.currentTimeMillis() + 30L * 60L * 1000L,
+                        ),
+                    )
+                }
                 scheduleNormalDownload(id, replaceExisting = false)
             }
         } catch (error: Exception) {
+            repository.deleteMediaRequestContext(id)
             repository.updateDownloadStatus(id, "FAILED")
             throw error
         }
@@ -86,6 +101,7 @@ class DownloadCoordinator(context: Context) {
         download: DownloadEntity,
         privateCookieManager: CookieManager? = null,
         privateUserAgent: String? = null,
+        privateRequestHeadersByOrigin: Map<String, Map<String, String>> = emptyMap(),
     ) = withContext(Dispatchers.IO) {
         manager.markDownloadQueued(download.id)
         if (download.isIncognito) {
@@ -98,6 +114,7 @@ class DownloadCoordinator(context: Context) {
                 userAgent = privateUserAgent,
                 sessionCookieManager = privateCookieManager,
                 allowGlobalCookieFallback = false,
+                requestHeaderContextOverride = privateRequestHeadersByOrigin,
             )
         } else {
             // WorkManager may still be completing a cancelled generation; replace it.

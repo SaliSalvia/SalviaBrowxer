@@ -24,6 +24,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import okhttp3.OkHttpClient
@@ -119,12 +120,14 @@ class MediaDownloadManager(
         userAgent: String,
         sessionCookieManager: CookieManager? = null,
         allowGlobalCookieFallback: Boolean = true,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
     ): Job = scope.launch(Dispatchers.IO) {
         executePersistedDownload(
             downloadId = downloadId,
             userAgent = userAgent,
             sessionCookieManager = sessionCookieManager,
             allowGlobalCookieFallback = allowGlobalCookieFallback,
+            requestHeaderContextOverride = requestHeaderContextOverride,
         )
     }
 
@@ -138,6 +141,7 @@ class MediaDownloadManager(
         sessionCookieManager: CookieManager? = null,
         allowGlobalCookieFallback: Boolean = true,
         cancelTransferWhenCallerCancelled: Boolean = true,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
     ): DownloadEntity? {
         val download = repository.getDownloadById(downloadId) ?: return null
         if (download.status in setOf("COMPLETED", "CANCELLED")) return download
@@ -159,6 +163,8 @@ class MediaDownloadManager(
             manifestAudioRepresentationId = download.manifestAudioRepresentationId,
             sessionCookieManager = sessionCookieManager,
             allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
+            requestHeaderContextOverride = requestHeaderContextOverride,
+            isIncognito = download.isIncognito,
         )
         val callerContext = currentCoroutineContext()
         try {
@@ -198,6 +204,7 @@ class MediaDownloadManager(
         pausedIds.remove(download.id)
         activeJobs[download.id]?.cancelAndJoin()
         chunkDir(download.id).deleteRecursively()
+        repository.deleteMediaRequestContext(download.id)
         repository.updateDownloadStatus(download.id, "CANCELLED")
     }
 
@@ -214,6 +221,7 @@ class MediaDownloadManager(
         userAgent: String,
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
     ) {
         pausedIds.remove(download.id)
         scope.launch(Dispatchers.IO) {
@@ -231,6 +239,8 @@ class MediaDownloadManager(
                 manifestAudioRepresentationId = download.manifestAudioRepresentationId,
                 sessionCookieManager = sessionCookieManager,
                 allowGlobalCookieFallback = allowGlobalCookieFallback && !download.isIncognito,
+                requestHeaderContextOverride = requestHeaderContextOverride,
+                isIncognito = download.isIncognito,
             )
         }
     }
@@ -257,6 +267,7 @@ class MediaDownloadManager(
         activeJobs.remove(download.id)?.cancel()
         chunkDir(download.id).deleteRecursively()
         scope.launch(Dispatchers.IO) {
+            repository.deleteMediaRequestContext(download.id)
             repository.updateDownloadStatus(download.id, "CANCELLED")
         }
     }
@@ -275,15 +286,37 @@ class MediaDownloadManager(
         manifestAudioRepresentationId: String,
         sessionCookieManager: CookieManager?,
         allowGlobalCookieFallback: Boolean,
+        requestHeaderContextOverride: Map<String, Map<String, String>> = emptyMap(),
+        isIncognito: Boolean = false,
     ): Job = synchronized(activeJobs) {
         activeJobs[downloadId]?.takeIf { it.isActive }?.let { return@synchronized it }
 
         val job = scope.launch(context = Dispatchers.IO, start = CoroutineStart.LAZY) {
-            when {
-                isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                isDash && manifestRepresentationId.isNotBlank() -> downloadDashManifestAndMux(downloadId, fileName, url, manifestRepresentationId, manifestAudioRepresentationId, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, sessionCookieManager, allowGlobalCookieFallback)
+            val encodedOverride = if (requestHeaderContextOverride.isNotEmpty()) {
+                MediaRequestHeaderPolicy.encodeContext(requestHeaderContextOverride)
+            } else {
+                ""
+            }
+            val persisted = if (encodedOverride.isBlank() && !isIncognito) {
+                repository.cleanupExpiredMediaRequestContexts()
+                repository.getMediaRequestContext(downloadId)?.contextData.orEmpty()
+            } else {
+                ""
+            }
+            val requestContexts = MediaRequestHeaderPolicy.decodeContext(
+                encodedOverride.ifBlank { persisted },
+            )
+            withContext(MediaRequestHeaderContextElement(requestContexts)) {
+                when {
+                    isHls -> downloadHlsStream(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    isDash && manifestRepresentationId.isNotBlank() -> downloadDashManifestAndMux(downloadId, fileName, url, manifestRepresentationId, manifestAudioRepresentationId, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    isDash && audioUrl.isNotBlank() -> downloadDashAndMux(downloadId, fileName, url, audioUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    else -> downloadDirectMultiPart(downloadId, fileName, url, referer, userAgent, mimeType, sessionCookieManager, allowGlobalCookieFallback)
+                }
+            }
+            val finalStatus = repository.getDownloadById(downloadId)?.status
+            if (finalStatus == "COMPLETED" || finalStatus == "CANCELLED") {
+                repository.deleteMediaRequestContext(downloadId)
             }
         }
         activeJobs[downloadId] = job
@@ -1347,6 +1380,7 @@ class MediaDownloadManager(
         var request = initialRequest.newBuilder().removeHeader("Cookie").build()
         val redirectCodes = setOf(300, 301, 302, 303, 307, 308)
 
+        var previouslyInjectedHeaderNames = emptySet<String>()
         repeat(10) { redirectCount ->
             val cookie = resolveCookieHeader(
                 request.url.toString(),
@@ -1357,8 +1391,13 @@ class MediaDownloadManager(
                 .removeHeader("Cookie")
                 .apply { if (cookie.isNotBlank()) header("Cookie", cookie) }
                 .build()
-
-            val response = client.newCall(requestWithCookies).execute()
+            val execution = MediaRequestHeaderExecution.execute(
+                client = client,
+                baseRequest = requestWithCookies,
+                contextsByOrigin = MediaRequestHeaderContextElement.currentContexts(),
+                previouslyInjectedHeaderNames = previouslyInjectedHeaderNames,
+            )
+            val response = execution.response
             val location = response.header("Location")
             if (response.code !in redirectCodes || location.isNullOrBlank()) return response
 
@@ -1373,26 +1412,17 @@ class MediaDownloadManager(
                 throw ProtocolException("Too many redirects")
             }
 
-            val crossOrigin = current.scheme != target.scheme ||
-                current.host != target.host ||
-                current.port != target.port
-            val next = response.request.newBuilder()
-                .url(target)
-                .removeHeader("Cookie")
+            val next = MediaRequestRedirectPolicy.nextRequest(
+                response = response,
+                target = target,
+                resolveCookiePerHop = true,
+            ) ?: return response
 
-            if (crossOrigin) {
-                next.removeHeader("Authorization")
-                next.removeHeader("Proxy-Authorization")
-                val safeReferer = current.newBuilder()
-                    .encodedPath("/")
-                    .query(null)
-                    .fragment(null)
-                    .build()
-                next.header("Referer", safeReferer.toString())
-            }
-
+            val sameOrigin = MediaRequestHeaderPolicy.originForUrl(response.request.url.toString()) ==
+                MediaRequestHeaderPolicy.originForUrl(target.toString())
+            previouslyInjectedHeaderNames = if (sameOrigin) execution.injectedHeaderNames else emptySet()
             response.close()
-            request = next.build()
+            request = next
         }
 
         throw ProtocolException("Redirect limit exceeded")
