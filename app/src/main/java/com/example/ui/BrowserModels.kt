@@ -36,6 +36,7 @@ enum class MediaDetectionSource {
     JSON_LD,
     OPEN_GRAPH,
     MSE_REFERENCE,
+    PLATFORM_EXTRACTOR,
     UNKNOWN,
 }
 

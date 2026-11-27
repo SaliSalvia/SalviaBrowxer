@@ -35,6 +35,7 @@ import com.example.engine.MediaRequestHeaderPolicy
 import com.example.engine.MediaRequestHeaderStore
 import com.example.engine.SitePermissionStore
 import com.example.engine.MseNetworkAttributionPolicy
+import com.example.engine.PlatformMediaExtractors
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
 import kotlinx.coroutines.Dispatchers
@@ -553,6 +554,27 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 wv.evaluateJavascript(extScript, null)
             }
         }
+
+        if (tab != null && PlatformMediaExtractors.isSupported(url)) {
+            val platformTab = tab
+            val platformCacheKey = tabId + "|platform|" + url
+            if (pendingProbedUrls.add(platformCacheKey)) {
+                val ua = WebViewConfigurator.resolveUserAgent(getApplication(), platformTab.isDesktopMode)
+                viewModelScope.launch(Dispatchers.IO) {
+                    val detected = mediaSniffer.probePlatformPage(
+                        pageUrl = url,
+                        pageTitle = resolvedTitle,
+                        userAgent = ua,
+                        cookieHeader = cookieHeaderForTab(platformTab, url),
+                    )
+                    if (detected != null) {
+                        updateTab(tabId) { current ->
+                            current.copy(detectedMedia = mediaSniffer.mergeAndPrioritize(current.detectedMedia, detected))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fun injectStartExtensions(tabId: String, url: String) {
@@ -673,6 +695,25 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         webViews[tab.id]?.let { wv ->
             wv.evaluateJavascript(mediaSniffer.earlyMediaHookScript(), null)
             wv.evaluateJavascript(mediaSniffer.domSnifferScript(), null)
+        }
+        if (PlatformMediaExtractors.isSupported(tab.url)) {
+            val platformCacheKey = tab.id + "|platform|" + tab.url
+            if (pendingProbedUrls.add(platformCacheKey)) {
+                val ua = WebViewConfigurator.resolveUserAgent(getApplication(), tab.isDesktopMode)
+                viewModelScope.launch(Dispatchers.IO) {
+                    val detected = mediaSniffer.probePlatformPage(
+                        pageUrl = tab.url,
+                        pageTitle = tab.title,
+                        userAgent = ua,
+                        cookieHeader = cookieHeaderForTab(tab, tab.url),
+                    )
+                    if (detected != null) {
+                        updateTab(tab.id) { current ->
+                            current.copy(detectedMedia = mediaSniffer.mergeAndPrioritize(current.detectedMedia, detected))
+                        }
+                    }
+                }
+            }
         }
         _statusToast.value = s().toastDeepMediaScan
     }
