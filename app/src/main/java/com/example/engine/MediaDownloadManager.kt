@@ -415,15 +415,13 @@ class MediaDownloadManager(
                                     throw IOException("Range request was not honored (HTTP ${response.code})")
                                 }
 
-                                val rangeMatch = Regex(
-                                    "^bytes\\s+(\\d+)-(\\d+)/(\\d+)$",
-                                    RegexOption.IGNORE_CASE,
-                                ).matchEntire(response.header("Content-Range").orEmpty())
-                                    ?: throw IOException("Missing or invalid Content-Range")
+                                val rangeMatch = RangeResponseParser.parse(
+                                    response.header("Content-Range"),
+                                ) ?: throw IOException("Missing or invalid Content-Range")
 
-                                val actualStart = rangeMatch.groupValues[1].toLong()
-                                val actualEnd = rangeMatch.groupValues[2].toLong()
-                                val actualTotal = rangeMatch.groupValues[3].toLong()
+                                val actualStart = rangeMatch.start
+                                val actualEnd = rangeMatch.end
+                                val actualTotal = rangeMatch.totalBytes
                                 if (actualStart != requestStart ||
                                     actualEnd != rangeEnd ||
                                     actualTotal != totalBytes
@@ -1196,7 +1194,7 @@ class MediaDownloadManager(
                 .build()
             executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
                 if (resp.code != 206) return@use -1L to false
-                val match = Regex("^bytes\\\\s+0-0/(\\\\d+)$", RegexOption.IGNORE_CASE)
+                val match = Regex("^bytes\\s+0-0/(\\d+)$", RegexOption.IGNORE_CASE)
                     .matchEntire(resp.header("Content-Range").orEmpty()) ?: return@use -1L to false
                 val total = match.groupValues[1].toLongOrNull() ?: return@use -1L to false
                 val bodySize = resp.body?.bytes()?.size ?: return@use -1L to false
