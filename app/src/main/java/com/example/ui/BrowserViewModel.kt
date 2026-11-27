@@ -33,6 +33,7 @@ import com.example.engine.MediaRequestHeaderPolicy
 import com.example.engine.MediaRequestHeaderStore
 import com.example.engine.SitePermissionStore
 import com.example.engine.MseNetworkAttributionPolicy
+import com.example.engine.UrlInputNormalizer
 import com.example.engine.WebViewConfigurator
 import com.example.ui.i18n.AppStrings
 import com.example.ui.i18n.stringsFor
@@ -47,7 +48,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.URLEncoder
 import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -482,27 +482,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun normalizeInputToUrl(input: String): String {
-        val trimmed = input.trim()
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            return if (settings.value.httpsUpgradeEnabled && trimmed.startsWith("http://") && !isLocalAddress(trimmed)) {
-                "https://" + trimmed.removePrefix("http://")
-            } else {
-                trimmed
-            }
-        }
-        val looksLikeDomain = !trimmed.contains(" ") &&
-            (trimmed.contains(".") || trimmed.startsWith("localhost"))
-        if (looksLikeDomain) {
-            val scheme = if (isLocalAddress(trimmed) || !settings.value.httpsUpgradeEnabled) "http://" else "https://"
-            return "$scheme$trimmed"
-        }
-        val encoded = runCatching { URLEncoder.encode(trimmed, "UTF-8") }.getOrDefault(trimmed)
-        return settings.value.searchEngine.searchUrlTemplate.replace("%s", encoded)
-    }
-
-    private fun isLocalAddress(hostOrUrl: String): Boolean {
-        val lower = hostOrUrl.lowercase()
-        return lower.contains("localhost") || lower.contains("127.0.0.1") || lower.contains("192.168.") || lower.contains("10.0.")
+        val currentSettings = settings.value
+        return UrlInputNormalizer.normalize(
+            input = input,
+            httpsUpgradeEnabled = currentSettings.httpsUpgradeEnabled,
+            searchUrlTemplate = currentSettings.searchEngine.searchUrlTemplate,
+        )
     }
 
     // --- WebView Callbacks & Engines ---
