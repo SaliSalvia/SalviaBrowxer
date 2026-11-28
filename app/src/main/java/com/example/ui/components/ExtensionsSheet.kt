@@ -394,8 +394,16 @@ private fun CreateExtensionDialog(
                     onValueChange = { matchPattern = it },
                     label = { Text(s.extMatchLabel) },
                     singleLine = true,
+                    isError = !com.example.engine.ExtensionEngine.isValidMatchPattern(matchPattern.ifBlank { "*://*/*" }),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (com.example.engine.ExtensionEngine.isAllSitesPattern(matchPattern)) {
+                    Text(
+                        text = s.extAllSitesWarning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = runAt == "document_end",

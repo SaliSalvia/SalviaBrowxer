@@ -6,7 +6,10 @@ import org.json.JSONObject
 import java.net.URI
 
 /**
- * Platform-specific extraction of publicly available media for Instagram, TikTok, and X posts.
+ * Platform-specific extraction of publicly available media for Instagram, TikTok, X, Aparat,
+ * Dailymotion, and Reddit posts. The Aparat, Dailymotion, and Reddit parsers follow the public
+ * data paths documented by yt-dlp's extractors (page player options, the public player
+ * metadata endpoint, and the post's public .json view respectively).
  *
  * Design constraints, consistent with the rest of the media pipeline:
  * - Only public content the browser could already render is parsed. There is no login-wall
@@ -30,11 +33,27 @@ object PlatformMediaExtractors {
         val isAudioOnly: Boolean = false,
         val confidenceScore: Int,
         val qualities: List<MediaQualityOption>,
+        /** Master HLS playlist the probe should expand into per-resolution qualities. */
+        val hlsManifestUrl: String = "",
+        /** DASH manifest the probe should expand into per-representation qualities. */
+        val dashManifestUrl: String = "",
     )
 
     private const val MAX_PROCESSED_HTML_CHARS = 3_000_000
     private const val X_SYNDICATION_PREFIX = "https://cdn.syndication.twimg.com/tweet-result?id="
     private const val X_SYNDICATION_SUFFIX = "&token=x&lang=en"
+
+    private const val DAILYMOTION_METADATA_PREFIX = "https://www.dailymotion.com/player/metadata/video/"
+    private const val DAILYMOTION_METADATA_SUFFIX = "?app=com.dailymotion.neon"
+    private const val APARAT_EMBED_PREFIX =
+        "https://www.aparat.com/video/video/embed/vt/frame/showvideo/yes/videohash/"
+
+    private val aparatPathRegex = Regex("^/(?:v/|video/video/embed/(?:vt/frame/showvideo/yes/)?videohash/)([A-Za-z0-9]+)(?:[/?#].*)?$")
+    private val dailymotionPathRegex = Regex("^/(?:embed/)?video/([A-Za-z0-9]+)(?:_[^/]*)?/?$")
+    private val dailymotionIdRegex = Regex("^[A-Za-z0-9]{5,}$")
+    private val redditPostRegex = Regex("^/(?:(?:r|user|u)/[^/]+/)?comments/([A-Za-z0-9]+)(?:/[^?#]*)?$")
+    private val dailymotionSizeRegex = Regex("/H264-(\\d+)x(\\d+)")
+    private val heightLabelRegex = Regex("(\\d{3,4})\\s*[pP]")
 
     private val instagramPostRegex = Regex("^/(?:p|reel|reels|tv)/[A-Za-z0-9_-]+/?$")
     // Matches both /<user>/status/<id> and the /i/web/status/<id> permalink form.
@@ -43,19 +62,53 @@ object PlatformMediaExtractors {
     // --- URL matching (pure, host/suffix based, mirrors MediaPlatformDetector) ---
 
     fun isSupported(url: String): Boolean =
-        matchInstagramPost(url) != null || matchTikTokVideo(url) != null || matchXStatus(url) != null
+        matchInstagramPost(url) != null || matchTikTokVideo(url) != null || matchXStatus(url) != null ||
+            matchAparatVideo(url) != null || matchDailymotionVideo(url) != null || matchRedditPost(url) != null
+
+    /** Returns the Aparat video hash of a watch or embed page, or null. */
+    internal fun matchAparatVideo(url: String): String? {
+        val uri = safeUri(url) ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        if (host != "aparat.com" && !host.endsWith(".aparat.com")) return null
+        return aparatPathRegex.matchEntire(uri.rawPath.orEmpty())?.groupValues?.getOrNull(1)
+    }
+
+    /** Returns the Dailymotion xid of a watch, embed, short (dai.ly), or player page, or null. */
+    internal fun matchDailymotionVideo(url: String): String? {
+        val uri = safeUri(url) ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        val path = uri.rawPath.orEmpty()
+        return when {
+            host == "dai.ly" || host == "www.dai.ly" ->
+                path.trim('/').takeIf { dailymotionIdRegex.matches(it) }
+            host == "geo.dailymotion.com" ->
+                queryParam(uri, "video")?.takeIf { dailymotionIdRegex.matches(it) }
+            host == "dailymotion.com" || host.endsWith(".dailymotion.com") ->
+                dailymotionPathRegex.matchEntire(path)?.groupValues?.getOrNull(1)
+                    ?.takeIf { dailymotionIdRegex.matches(it) }
+            else -> null
+        }
+    }
+
+    /** Returns the Reddit post id of a comments permalink, or null. */
+    internal fun matchRedditPost(url: String): String? {
+        val uri = safeUri(url) ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        if (host != "reddit.com" && !host.endsWith(".reddit.com")) return null
+        return redditPostRegex.matchEntire(uri.rawPath.orEmpty())?.groupValues?.getOrNull(1)
+    }
 
     internal fun matchInstagramPost(url: String): String? {
         val uri = safeUri(url) ?: return null
         val host = uri.host?.lowercase() ?: return null
-        if (!host.endsWith("instagram.com") && !host.endsWith("instagr.am")) return null
+        if (!hostMatches(host, "instagram.com") && !hostMatches(host, "instagr.am")) return null
         return instagramPostRegex.matchEntire(uri.rawPath.orEmpty())?.value
     }
 
     internal fun matchTikTokVideo(url: String): String? {
         val uri = safeUri(url) ?: return null
         val host = uri.host?.lowercase() ?: return null
-        if (!host.endsWith("tiktok.com")) return null
+        if (!hostMatches(host, "tiktok.com")) return null
         val path = uri.rawPath.orEmpty()
         if (host.startsWith("vm.") || host.startsWith("vt.")) return path
         return if (path.contains("/video/")) path else null
@@ -65,7 +118,7 @@ object PlatformMediaExtractors {
     internal fun matchXStatus(url: String): String? {
         val uri = safeUri(url) ?: return null
         val host = uri.host?.lowercase() ?: return null
-        if (!host.endsWith("twitter.com") && !host.endsWith("x.com")) return null
+        if (!hostMatches(host, "twitter.com") && !hostMatches(host, "x.com")) return null
         return xStatusRegex.matchEntire(uri.rawPath.orEmpty())?.groupValues?.getOrNull(1)
     }
 
@@ -82,6 +135,11 @@ object PlatformMediaExtractors {
             if (matchTikTokVideo(pageUrl) != null) return@runCatching extractTikTok(pageUrl, fetchText)
             val tweetId = matchXStatus(pageUrl)
             if (tweetId != null) return@runCatching extractX(pageUrl, tweetId, fetchText)
+            val aparatId = matchAparatVideo(pageUrl)
+            if (aparatId != null) return@runCatching extractAparat(pageUrl, aparatId, fetchText)
+            val dailymotionId = matchDailymotionVideo(pageUrl)
+            if (dailymotionId != null) return@runCatching extractDailymotion(dailymotionId, fetchText)
+            if (matchRedditPost(pageUrl) != null) return@runCatching extractReddit(pageUrl, fetchText)
             null
         }.getOrNull()
     }
@@ -320,7 +378,306 @@ object PlatformMediaExtractors {
         )
     }
 
+
+    // --- Aparat ---
+
+    private suspend fun extractAparat(
+        pageUrl: String,
+        videoHash: String,
+        fetchText: suspend (String) -> String?,
+    ): PlatformExtraction? {
+        val pageHtml = fetchText(pageUrl)?.capped()
+        pageHtml?.let { html -> parseAparatPage(html)?.let { return it } }
+        // The watch page may be a client-rendered shell; the embed player always inlines options.
+        val embedHtml = fetchText(APARAT_EMBED_PREFIX + videoHash)?.capped() ?: return null
+        return parseAparatPage(embedHtml, titleFallbackHtml = pageHtml)
+    }
+
+    internal fun parseAparatPage(html: String, titleFallbackHtml: String? = null): PlatformExtraction? {
+        val options = extractJsObjectAfter(html, Regex("options\\s*=\\s*(?=\\{)"))
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val qualities = LinkedHashMap<String, MediaQualityOption>()
+        var hlsUrl = ""
+
+        options?.optJSONArray("multiSRC")?.let { groups ->
+            for (g in 0 until groups.length()) {
+                val group = groups.optJSONArray(g) ?: groups.optJSONObject(g)?.let { JSONArray().put(it) } ?: continue
+                for (i in 0 until group.length()) {
+                    val item = group.optJSONObject(i) ?: continue
+                    val url = sanitizeMediaUrl(item.optString("src")) ?: continue
+                    val type = item.optString("type").lowercase()
+                    val label = item.optString("label")
+                    if (type.contains("mpegurl") || url.contains(".m3u8")) {
+                        if (hlsUrl.isBlank()) hlsUrl = url
+                        qualities.putIfAbsent(url, hlsQuality(url, height = 0))
+                    } else {
+                        val height = heightLabelRegex.find(label)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+                        qualities.putIfAbsent(url, videoQuality(labelForHeight(height), height, url))
+                    }
+                }
+            }
+        }
+
+        // Fallbacks used by some page variants: JSON-LD contentUrl and OpenGraph video.
+        if (qualities.isEmpty()) {
+            val candidates = listOfNotNull(
+                jsonLdString(html, "contentUrl"),
+                metaContent(html, "og:video:secure_url"),
+                metaContent(html, "og:video"),
+            )
+            candidates.mapNotNull(::sanitizeMediaUrl).forEach { url ->
+                if (url.contains(".m3u8")) {
+                    if (hlsUrl.isBlank()) hlsUrl = url
+                    qualities.putIfAbsent(url, hlsQuality(url, 0))
+                } else {
+                    qualities.putIfAbsent(url, videoQuality("Original (MP4)", 0, url))
+                }
+            }
+        }
+        if (qualities.isEmpty()) return null
+
+        val progressive = qualities.values.filter { !it.isHls }
+        val best = progressive.maxByOrNull { it.resolutionHeight } ?: qualities.values.first()
+        val title = jsonLdString(html, "name")
+            ?: metaContent(html, "og:title")
+            ?: titleFallbackHtml?.let { metaContent(it, "og:title") ?: jsonLdString(it, "name") }
+            ?: htmlTitle(html)
+        return PlatformExtraction(
+            title = title.orEmpty().ifBlank { "Aparat Video" },
+            primaryUrl = best.url,
+            thumbnailUrl = sanitizeMediaUrl(options?.optString("poster")).orEmpty()
+                .ifBlank { metaContent(html, "og:image").orEmpty() },
+            durationSeconds = options?.optDouble("duration", 0.0)?.takeIf { !it.isNaN() } ?: 0.0,
+            height = best.resolutionHeight,
+            confidenceScore = if (options != null) 87 else 75,
+            qualities = qualities.values.sortedWith(
+                compareByDescending<MediaQualityOption> { !it.isHls }.thenByDescending { it.resolutionHeight },
+            ),
+            hlsManifestUrl = hlsUrl,
+        )
+    }
+
+    // --- Dailymotion ---
+
+    private suspend fun extractDailymotion(
+        xid: String,
+        fetchText: suspend (String) -> String?,
+    ): PlatformExtraction? {
+        val json = fetchText(DAILYMOTION_METADATA_PREFIX + xid + DAILYMOTION_METADATA_SUFFIX) ?: return null
+        return parseDailymotionMetadata(json)
+    }
+
+    internal fun parseDailymotionMetadata(json: String): PlatformExtraction? {
+        val metadata = runCatching { JSONObject(json) }.getOrNull() ?: return null
+        // Geo-blocked, private, password-protected, or removed videos expose an error object.
+        if (metadata.optJSONObject("error") != null) return null
+        val qualitiesJson = metadata.optJSONObject("qualities") ?: return null
+
+        val qualities = LinkedHashMap<String, MediaQualityOption>()
+        var hlsUrl = ""
+        val keys = qualitiesJson.keys()
+        while (keys.hasNext()) {
+            val qualityKey = keys.next()
+            val entries = qualitiesJson.optJSONArray(qualityKey) ?: continue
+            for (i in 0 until entries.length()) {
+                val entry = entries.optJSONObject(i) ?: continue
+                val type = entry.optString("type").lowercase()
+                if (type == "application/vnd.lumberjack.manifest") continue
+                val url = sanitizeMediaUrl(entry.optString("url").substringBefore('#')) ?: continue
+                if (type.contains("mpegurl")) {
+                    if (hlsUrl.isBlank() || qualityKey == "auto") hlsUrl = url
+                    qualities.putIfAbsent(url, hlsQuality(url, qualityKey.toIntOrNull() ?: 0))
+                } else if (type.startsWith("video/") || type.isBlank()) {
+                    val size = dailymotionSizeRegex.find(url)
+                    val width = size?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+                    val height = size?.groupValues?.getOrNull(2)?.toIntOrNull() ?: qualityKey.toIntOrNull() ?: 0
+                    qualities.putIfAbsent(
+                        url,
+                        videoQuality(labelForHeight(height), height, url).copy(resolutionWidth = width),
+                    )
+                }
+            }
+        }
+        if (qualities.isEmpty()) return null
+
+        val thumbnails = metadata.optJSONObject("thumbnails")
+        var thumbnail = ""
+        var thumbHeight = -1
+        if (thumbnails != null) {
+            val thumbKeys = thumbnails.keys()
+            while (thumbKeys.hasNext()) {
+                val key = thumbKeys.next()
+                val h = key.toIntOrNull() ?: continue
+                val url = sanitizeMediaUrl(thumbnails.optString(key)) ?: continue
+                if (h > thumbHeight) {
+                    thumbHeight = h
+                    thumbnail = url
+                }
+            }
+        }
+        val progressive = qualities.values.filter { !it.isHls }
+        val best = progressive.maxByOrNull { it.resolutionHeight } ?: qualities.values.first()
+        return PlatformExtraction(
+            title = metadata.optString("title").trim().ifBlank { "Dailymotion Video" },
+            primaryUrl = best.url,
+            thumbnailUrl = thumbnail,
+            durationSeconds = metadata.optDouble("duration", 0.0).takeIf { !it.isNaN() } ?: 0.0,
+            width = best.resolutionWidth,
+            height = best.resolutionHeight,
+            confidenceScore = 88,
+            qualities = qualities.values.sortedWith(
+                compareByDescending<MediaQualityOption> { !it.isHls }.thenByDescending { it.resolutionHeight },
+            ),
+            hlsManifestUrl = hlsUrl,
+        )
+    }
+
+    // --- Reddit ---
+
+    private suspend fun extractReddit(
+        pageUrl: String,
+        fetchText: suspend (String) -> String?,
+    ): PlatformExtraction? {
+        val json = fetchText(redditJsonUrl(pageUrl) ?: return null) ?: return null
+        return parseRedditPost(json)
+    }
+
+    /** The public .json view of the same post on the page's own host. */
+    internal fun redditJsonUrl(pageUrl: String): String? {
+        val uri = safeUri(pageUrl) ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        val apiHost = if (host == "old.reddit.com" || host == "www.reddit.com" || host == "new.reddit.com") host else "www.reddit.com"
+        val path = uri.rawPath.orEmpty().trimEnd('/')
+        if (redditPostRegex.matchEntire(path) == null) return null
+        return "https://$apiHost$path/.json?raw_json=1"
+    }
+
+    internal fun parseRedditPost(json: String): PlatformExtraction? {
+        val root = runCatching { JSONArray(json) }.getOrNull() ?: return null
+        val post = root.optJSONObject(0)?.optJSONObject("data")?.optJSONArray("children")
+            ?.optJSONObject(0)?.optJSONObject("data") ?: return null
+
+        val candidates = mutableListOf(post)
+        post.optJSONArray("crosspost_parent_list")?.let { list ->
+            for (i in 0 until list.length()) list.optJSONObject(i)?.let(candidates::add)
+        }
+        val video: JSONObject = candidates.firstNotNullOfOrNull { candidate ->
+            candidate.optJSONObject("secure_media")?.optJSONObject("reddit_video")
+                ?: candidate.optJSONObject("media")?.optJSONObject("reddit_video")
+                ?: candidate.optJSONObject("preview")?.optJSONObject("reddit_video_preview")
+        } ?: return null
+
+        val height = video.optInt("height", 0)
+        val width = video.optInt("width", 0)
+        val isGif = video.optBoolean("is_gif", false)
+        val hlsUrl = sanitizeMediaUrl(decodeHtmlEntities(video.optString("hls_url")))
+        val dashUrl = sanitizeMediaUrl(decodeHtmlEntities(video.optString("dash_url")))
+        val fallbackUrl = sanitizeMediaUrl(decodeHtmlEntities(video.optString("fallback_url")))
+
+        val qualities = mutableListOf<MediaQualityOption>()
+        // HLS carries muxed audio, so it is the primary, complete source.
+        hlsUrl?.let { qualities.add(hlsQuality(it, height).copy(resolutionWidth = width)) }
+        fallbackUrl?.let { url ->
+            val label = if (isGif) labelForHeight(height) else "${labelForHeight(height).removeSuffix(" (MP4)")} (MP4, no audio)"
+            qualities.add(
+                videoQuality(label, height, url).copy(
+                    resolutionWidth = width,
+                    bandwidthBps = video.optLong("bitrate_kbps", 0L) * 1000L,
+                ),
+            )
+        }
+        if (qualities.isEmpty()) return null
+
+        val thumbnail = sanitizeMediaUrl(
+            decodeHtmlEntities(
+                post.optJSONObject("preview")?.optJSONArray("images")?.optJSONObject(0)
+                    ?.optJSONObject("source")?.optString("url").orEmpty(),
+            ),
+        ) ?: sanitizeMediaUrl(post.optString("thumbnail")).orEmpty()
+        return PlatformExtraction(
+            title = decodeHtmlEntities(post.optString("title")).trim().ifBlank { "Reddit Video" },
+            primaryUrl = qualities.first().url,
+            thumbnailUrl = thumbnail,
+            durationSeconds = video.optDouble("duration", 0.0).takeIf { !it.isNaN() } ?: 0.0,
+            width = width,
+            height = height,
+            confidenceScore = 86,
+            qualities = qualities,
+            hlsManifestUrl = hlsUrl.orEmpty(),
+            dashManifestUrl = dashUrl.orEmpty(),
+        )
+    }
+
     // --- Shared helpers ---
+
+    private fun hlsQuality(url: String, height: Int): MediaQualityOption = MediaQualityOption(
+        label = if (height > 0) "${height}p (HLS -> MP4)" else "Auto Quality (HLS -> MP4)",
+        resolutionHeight = height,
+        url = url,
+        format = "HLS",
+        mimeType = "application/vnd.apple.mpegurl",
+        isHls = true,
+    )
+
+    private fun queryParam(uri: URI, name: String): String? =
+        uri.rawQuery?.split('&')?.firstOrNull { it.substringBefore('=') == name }
+            ?.substringAfter('=', "")?.takeIf { it.isNotBlank() }
+
+    private fun htmlTitle(html: String): String? =
+        Regex("<title[^>]*>(.*?)</title>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .find(html)?.groupValues?.getOrNull(1)?.let(::decodeHtmlEntities)?.trim()?.takeIf { it.isNotBlank() }
+
+    /** Reads a top-level string field from the first JSON-LD block that has it. */
+    private fun jsonLdString(html: String, key: String): String? {
+        val blocks = Regex(
+            "<script[^>]+type=\"application/ld\\+json\"[^>]*>(.*?)</script>",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        ).findAll(html)
+        for (block in blocks) {
+            val text = block.groupValues[1].trim()
+            val obj = runCatching { JSONObject(text) }.getOrNull()
+                ?: runCatching { JSONArray(text).optJSONObject(0) }.getOrNull()
+                ?: continue
+            val value = obj.optString(key).trim()
+            if (value.isNotBlank()) return decodeHtmlEntities(value)
+        }
+        return null
+    }
+
+    /**
+     * Extracts the balanced JavaScript object literal that starts right after [anchor], with
+     * string-aware brace counting. Returns null when no complete object is found.
+     */
+    internal fun extractJsObjectAfter(html: String, anchor: Regex): String? {
+        val match = anchor.find(html) ?: return null
+        val open = html.indexOf('{', match.range.last + 1).takeIf { it >= 0 } ?: return null
+        var depth = 0
+        var quote: Char? = null
+        var escaped = false
+        for (i in open until minOf(html.length, open + 400_000)) {
+            val c = html[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (quote != null) {
+                when (c) {
+                    '\\' -> escaped = true
+                    quote -> quote = null
+                }
+                continue
+            }
+            when (c) {
+                '"', '\'' -> quote = c
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return html.substring(open, i + 1)
+                }
+            }
+        }
+        return null
+    }
 
     private fun videoQuality(label: String, height: Int, url: String): MediaQualityOption =
         MediaQualityOption(
@@ -361,6 +718,10 @@ object PlatformMediaExtractors {
         if (uri.host.isNullOrBlank() || uri.rawUserInfo != null) return null
         return uri.toASCIIString()
     }
+
+    /** Exact host or a subdomain of [domain]; "box.com" must never match "x.com". */
+    private fun hostMatches(host: String, domain: String): Boolean =
+        host == domain || host.endsWith(".$domain")
 
     private fun safeUri(url: String): URI? = runCatching { URI(url.trim()) }.getOrNull()
 

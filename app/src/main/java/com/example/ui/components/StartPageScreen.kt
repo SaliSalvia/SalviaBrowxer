@@ -187,7 +187,7 @@ fun StartPageScreen(
                                 ),
                         )
 
-                        // Central SalviaBrowxser Emblem
+                        // Central SalviaBrowxer Emblem
                         val emblemRing = if (isIncognito) {
                             Brush.sweepGradient(listOf(StealthViolet, NebulaMagenta, ChromeSilver, StealthViolet))
                         } else {
@@ -209,7 +209,7 @@ fun StartPageScreen(
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_salvia_emblem_1795066312153),
-                                contentDescription = "SalviaBrowxser",
+                                contentDescription = "SalviaBrowxer",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -222,7 +222,7 @@ fun StartPageScreen(
 
                     Image(
                         painter = painterResource(id = R.drawable.salvia_signature_wordmark),
-                        contentDescription = "SalviaBrowxser",
+                        contentDescription = "SalviaBrowxer",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxWidth(0.84f)

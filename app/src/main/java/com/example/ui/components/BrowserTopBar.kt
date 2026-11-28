@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.ChromeReaderMode
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -105,6 +107,8 @@ fun BrowserTopBar(
     onFindQueryChange: (String) -> Unit,
     onFindNext: (Boolean) -> Unit,
     onCloseFind: () -> Unit,
+    onSharePage: () -> Unit = {},
+    onToggleReaderMode: () -> Unit = {},
 ) {
     val s = LocalAppStrings.current
     val focusManager = LocalFocusManager.current
@@ -373,6 +377,22 @@ fun BrowserTopBar(
                                 onClick = {
                                     menuExpanded = false
                                     onOpenSheet(ActiveSheet.FIND_IN_PAGE)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (tab.isReaderMode) s.menuExitReaderMode else s.menuReaderMode) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ChromeReaderMode, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onToggleReaderMode()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(s.menuSharePage) },
+                                leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSharePage()
                                 },
                             )
                         }

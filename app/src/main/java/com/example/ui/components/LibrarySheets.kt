@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInNew
@@ -182,16 +183,26 @@ fun DownloadsSheet(
                                             if (dl.localUri.isNotBlank()) {
                                                 IconButton(
                                                     onClick = {
-                                                        runCatching {
-                                                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                                                setDataAndType(Uri.parse(dl.localUri), dl.mimeType.ifBlank { "video/*" })
-                                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                            }
-                                                            context.startActivity(intent)
+                                                        // FileProvider/MediaStore URI only; raw file:// would crash on API 24+.
+                                                        val intent = com.example.engine.DownloadFileAccess.openIntent(
+                                                            context, dl.localUri, dl.mimeType, dl.fileName,
+                                                        )
+                                                        val opened = intent != null && runCatching { context.startActivity(intent) }.isSuccess
+                                                        if (!opened) {
+                                                            android.widget.Toast.makeText(context, s.toastOpenFileFailed, android.widget.Toast.LENGTH_SHORT).show()
                                                         }
                                                     },
                                                 ) {
                                                     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = s.openFileDesc, tint = EmeraldShield)
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        com.example.engine.DownloadFileAccess.shareIntent(
+                                                            context, dl.localUri, dl.mimeType, dl.fileName,
+                                                        )?.let { share -> runCatching { context.startActivity(share) } }
+                                                    },
+                                                ) {
+                                                    Icon(Icons.Default.Share, contentDescription = s.ctxShareLink, tint = ElectricCyan)
                                                 }
                                             }
                                             IconButton(onClick = { onDelete(dl) }) {

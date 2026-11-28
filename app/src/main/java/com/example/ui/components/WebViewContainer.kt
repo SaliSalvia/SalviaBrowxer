@@ -81,6 +81,16 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.BrowserSettings
 import com.example.engine.AdBlockerEngine
+import com.example.engine.BridgeGuard
+import com.example.engine.ExternalIntentPolicy
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.os.Handler
+import android.os.Looper
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceError
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.example.engine.WebViewConfigurator
 import com.example.engine.WebPermissionPolicy
 import com.example.engine.SitePermissionStore
@@ -140,6 +150,8 @@ fun WebViewContainer(
     var authUsername by remember(tab.id) { mutableStateOf("") }
     var authPassword by remember(tab.id) { mutableStateOf("") }
     var pendingJsDialog by remember(tab.id) { mutableStateOf<PendingJsDialog?>(null) }
+    var pendingExternalIntent by remember(tab.id) { mutableStateOf<Pair<Intent, String>?>(null) }
+    var pageContextTarget by remember(tab.id) { mutableStateOf<PageContextTarget?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -333,6 +345,8 @@ fun WebViewContainer(
                         fullscreenCallback?.onCustomViewHidden()
                         fullscreenCallback = null
                     },
+                    onExternalIntent = { intent, label -> pendingExternalIntent = intent to label },
+                    onPageContextMenu = { target -> pageContextTarget = target },
                     onOpenPopup = { resultMsg, isUserGesture ->
                         if (!isUserGesture) {
                             viewModel.onPopupBlocked()
@@ -357,7 +371,7 @@ fun WebViewContainer(
                     viewModel.registerWebView(tab.id, created)
                     val restored = savedBundle != null && created.restoreState(savedBundle) != null
                     if (!restored && tab.url.isNotBlank()) {
-                        created.loadUrl(tab.url)
+                        viewModel.loadUrlWithPrivacy(created, tab.url)
                     }
                 }
 
@@ -383,6 +397,57 @@ fun WebViewContainer(
                 )
             },
         )
+
+        tab.loadError?.let { error ->
+            BrowserErrorPage(
+                error = error,
+                onRetry = { viewModel.retryAfterLoadError() },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        pendingExternalIntent?.let { (intent, label) ->
+            ExternalAppDialog(
+                targetLabel = label,
+                onOpen = {
+                    pendingExternalIntent = null
+                    runCatching { context.startActivity(intent) }
+                        .onFailure { viewModel.showToast(s.externalAppFailed) }
+                },
+                onDismiss = { pendingExternalIntent = null },
+            )
+        }
+
+        pageContextTarget?.let { target ->
+            PageContextMenuDialog(
+                target = target,
+                isIncognito = tab.isIncognito,
+                onOpenInNewTab = { url ->
+                    pageContextTarget = null
+                    viewModel.createNewTab(isIncognito = false, initialUrl = url)
+                },
+                onOpenInIncognitoTab = { url ->
+                    pageContextTarget = null
+                    viewModel.createNewTab(isIncognito = true, initialUrl = url)
+                },
+                onCopy = { url ->
+                    pageContextTarget = null
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("URL", url))
+                    viewModel.showToast(s.toastLinkCopied)
+                },
+                onShare = { url ->
+                    pageContextTarget = null
+                    val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
+                    runCatching { context.startActivity(Intent.createChooser(share, s.ctxShareLink)) }
+                },
+                onDownload = { url ->
+                    pageContextTarget = null
+                    viewModel.downloadGenericUrl(url, "", null)
+                },
+                onDismiss = { pageContextTarget = null },
+            )
+        }
 
         // Native Android print pipeline; the system print UI also exposes "Save as PDF".
         IconButton(
@@ -604,25 +669,27 @@ fun WebViewContainer(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 },
+                // "Back to safety" is the primary action; proceeding is a de-emphasized,
+                // explicitly destructive choice (as in Chrome's interstitial).
                 confirmButton = {
                     Button(
-                        onClick = {
-                            warning.handler.proceed()
-                            sslWarning = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    ) {
-                        Text(s.sslProceedButton)
-                    }
-                },
-                dismissButton = {
-                    OutlinedButton(
                         onClick = {
                             warning.handler.cancel()
                             sslWarning = null
                         },
                     ) {
                         Text(s.sslBackToSafetyButton)
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            warning.handler.proceed()
+                            sslWarning = null
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    ) {
+                        Text(s.sslProceedButton)
                     }
                 },
             )
@@ -646,6 +713,8 @@ private fun createConfiguredWebView(
     onCancelGeolocation: () -> Unit,
     onEnterFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     onExitFullscreen: () -> Unit,
+    onExternalIntent: (Intent, String) -> Unit,
+    onPageContextMenu: (PageContextTarget) -> Unit,
     onOpenPopup: (Message, Boolean) -> Unit,
 ): WebView {
     val tabId = tab.id
@@ -667,21 +736,78 @@ private fun createConfiguredWebView(
             ViewGroup.LayoutParams.MATCH_PARENT,
         )
 
+        // Register the media hook (and privacy signals) to run before any page script in every
+        // frame, so early MSE/fetch/XHR media requests are never missed. The scripts are
+        // idempotent, so the onPageStarted evaluateJavascript fallback stays harmless.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            viewModel.documentStartScripts().forEach { script ->
+                runCatching { WebViewCompat.addDocumentStartJavaScript(this, script, setOf("*")) }
+            }
+        }
+
+        // Long-press context menu for links and images.
+        setOnLongClickListener {
+            val hit = hitTestResult
+            when (hit.type) {
+                WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
+                    val link = hit.extra?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                    if (link == null) {
+                        false
+                    } else {
+                        onPageContextMenu(PageContextTarget(linkUrl = link, imageUrl = null))
+                        true
+                    }
+                }
+                WebView.HitTestResult.IMAGE_TYPE, WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                    val image = hit.extra?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                    val link = if (hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                        runCatching {
+                            val message = Handler(Looper.getMainLooper()).obtainMessage()
+                            requestFocusNodeHref(message)
+                            message.data.getString("url")
+                        }.getOrNull()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                    } else {
+                        null
+                    }
+                    if (image == null && link == null) {
+                        false
+                    } else {
+                        onPageContextMenu(PageContextTarget(linkUrl = link, imageUrl = image))
+                        true
+                    }
+                }
+                else -> false
+            }
+        }
+
         addJavascriptInterface(
             object {
+                // Every bridge call is size-capped and rate-limited per tab; downstream
+                // verification (probe/MIME/DRM checks) still applies to every payload.
                 @JavascriptInterface
-                fun onMediaFound(json: String) {
+                fun onMediaFound(json: String?) {
+                    if (json.isNullOrEmpty() || json.length > BridgeGuard.MAX_JSON_CHARS) return
+                    if (!viewModel.allowBridgeCall(tabId, "dom")) return
                     viewModel.onDomMediaSniffed(tabId, json)
                 }
 
                 @JavascriptInterface
-                fun onHookedUrl(url: String, titleHint: String) {
-                    viewModel.onHookedMediaUrl(tabId, url, titleHint)
+                fun onHookedUrl(url: String?, titleHint: String?) {
+                    if (!BridgeGuard.isAcceptableUrl(url)) return
+                    if (!viewModel.allowBridgeCall(tabId, "hook")) return
+                    viewModel.onHookedMediaUrl(tabId, url!!.trim(), BridgeGuard.clip(titleHint, BridgeGuard.MAX_TITLE_CHARS))
                 }
 
                 @JavascriptInterface
-                fun onHookedResource(url: String, titleHint: String, contentType: String) {
-                    viewModel.onHookedResource(tabId, url, titleHint, contentType)
+                fun onHookedResource(url: String?, titleHint: String?, contentType: String?) {
+                    if (!BridgeGuard.isAcceptableUrl(url)) return
+                    if (!viewModel.allowBridgeCall(tabId, "hook")) return
+                    viewModel.onHookedResource(
+                        tabId,
+                        url!!.trim(),
+                        BridgeGuard.clip(titleHint, BridgeGuard.MAX_TITLE_CHARS),
+                        BridgeGuard.clip(contentType, 256),
+                    )
                 }
 
                 @JavascriptInterface
@@ -693,14 +819,16 @@ private fun createConfiguredWebView(
                     responseStatus: Int,
                     contentRange: String,
                 ) {
+                    if (!BridgeGuard.isAcceptableUrl(sourceUrl)) return
+                    if (!viewModel.allowBridgeCall(tabId, "mse")) return
                     viewModel.onMseNetworkSourceObserved(
                         tabId = tabId,
-                        sourceBufferMimeType = mimeType,
-                        responseContentType = responseContentType,
-                        sourceUrl = sourceUrl,
+                        sourceBufferMimeType = BridgeGuard.clip(mimeType, 256),
+                        responseContentType = BridgeGuard.clip(responseContentType, 256),
+                        sourceUrl = sourceUrl.trim(),
                         byteLength = byteLength,
                         responseStatus = responseStatus,
-                        contentRange = contentRange,
+                        contentRange = BridgeGuard.clip(contentRange, 128),
                     )
                 }
 
@@ -711,8 +839,14 @@ private fun createConfiguredWebView(
         addJavascriptInterface(
             object {
                 @JavascriptInterface
-                fun onLog(level: String, msg: String, source: String) {
-                    viewModel.onConsoleLog(tabId, level, msg, source)
+                fun onLog(level: String?, msg: String?, source: String?) {
+                    if (!viewModel.allowBridgeCall(tabId, "console")) return
+                    viewModel.onConsoleLog(
+                        tabId,
+                        BridgeGuard.clip(level, 16),
+                        BridgeGuard.clip(msg, BridgeGuard.MAX_LOG_CHARS),
+                        BridgeGuard.clip(source, 256),
+                    )
                 }
             },
             "NavaConsoleBridge",
@@ -731,19 +865,53 @@ private fun createConfiguredWebView(
                         viewModel.incrementBlockedAd(tabId)
                         return true // Block off-domain ad redirect cleanly like Aloha
                     }
+                    if (request.isForMainFrame) {
+                        val upgraded = viewModel.httpsUpgradeFor(tabId, url)
+                        if (upgraded != null && view != null) {
+                            viewModel.loadUrlWithPrivacy(view, upgraded)
+                            return true
+                        }
+                    }
                     return false
                 }
-                // Handle mailto:, tel:, intent:// safely
-                return runCatching {
-                    val intent = if (url.startsWith("intent://")) {
-                        Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
-                    } else {
-                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    }
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                    true
-                }.getOrDefault(true)
+                // Internal schemes are handled by the WebView itself.
+                if (url.startsWith("about:") || url.startsWith("blob:")) return false
+                if (!request.isForMainFrame && url.startsWith("data:")) return false
+                // External apps: only from a user gesture or a server redirect (OAuth app
+                // links), always sanitized (BROWSABLE only, no component/flags) and confirmed.
+                if (!request.hasGesture() && !request.isRedirect) return true
+                val pm = context.packageManager
+                val decision = ExternalIntentPolicy.resolve(url) { candidate ->
+                    runCatching { candidate.resolveActivity(pm) != null }.getOrDefault(false)
+                }
+                when (decision) {
+                    is ExternalIntentPolicy.Decision.LoadInBrowser -> view?.let { viewModel.loadUrlWithPrivacy(it, decision.url) }
+                    is ExternalIntentPolicy.Decision.LaunchExternal -> onExternalIntent(decision.intent, decision.targetLabel)
+                    ExternalIntentPolicy.Decision.Block -> Unit
+                }
+                return true
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?,
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request == null || !request.isForMainFrame) return
+                val description = error?.description?.toString().orEmpty()
+                // Cancelled navigations (stop button, download hand-off) are not errors.
+                if (description.contains("ERR_ABORTED", ignoreCase = true)) return
+                val fallback = viewModel.onMainFrameError(tabId, request.url.toString(), description)
+                if (fallback != null && view != null) viewModel.loadUrlWithPrivacy(view, fallback)
+            }
+
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                // Returning true keeps the app alive; the dead WebView is destroyed and the tab
+                // shows a crash page that recreates it on retry.
+                if (view == null) return false
+                viewModel.onRendererGone(tabId, view, crashed = detail?.didCrash() == true)
+                return true
             }
 
             override fun shouldInterceptRequest(
@@ -943,6 +1111,11 @@ private fun createPopupWebView(
                     headers = request.requestHeaders ?: emptyMap(),
                 )
                 return if (decision.isBlocked) AdBlockerEngine.emptyBlockedResponse() else null
+            }
+
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                onClosePopup()
+                return true
             }
         }
         webChromeClient = object : WebChromeClient() {

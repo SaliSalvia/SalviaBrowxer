@@ -2,7 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// SalviaBrowxser Quantum Sapphire & Prism Palette (extracted from the new SalviaBrowxser emblem)
+// SalviaBrowxer Quantum Sapphire & Prism Palette (extracted from the new SalviaBrowxer emblem)
 val ObsidianBg = Color(0xFF02040B)         // Starfield Cosmic Abyss (#010207 -> #02040B)
 val ObsidianSurface = Color(0xFF070C1E)    // Deep Sapphire Core Surface
 val ObsidianElevated = Color(0xFF0F1838)   // Frosted Cobalt Prism Glass

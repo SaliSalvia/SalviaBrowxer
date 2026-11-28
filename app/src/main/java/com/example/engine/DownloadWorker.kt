@@ -52,9 +52,22 @@ class DownloadWorker(
                 desktopMode = download.isDesktopMode,
             )
             val progressJob = CoroutineScope(currentCoroutineContext()).launch {
+                // Throttled: Room emits on every progress write, but the notification is only
+                // refreshed when the visible state changes, at most once per second.
+                var lastUpdateAt = 0L
+                var lastStatus = ""
+                var lastPercent = -1L
                 repository.downloads.collect { rows ->
                     rows.firstOrNull { it.id == downloadId }?.let { latest ->
-                        setForeground(createForegroundInfo(latest))
+                        val now = System.currentTimeMillis()
+                        val percent = if (latest.totalBytes > 0L) latest.downloadedBytes * 100L / latest.totalBytes else -1L
+                        val statusChanged = latest.status != lastStatus
+                        if (statusChanged || (percent != lastPercent && now - lastUpdateAt >= 1_000L)) {
+                            lastUpdateAt = now
+                            lastStatus = latest.status
+                            lastPercent = percent
+                            setForeground(createForegroundInfo(latest))
+                        }
                     }
                 }
             }

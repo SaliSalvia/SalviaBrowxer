@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.engine.ExtensionEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 @Database(
@@ -73,6 +74,9 @@ abstract class BrowserDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: BrowserDatabase? = null
 
+        // Process-lifetime scope for one-shot seeding; SupervisorJob keeps a failure isolated.
+        private val seedScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
         fun getInstance(context: Context): BrowserDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -81,10 +85,14 @@ abstract class BrowserDatabase : RoomDatabase() {
                     "salvia_browser_db",
                 )
                     .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    // Version 1 predates the migration history; rebuilding it is the only safe
+                    // path. Explicit migrations above always win for every later version.
+                    .fallbackToDestructiveMigrationFrom(1)
+                    .fallbackToDestructiveMigrationOnDowngrade()
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
-                            CoroutineScope(Dispatchers.IO).launch {
+                            seedScope.launch {
                                 val database = getInstance(context)
                                 database.extensionDao().insertAllIgnore(ExtensionEngine.builtInExtensions())
                                 defaultSpeedDialBookmarks().forEach {

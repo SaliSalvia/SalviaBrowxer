@@ -1,6 +1,13 @@
 package com.example
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.core.content.ContextCompat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -31,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,9 +90,30 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent?) {
-        val dataUrl = intent?.dataString
-        if (!dataUrl.isNullOrBlank() && (dataUrl.startsWith("http://") || dataUrl.startsWith("https://"))) {
-            viewModel.createNewTab(isIncognito = false, initialUrl = dataUrl)
+        if (intent == null) return
+        when (intent.action) {
+            // "Share to SalviaBrowxer" and the system "Search" action: open the shared link, or
+            // search for the shared text with the user's search engine.
+            Intent.ACTION_SEND, Intent.ACTION_WEB_SEARCH, Intent.ACTION_PROCESS_TEXT -> {
+                val text = when (intent.action) {
+                    Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+                    Intent.ACTION_WEB_SEARCH -> intent.getStringExtra(android.app.SearchManager.QUERY)
+                    else -> intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+                }?.trim()?.take(4_096)
+                if (!text.isNullOrBlank()) {
+                    val sharedUrl = Regex("https?://\\S+").find(text)?.value
+                    viewModel.createNewTab(
+                        isIncognito = false,
+                        initialUrl = viewModel.normalizeInputToUrl(sharedUrl ?: text),
+                    )
+                }
+            }
+            else -> {
+                val dataUrl = intent.dataString
+                if (!dataUrl.isNullOrBlank() && (dataUrl.startsWith("http://") || dataUrl.startsWith("https://"))) {
+                    viewModel.createNewTab(isIncognito = false, initialUrl = dataUrl)
+                }
+            }
         }
     }
 }
@@ -126,9 +155,30 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
     val activeExtensionsCount = extensions.count { it.isInstalled && it.isEnabled }
     val isBookmarked = !activeTab.isStartPage && bookmarks.any { it.url == activeTab.url }
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.recoverPendingDownloads()
+    }
+
+    // Android 13+: download progress/completion notifications need the runtime permission.
+    // Ask in context, the first time a download is actually running.
+    var notificationPermissionAsked by rememberSaveable { mutableStateOf(false) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) viewModel.showToast(stringsFor(settings.appLanguage).toastNotificationsDenied)
+    }
+    val hasRunningDownload = downloads.any { it.status == "QUEUED" || it.status == "DOWNLOADING" }
+    LaunchedEffect(hasRunningDownload) {
+        if (hasRunningDownload && !notificationPermissionAsked &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionAsked = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     LaunchedEffect(toastMessage) {
@@ -180,6 +230,16 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                             onFindQueryChange = { viewModel.findInPage(it) },
                             onFindNext = { viewModel.findNext(it) },
                             onCloseFind = { viewModel.closeSheet() },
+                            onSharePage = {
+                                val share = Intent(Intent.ACTION_SEND)
+                                    .setType("text/plain")
+                                    .putExtra(Intent.EXTRA_SUBJECT, activeTab.title)
+                                    .putExtra(Intent.EXTRA_TEXT, activeTab.url)
+                                runCatching {
+                                    context.startActivity(Intent.createChooser(share, appStrings.menuSharePage))
+                                }
+                            },
+                            onToggleReaderMode = { viewModel.toggleReaderMode(isDarkTheme) },
                         )
                     },
                     bottomBar = {

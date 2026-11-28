@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Finished downloads on Android 7–9 live in app-specific storage and are shared through
+     FileProvider. Only the dedicated download folders are exposed. -->
+<paths>
+    <external-files-path name="downloads" path="Download/SalviaBrowxer/" />
+    <files-path name="internal_downloads" path="downloads/SalviaBrowxer/" />
+</paths>

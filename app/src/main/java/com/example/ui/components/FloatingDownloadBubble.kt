@@ -66,7 +66,7 @@ import kotlin.math.roundToInt
  * - Tap to open the InShot-style Media Quality & Download Sheet.
  * - Long-press & drag anywhere over the browser viewport; snaps magnetically to the nearest
  *   horizontal display edge (left or right) when released.
- * - Styled as a Quantum Sapphire Prism Orb matching the new SalviaBrowxser emblem.
+ * - Styled as a Quantum Sapphire Prism Orb matching the new SalviaBrowxer emblem.
  */
 @Composable
 fun FloatingDownloadBubble(

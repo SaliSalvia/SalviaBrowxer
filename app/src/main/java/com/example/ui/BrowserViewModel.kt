@@ -25,6 +25,9 @@ import com.example.data.local.ThemePreference
 import com.example.engine.AdBlockerEngine
 import com.example.engine.BlockCategory
 import com.example.engine.BlockDecision
+import com.example.engine.BridgeGuard
+import com.example.engine.BrowserScripts
+import com.example.engine.HttpsUpgradePolicy
 import com.example.engine.ExtensionEngine
 import com.example.engine.DownloadCoordinator
 import com.example.engine.DownloadRuntime
@@ -63,6 +66,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val downloadCoordinator = DownloadCoordinator(application)
 
     private val webViews = ConcurrentHashMap<String, WebView>()
+    private val bridgeGuard = BridgeGuard()
+    private val httpsUpgradePolicy = HttpsUpgradePolicy()
     private val savedTabStates = ConcurrentHashMap<String, Bundle>()
     private val tabMruOrder = ArrayDeque<String>()
     private val pendingProbedUrls = ConcurrentHashMap.newKeySet<String>()
@@ -160,7 +165,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPopupBlocked() {
-        _statusToast.value = "Popup blocked: a direct user gesture is required."
+        _statusToast.value = s().toastPopupBlocked
     }
 
     fun consumeSavedTabState(tabId: String): Bundle? {
@@ -293,6 +298,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         networkBuffers.remove(tabId)
         consoleBuffers.remove(tabId)
         mediaRequestHeaderStore.clearTab(tabId)
+        bridgeGuard.forgetTab(tabId)
         synchronized(tabMruOrder) { tabMruOrder.remove(tabId) }
         pendingProbedUrls.removeIf { it.startsWith("$tabId|") }
 
@@ -405,9 +411,95 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isLoading = true,
                 progress = 10,
                 detectedMedia = emptyList(),
+                loadError = null,
+                isReaderMode = false,
             )
         }
-        webViews[tabId]?.loadUrl(targetUrl)
+        webViews[tabId]?.let { loadUrlWithPrivacy(it, targetUrl) }
+    }
+
+    /** Loads a URL attaching DNT/GPC request headers when the user enabled them. */
+    fun loadUrlWithPrivacy(webView: WebView, url: String) {
+        val headers = privacyRequestHeaders()
+        if (headers.isEmpty()) webView.loadUrl(url) else webView.loadUrl(url, headers)
+    }
+
+    fun privacyRequestHeaders(): Map<String, String> =
+        BrowserScripts.privacyHeaders(settings.value.doNotTrackEnabled)
+
+    fun isPrivacySignalEnabled(): Boolean = settings.value.doNotTrackEnabled
+
+    /**
+     * HTTPS-First for in-page navigations. Returns the https:// URL the main frame should load
+     * instead, or null to continue unchanged.
+     */
+    fun httpsUpgradeFor(tabId: String, url: String): String? {
+        if (!settings.value.httpsUpgradeEnabled) return null
+        return httpsUpgradePolicy.upgradeFor(tabId, url)
+    }
+
+    /**
+     * Main-frame load failure. Returns an http:// URL to fall back to when the failure was an
+     * automatic HTTPS upgrade; otherwise records the error so the browser error page shows.
+     */
+    fun onMainFrameError(tabId: String, failingUrl: String, description: String): String? {
+        httpsUpgradePolicy.fallbackFor(tabId, failingUrl)?.let { return it }
+        updateTab(tabId) {
+            it.copy(
+                isLoading = false,
+                progress = 0,
+                loadError = PageLoadError(url = failingUrl, description = description),
+            )
+        }
+        return null
+    }
+
+    /** The WebView renderer died. The WebView is unusable and must be destroyed and recreated. */
+    fun onRendererGone(tabId: String, view: WebView, crashed: Boolean) {
+        if (webViews[tabId] === view) webViews.remove(tabId)
+        runCatching {
+            (view.parent as? android.view.ViewGroup)?.removeView(view)
+            view.destroy()
+        }
+        val strings = s()
+        updateTab(tabId) {
+            it.copy(
+                isLoading = false,
+                progress = 0,
+                loadError = PageLoadError(
+                    url = it.url,
+                    description = if (crashed) strings.errorRendererCrashed else strings.errorRendererKilled,
+                    isRendererCrash = true,
+                ),
+            )
+        }
+    }
+
+    /** Retry button on the browser error page. */
+    fun retryAfterLoadError() {
+        val tab = getCurrentTab()
+        val error = tab.loadError
+        updateTab(tab.id) { it.copy(loadError = null, isLoading = true, progress = 10) }
+        val wv = webViews[tab.id] ?: return // A crashed WebView is recreated (and loads tab.url) on recomposition.
+        val target = error?.url?.takeIf { it.isNotBlank() } ?: tab.url
+        if (target.isNotBlank()) loadUrlWithPrivacy(wv, target)
+    }
+
+    fun allowBridgeCall(tabId: String, channel: String): Boolean = bridgeGuard.allow(tabId, channel)
+
+    /** Toggles reader mode for the active tab (restores the page when already in reader mode). */
+    fun toggleReaderMode(isDarkTheme: Boolean) {
+        val tab = getCurrentTab()
+        if (tab.isStartPage) return
+        val wv = webViews[tab.id] ?: return
+        wv.evaluateJavascript(BrowserScripts.readerModeScript(isDarkTheme)) { result ->
+            val state = result?.trim('"').orEmpty()
+            when (state) {
+                "reader" -> updateTab(tab.id) { it.copy(isReaderMode = true) }
+                "restored" -> updateTab(tab.id) { it.copy(isReaderMode = false) }
+                else -> _statusToast.value = s().toastReaderUnavailable
+            }
+        }
     }
 
     fun goHomeActiveTab() {
@@ -497,6 +589,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         pendingProbedUrls.removeIf { it.startsWith("$tabId|") }
         updateTab(tabId) {
             it.copy(
+                loadError = null,
+                isReaderMode = false,
                 url = url,
                 isStartPage = false,
                 isLoading = true,
@@ -517,6 +611,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun onPageFinished(tabId: String, url: String, title: String?, canBack: Boolean, canForward: Boolean) {
         val resolvedTitle = title?.takeIf { it.isNotBlank() } ?: url
         val tab = _tabs.value.firstOrNull { it.id == tabId }
+        // Failed loads are not added to history and do not get page scripts injected.
+        if (tab?.loadError != null) {
+            updateTab(tabId) { it.copy(isLoading = false, canGoBack = canBack, canGoForward = canForward) }
+            return
+        }
         updateTab(tabId) {
             it.copy(
                 url = url,
@@ -549,7 +648,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             wv.evaluateJavascript(mediaSniffer.earlyMediaHookScript(), null)
             wv.evaluateJavascript(mediaSniffer.domSnifferScript(), null)
             wv.evaluateJavascript(consoleHookScript(), null)
-            val extScript = ExtensionEngine.buildInjectionScript(extensions.value, url, "document_end")
+            val extScript = ExtensionEngine.buildInjectionScript(
+                extensions.value,
+                url,
+                "document_end",
+                isIncognito = tab?.isIncognito == true,
+            )
             if (extScript.isNotBlank()) {
                 wv.evaluateJavascript(extScript, null)
             }
@@ -577,9 +681,20 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Scripts registered with addDocumentStartJavaScript where supported (run before page JS). */
+    fun documentStartScripts(): List<String> = buildList {
+        add(mediaSniffer.earlyMediaHookScript())
+        if (settings.value.doNotTrackEnabled) add(BrowserScripts.privacySignalsScript())
+    }
+
     fun injectStartExtensions(tabId: String, url: String) {
+        // Fallback for WebViews without DOCUMENT_START_SCRIPT; the scripts are idempotent.
         webViews[tabId]?.evaluateJavascript(mediaSniffer.earlyMediaHookScript(), null)
-        val script = ExtensionEngine.buildInjectionScript(extensions.value, url, "document_start")
+        if (settings.value.doNotTrackEnabled) {
+            webViews[tabId]?.evaluateJavascript(BrowserScripts.privacySignalsScript(), null)
+        }
+        val isIncognito = _tabs.value.firstOrNull { it.id == tabId }?.isIncognito == true
+        val script = ExtensionEngine.buildInjectionScript(extensions.value, url, "document_start", isIncognito)
         if (script.isNotBlank()) {
             webViews[tabId]?.evaluateJavascript(script, null)
         }
@@ -998,10 +1113,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         webViews[_activeTabId.value]?.reload()
     }
 
-    fun deleteDownload(download: DownloadEntity) {
+    fun deleteDownload(download: DownloadEntity, deleteFile: Boolean = true) {
         DownloadRuntime.launchMaintenance {
-            downloadCoordinator.cancel(download)
-            repository.deleteDownload(download.id)
+            val removed = downloadCoordinator.delete(download, deleteFile)
+            if (deleteFile && !removed) {
+                withContext(Dispatchers.Main) { _statusToast.value = s().toastDownloadFileDeleteFailed }
+            }
         }
     }
 
@@ -1248,6 +1365,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         cssCode: String,
     ) {
         val strings = s()
+        val pattern = matchPattern.trim().ifBlank { "*://*/*" }
+        if (!ExtensionEngine.isValidMatchPattern(pattern)) {
+            _statusToast.value = strings.toastInvalidMatchPattern
+            return
+        }
         val ext = ExtensionEntity(
             id = "custom_${UUID.randomUUID().toString().take(8)}",
             name = name.trim(),
@@ -1255,9 +1377,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             author = strings.extCustomAuthorDefault,
             description = description.ifBlank { strings.extCustomDescDefault },
             iconKey = "extension",
-            matchPattern = matchPattern.ifBlank { "*://*/*" },
+            matchPattern = pattern,
             runAt = runAt,
-            permissions = "activeTab, scripting",
+            // Declares the real capability: page scripting on the matched hosts.
+            permissions = if (ExtensionEngine.isAllSitesPattern(pattern)) "scripting, <all_urls>" else "scripting, $pattern",
             jsCode = jsCode,
             cssCode = cssCode,
             isInstalled = true,
@@ -1312,6 +1435,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         WebViewConfigurator.clearAllBrowsingData(getApplication(), hadLiveWebViews = liveList.isNotEmpty())
+        httpsUpgradePolicy.clear()
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearHistory()
             _statusToast.value = s().toastAllBrowsingDataCleared
@@ -1385,10 +1509,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val remainingAds = pendingAdsDelta.getAndSet(0L)
         val remainingTrackers = pendingTrackersDelta.getAndSet(0L)
         if (remainingAds > 0L || remainingTrackers > 0L) {
-            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            // Process-wide scope: survives the ViewModel without leaking an unowned scope.
+            DownloadRuntime.launchMaintenance {
                 prefsRepository.incrementBlockedStats(remainingAds, remainingTrackers)
             }
         }
+        httpsUpgradePolicy.clear()
         savedTabStates.clear()
         networkBuffers.clear()
         consoleBuffers.clear()

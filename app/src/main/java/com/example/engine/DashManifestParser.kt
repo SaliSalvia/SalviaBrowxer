@@ -78,14 +78,29 @@ object DashManifestParser {
     private val isoDuration =
         Regex("""^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$""")
 
+    internal fun containsDtd(xmlText: String): Boolean {
+        val head = xmlText.take(64 * 1024)
+        return head.contains("<!DOCTYPE", ignoreCase = true) || xmlText.contains("<!ENTITY", ignoreCase = true)
+    }
+
     fun parse(xmlText: String, manifestUrl: String): DashManifest {
+        // XXE / entity-expansion hardening that does not depend on parser feature support:
+        // legitimate MPDs never carry a DTD, so any DOCTYPE/ENTITY declaration is rejected
+        // before parsing (Android's built-in DOM parser ignores several hardening features).
+        if (containsDtd(xmlText)) return DashManifest(emptyList(), "INVALID")
         val mpd: Element = try {
             val factory = DocumentBuilderFactory.newInstance()
             factory.isNamespaceAware = false
-            try {
-                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            } catch (ignored: Exception) {
-            // Some Android XML providers do not support this optional hardening feature.
+            factory.isExpandEntityReferences = false
+            runCatching { factory.isXIncludeAware = false }
+            listOf(
+                "http://apache.org/xml/features/disallow-doctype-decl" to true,
+                "http://xml.org/sax/features/external-general-entities" to false,
+                "http://xml.org/sax/features/external-parameter-entities" to false,
+                "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
+            ).forEach { (feature, value) ->
+                // Some Android XML providers do not support these optional features.
+                runCatching { factory.setFeature(feature, value) }
             }
             val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(xmlText.toByteArray(Charsets.UTF_8)))
             doc.documentElement

@@ -241,7 +241,7 @@ object AdBlockerEngine {
                 return BlockDecision(true, BlockCategory.AD, matchedAd)
             }
             val lowerUrl = url.lowercase()
-            val isSameHost = pageHost != null && host.endsWith(pageHost.lowercase())
+            val isSameHost = isSameSiteHost(host, pageHost)
             if (!isSameHost) {
                 val matchedPath = adPathPatterns.firstOrNull { lowerUrl.contains(it) }
                 if (matchedPath != null) {
@@ -264,12 +264,23 @@ object AdBlockerEngine {
      * Blocks automatic off-domain popup/ad-network redirects in shouldOverrideUrlLoading
      * when not triggered by an explicit user gesture on auth/known hosts.
      */
+    /**
+     * True when [host] equals [pageHost] or is a subdomain of it, with a label boundary:
+     * "cdn.example.com" matches "example.com", but "evilexample.com" does not.
+     */
+    fun isSameSiteHost(host: String, pageHost: String?): Boolean {
+        val page = pageHost?.lowercase()?.trimEnd('.')?.removePrefix("www.") ?: return false
+        if (page.isEmpty()) return false
+        val h = host.lowercase().trimEnd('.')
+        return h == page || h.endsWith(".$page")
+    }
+
     fun shouldBlockAdRedirect(targetUrl: String, pageHost: String?, adBlockEnabled: Boolean): Boolean {
         if (!adBlockEnabled) return false
         val uri = runCatching { Uri.parse(targetUrl) }.getOrNull() ?: return false
         val host = uri.host?.lowercase() ?: return false
         if (matchesDomainSet(host, authWhitelistSuffixes)) return false
-        if (pageHost != null && host.endsWith(pageHost.lowercase())) return false
+        if (isSameSiteHost(host, pageHost)) return false
         return findMatchingDomain(host, adDomains) != null || findMatchingDomain(host, cryptoMinerDomains) != null
     }
 
