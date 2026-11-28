@@ -219,8 +219,6 @@ data class AppStrings(
     val settingDntSub: String,
     val settingJsTitle: String,
     val settingJsSub: String,
-    val settingPullToRefreshTitle: String,
-    val settingPullToRefreshSub: String,
     val settingsSearchEngineSection: String,
     val settingsThemeSection: String,
     val settingsCustomRulesSection: String,
@@ -253,47 +251,52 @@ data class AppStrings(
     val toastHistoryCleared: String,
     val toastCustomExtInstalledFormat: String,
     val toastAllBrowsingDataCleared: String,
-    val toastDownloadFileDeleteFailed: String,
-    val toastInvalidMatchPattern: String,
-    val errorRendererCrashed: String,
-    val errorRendererKilled: String,
-    val toastReaderUnavailable: String,
-    val menuReaderMode: String,
-    val menuExitReaderMode: String,
-    val menuSharePage: String,
-    val errorPageTitle: String,
-    val errorPageCrashTitle: String,
-    val errorPageRetry: String,
-    val ctxOpenInNewTab: String,
-    val ctxOpenInIncognitoTab: String,
-    val ctxCopyLink: String,
-    val ctxShareLink: String,
-    val ctxDownloadLink: String,
-    val ctxOpenImage: String,
-    val ctxDownloadImage: String,
-    val ctxCopyImageLink: String,
-    val dialogCancel: String,
-    val externalAppTitle: String,
-    val externalAppBodyFormat: String,
-    val externalAppOpen: String,
-    val externalAppFailed: String,
-    val toastLinkCopied: String,
-    val extAllSitesWarning: String,
-    val toastNotificationsDenied: String,
-    val toastOpenFileFailed: String,
-    val toastPopupBlocked: String,
-    val printUnavailable: String,
-    val printFailed: String,
-    val printContentDesc: String,
-    val httpAuthTitleFormat: String,
-    val httpAuthUsername: String,
-    val httpAuthPassword: String,
-    val httpAuthSignIn: String,
-    val jsAlertTitleFormat: String,
-    val jsDialogOk: String,
-    val jsDialogSuppress: String,
-    val toastSafeBrowsingBlocked: String,
+    /** Newer strings live in a nested holder: the JVM caps constructors at 255 parameters. */
+    val extra: AppStringsExtra,
 ) {
+    val settingPullToRefreshTitle: String get() = extra.settingPullToRefreshTitle
+    val settingPullToRefreshSub: String get() = extra.settingPullToRefreshSub
+    val toastDownloadFileDeleteFailed: String get() = extra.toastDownloadFileDeleteFailed
+    val toastInvalidMatchPattern: String get() = extra.toastInvalidMatchPattern
+    val errorRendererCrashed: String get() = extra.errorRendererCrashed
+    val errorRendererKilled: String get() = extra.errorRendererKilled
+    val toastReaderUnavailable: String get() = extra.toastReaderUnavailable
+    val menuReaderMode: String get() = extra.menuReaderMode
+    val menuExitReaderMode: String get() = extra.menuExitReaderMode
+    val menuSharePage: String get() = extra.menuSharePage
+    val errorPageTitle: String get() = extra.errorPageTitle
+    val errorPageCrashTitle: String get() = extra.errorPageCrashTitle
+    val errorPageRetry: String get() = extra.errorPageRetry
+    val ctxOpenInNewTab: String get() = extra.ctxOpenInNewTab
+    val ctxOpenInIncognitoTab: String get() = extra.ctxOpenInIncognitoTab
+    val ctxCopyLink: String get() = extra.ctxCopyLink
+    val ctxShareLink: String get() = extra.ctxShareLink
+    val ctxDownloadLink: String get() = extra.ctxDownloadLink
+    val ctxOpenImage: String get() = extra.ctxOpenImage
+    val ctxDownloadImage: String get() = extra.ctxDownloadImage
+    val ctxCopyImageLink: String get() = extra.ctxCopyImageLink
+    val dialogCancel: String get() = extra.dialogCancel
+    val externalAppTitle: String get() = extra.externalAppTitle
+    val externalAppBodyFormat: String get() = extra.externalAppBodyFormat
+    val externalAppOpen: String get() = extra.externalAppOpen
+    val externalAppFailed: String get() = extra.externalAppFailed
+    val toastLinkCopied: String get() = extra.toastLinkCopied
+    val extAllSitesWarning: String get() = extra.extAllSitesWarning
+    val toastNotificationsDenied: String get() = extra.toastNotificationsDenied
+    val toastOpenFileFailed: String get() = extra.toastOpenFileFailed
+    val toastPopupBlocked: String get() = extra.toastPopupBlocked
+    val printUnavailable: String get() = extra.printUnavailable
+    val printFailed: String get() = extra.printFailed
+    val printContentDesc: String get() = extra.printContentDesc
+    val httpAuthTitleFormat: String get() = extra.httpAuthTitleFormat
+    val httpAuthUsername: String get() = extra.httpAuthUsername
+    val httpAuthPassword: String get() = extra.httpAuthPassword
+    val httpAuthSignIn: String get() = extra.httpAuthSignIn
+    val jsAlertTitleFormat: String get() = extra.jsAlertTitleFormat
+    val jsDialogOk: String get() = extra.jsDialogOk
+    val jsDialogSuppress: String get() = extra.jsDialogSuppress
+    val toastSafeBrowsingBlocked: String get() = extra.toastSafeBrowsingBlocked
+
     fun devToolsTabLabel(tab: DevToolsTab): String = when (tab) {
         DevToolsTab.CONSOLE -> if (isPersian) "کنسول JS" else "Console"
         DevToolsTab.NETWORK -> if (isPersian) "شبکه" else "Network"
@@ -358,6 +361,52 @@ data class AppStrings(
         else -> ext.description
     }
 }
+
+/** Strings added after [AppStrings] reached the JVM constructor parameter limit. */
+data class AppStringsExtra(
+    val settingPullToRefreshTitle: String,
+    val settingPullToRefreshSub: String,
+    val toastDownloadFileDeleteFailed: String,
+    val toastInvalidMatchPattern: String,
+    val errorRendererCrashed: String,
+    val errorRendererKilled: String,
+    val toastReaderUnavailable: String,
+    val menuReaderMode: String,
+    val menuExitReaderMode: String,
+    val menuSharePage: String,
+    val errorPageTitle: String,
+    val errorPageCrashTitle: String,
+    val errorPageRetry: String,
+    val ctxOpenInNewTab: String,
+    val ctxOpenInIncognitoTab: String,
+    val ctxCopyLink: String,
+    val ctxShareLink: String,
+    val ctxDownloadLink: String,
+    val ctxOpenImage: String,
+    val ctxDownloadImage: String,
+    val ctxCopyImageLink: String,
+    val dialogCancel: String,
+    val externalAppTitle: String,
+    val externalAppBodyFormat: String,
+    val externalAppOpen: String,
+    val externalAppFailed: String,
+    val toastLinkCopied: String,
+    val extAllSitesWarning: String,
+    val toastNotificationsDenied: String,
+    val toastOpenFileFailed: String,
+    val toastPopupBlocked: String,
+    val printUnavailable: String,
+    val printFailed: String,
+    val printContentDesc: String,
+    val httpAuthTitleFormat: String,
+    val httpAuthUsername: String,
+    val httpAuthPassword: String,
+    val httpAuthSignIn: String,
+    val jsAlertTitleFormat: String,
+    val jsDialogOk: String,
+    val jsDialogSuppress: String,
+    val toastSafeBrowsingBlocked: String,
+)
 
 val EnglishStrings = AppStrings(
     isPersian = false,
@@ -559,8 +608,6 @@ val EnglishStrings = AppStrings(
     settingDntSub = "Signals websites not to track your activity",
     settingJsTitle = "Enable JavaScript",
     settingJsSub = "Required for Gmail sign-in and modern web apps",
-    settingPullToRefreshTitle = "Pull to refresh",
-    settingPullToRefreshSub = "Swipe down at the top of a page to reload it",
     settingsSearchEngineSection = "Default Search Engine",
     settingsThemeSection = "Browser Appearance",
     settingsCustomRulesSection = "Custom AdBlock Rules (EasyList)",
@@ -591,46 +638,50 @@ val EnglishStrings = AppStrings(
     toastHistoryCleared = "Browsing history cleared",
     toastCustomExtInstalledFormat = "Extension \"%s\" installed and enabled",
     toastAllBrowsingDataCleared = "Cookies, cache, and history cleared",
-    toastDownloadFileDeleteFailed = "Download removed, but its file could not be deleted",
-    toastInvalidMatchPattern = "Invalid match pattern. Example: https://*.example.com/*",
-    errorRendererCrashed = "The page's renderer crashed.",
-    errorRendererKilled = "The system stopped this page to free memory.",
-    toastReaderUnavailable = "Reader mode isn't available for this page",
-    menuReaderMode = "Reader mode",
-    menuExitReaderMode = "Exit reader mode",
-    menuSharePage = "Share page",
-    errorPageTitle = "This page couldn't be loaded",
-    errorPageCrashTitle = "Aw, snap! Something went wrong",
-    errorPageRetry = "Try again",
-    ctxOpenInNewTab = "Open in new tab",
-    ctxOpenInIncognitoTab = "Open in incognito tab",
-    ctxCopyLink = "Copy link address",
-    ctxShareLink = "Share link",
-    ctxDownloadLink = "Download link",
-    ctxOpenImage = "Open image in new tab",
-    ctxDownloadImage = "Download image",
-    ctxCopyImageLink = "Copy image address",
-    dialogCancel = "Cancel",
-    externalAppTitle = "Open in another app?",
-    externalAppBodyFormat = "This site wants to open \"%s\" outside the browser.",
-    externalAppOpen = "Open",
-    externalAppFailed = "No app can open this link",
-    toastLinkCopied = "Link copied",
-    extAllSitesWarning = "This script will run on every website you visit and can read and change their content, including signed-in pages. Only install code you trust, or restrict the match pattern.",
-    toastNotificationsDenied = "Notifications are off: download progress will only show inside the app",
-    toastOpenFileFailed = "No app can open this file",
-    toastPopupBlocked = "Popup blocked: a direct user gesture is required.",
-    printUnavailable = "Printing is unavailable for this tab.",
-    printFailed = "Unable to start printing.",
-    printContentDesc = "Print or save as PDF",
-    httpAuthTitleFormat = "Sign in to %s",
-    httpAuthUsername = "Username",
-    httpAuthPassword = "Password",
-    httpAuthSignIn = "Sign in",
-    jsAlertTitleFormat = "%s says",
-    jsDialogOk = "OK",
-    jsDialogSuppress = "Block further dialogs from this page",
-    toastSafeBrowsingBlocked = "Dangerous site blocked by Safe Browsing.",
+    extra = AppStringsExtra(
+        settingPullToRefreshTitle = "Pull to refresh",
+        settingPullToRefreshSub = "Swipe down at the top of a page to reload it",
+        toastDownloadFileDeleteFailed = "Download removed, but its file could not be deleted",
+        toastInvalidMatchPattern = "Invalid match pattern. Example: https://*.example.com/*",
+        errorRendererCrashed = "The page's renderer crashed.",
+        errorRendererKilled = "The system stopped this page to free memory.",
+        toastReaderUnavailable = "Reader mode isn't available for this page",
+        menuReaderMode = "Reader mode",
+        menuExitReaderMode = "Exit reader mode",
+        menuSharePage = "Share page",
+        errorPageTitle = "This page couldn't be loaded",
+        errorPageCrashTitle = "Aw, snap! Something went wrong",
+        errorPageRetry = "Try again",
+        ctxOpenInNewTab = "Open in new tab",
+        ctxOpenInIncognitoTab = "Open in incognito tab",
+        ctxCopyLink = "Copy link address",
+        ctxShareLink = "Share link",
+        ctxDownloadLink = "Download link",
+        ctxOpenImage = "Open image in new tab",
+        ctxDownloadImage = "Download image",
+        ctxCopyImageLink = "Copy image address",
+        dialogCancel = "Cancel",
+        externalAppTitle = "Open in another app?",
+        externalAppBodyFormat = "This site wants to open \"%s\" outside the browser.",
+        externalAppOpen = "Open",
+        externalAppFailed = "No app can open this link",
+        toastLinkCopied = "Link copied",
+        extAllSitesWarning = "This script will run on every website you visit and can read and change their content, including signed-in pages. Only install code you trust, or restrict the match pattern.",
+        toastNotificationsDenied = "Notifications are off: download progress will only show inside the app",
+        toastOpenFileFailed = "No app can open this file",
+        toastPopupBlocked = "Popup blocked: a direct user gesture is required.",
+        printUnavailable = "Printing is unavailable for this tab.",
+        printFailed = "Unable to start printing.",
+        printContentDesc = "Print or save as PDF",
+        httpAuthTitleFormat = "Sign in to %s",
+        httpAuthUsername = "Username",
+        httpAuthPassword = "Password",
+        httpAuthSignIn = "Sign in",
+        jsAlertTitleFormat = "%s says",
+        jsDialogOk = "OK",
+        jsDialogSuppress = "Block further dialogs from this page",
+        toastSafeBrowsingBlocked = "Dangerous site blocked by Safe Browsing.",
+    ),
 )
 
 val PersianStrings = AppStrings(
@@ -833,8 +884,6 @@ val PersianStrings = AppStrings(
     settingDntSub = "اعلام عدم تمایل به ردیابی به وب‌سایت‌ها",
     settingJsTitle = "اجرای جاوااسکریپت (JavaScript)",
     settingJsSub = "برای ورود به جیمیل و وب‌سایت‌های مدرن ضروری است",
-    settingPullToRefreshTitle = "کشیدن برای بارگذاری مجدد",
-    settingPullToRefreshSub = "با کشیدن صفحه به پایین در بالای صفحه، آن را دوباره بارگذاری کنید",
     settingsSearchEngineSection = "موتور جستجوی پیش‌فرض",
     settingsThemeSection = "ظاهر مرورگر",
     settingsCustomRulesSection = "قوانین سفارشی ضد تبلیغ (EasyList)",
@@ -865,46 +914,50 @@ val PersianStrings = AppStrings(
     toastHistoryCleared = "تاریخچه مرور پاک شد",
     toastCustomExtInstalledFormat = "افزونه «%s» نصب و فعال شد",
     toastAllBrowsingDataCleared = "کوکی‌ها، کش و تاریخچه کاملاً پاکسازی شدند",
-    toastDownloadFileDeleteFailed = "دانلود حذف شد، اما فایل آن قابل حذف نبود",
-    toastInvalidMatchPattern = "الگوی تطبیق نامعتبر است. نمونه: https://*.example.com/*",
-    errorRendererCrashed = "موتور نمایش صفحه از کار افتاد.",
-    errorRendererKilled = "سیستم برای آزادسازی حافظه، این صفحه را متوقف کرد.",
-    toastReaderUnavailable = "حالت مطالعه برای این صفحه در دسترس نیست",
-    menuReaderMode = "حالت مطالعه",
-    menuExitReaderMode = "خروج از حالت مطالعه",
-    menuSharePage = "اشتراک‌گذاری صفحه",
-    errorPageTitle = "این صفحه بارگذاری نشد",
-    errorPageCrashTitle = "اوه! مشکلی پیش آمد",
-    errorPageRetry = "تلاش دوباره",
-    ctxOpenInNewTab = "باز کردن در تب جدید",
-    ctxOpenInIncognitoTab = "باز کردن در تب ناشناس",
-    ctxCopyLink = "کپی نشانی پیوند",
-    ctxShareLink = "اشتراک‌گذاری پیوند",
-    ctxDownloadLink = "دانلود پیوند",
-    ctxOpenImage = "باز کردن تصویر در تب جدید",
-    ctxDownloadImage = "دانلود تصویر",
-    ctxCopyImageLink = "کپی نشانی تصویر",
-    dialogCancel = "انصراف",
-    externalAppTitle = "باز کردن در برنامه دیگر؟",
-    externalAppBodyFormat = "این سایت می‌خواهد «%s» را خارج از مرورگر باز کند.",
-    externalAppOpen = "باز کردن",
-    externalAppFailed = "هیچ برنامه‌ای قادر به باز کردن این پیوند نیست",
-    toastLinkCopied = "پیوند کپی شد",
-    extAllSitesWarning = "این اسکریپت روی همه وب‌سایت‌هایی که باز می‌کنید اجرا می‌شود و می‌تواند محتوای آن‌ها (حتی صفحات واردشده به حساب) را بخواند و تغییر دهد. فقط کدی را نصب کنید که به آن اعتماد دارید، یا الگوی تطبیق را محدود کنید.",
-    toastNotificationsDenied = "اعلان‌ها خاموش است؛ پیشرفت دانلود فقط داخل برنامه نمایش داده می‌شود",
-    toastOpenFileFailed = "هیچ برنامه‌ای قادر به باز کردن این فایل نیست",
-    toastPopupBlocked = "پنجره پاپ‌آپ مسدود شد: نیاز به اقدام مستقیم کاربر است.",
-    printUnavailable = "چاپ برای این زبانه در دسترس نیست.",
-    printFailed = "شروع چاپ ممکن نشد.",
-    printContentDesc = "چاپ یا ذخیره به‌صورت PDF",
-    httpAuthTitleFormat = "ورود به %s",
-    httpAuthUsername = "نام کاربری",
-    httpAuthPassword = "رمز عبور",
-    httpAuthSignIn = "ورود",
-    jsAlertTitleFormat = "پیام از %s",
-    jsDialogOk = "تأیید",
-    jsDialogSuppress = "جلوگیری از پنجره‌های بیشتر این صفحه",
-    toastSafeBrowsingBlocked = "سایت خطرناک توسط مرور ایمن مسدود شد.",
+    extra = AppStringsExtra(
+        settingPullToRefreshTitle = "کشیدن برای بارگذاری مجدد",
+        settingPullToRefreshSub = "با کشیدن صفحه به پایین در بالای صفحه، آن را دوباره بارگذاری کنید",
+        toastDownloadFileDeleteFailed = "دانلود حذف شد، اما فایل آن قابل حذف نبود",
+        toastInvalidMatchPattern = "الگوی تطبیق نامعتبر است. نمونه: https://*.example.com/*",
+        errorRendererCrashed = "موتور نمایش صفحه از کار افتاد.",
+        errorRendererKilled = "سیستم برای آزادسازی حافظه، این صفحه را متوقف کرد.",
+        toastReaderUnavailable = "حالت مطالعه برای این صفحه در دسترس نیست",
+        menuReaderMode = "حالت مطالعه",
+        menuExitReaderMode = "خروج از حالت مطالعه",
+        menuSharePage = "اشتراک‌گذاری صفحه",
+        errorPageTitle = "این صفحه بارگذاری نشد",
+        errorPageCrashTitle = "اوه! مشکلی پیش آمد",
+        errorPageRetry = "تلاش دوباره",
+        ctxOpenInNewTab = "باز کردن در تب جدید",
+        ctxOpenInIncognitoTab = "باز کردن در تب ناشناس",
+        ctxCopyLink = "کپی نشانی پیوند",
+        ctxShareLink = "اشتراک‌گذاری پیوند",
+        ctxDownloadLink = "دانلود پیوند",
+        ctxOpenImage = "باز کردن تصویر در تب جدید",
+        ctxDownloadImage = "دانلود تصویر",
+        ctxCopyImageLink = "کپی نشانی تصویر",
+        dialogCancel = "انصراف",
+        externalAppTitle = "باز کردن در برنامه دیگر؟",
+        externalAppBodyFormat = "این سایت می‌خواهد «%s» را خارج از مرورگر باز کند.",
+        externalAppOpen = "باز کردن",
+        externalAppFailed = "هیچ برنامه‌ای قادر به باز کردن این پیوند نیست",
+        toastLinkCopied = "پیوند کپی شد",
+        extAllSitesWarning = "این اسکریپت روی همه وب‌سایت‌هایی که باز می‌کنید اجرا می‌شود و می‌تواند محتوای آن‌ها (حتی صفحات واردشده به حساب) را بخواند و تغییر دهد. فقط کدی را نصب کنید که به آن اعتماد دارید، یا الگوی تطبیق را محدود کنید.",
+        toastNotificationsDenied = "اعلان‌ها خاموش است؛ پیشرفت دانلود فقط داخل برنامه نمایش داده می‌شود",
+        toastOpenFileFailed = "هیچ برنامه‌ای قادر به باز کردن این فایل نیست",
+        toastPopupBlocked = "پنجره پاپ‌آپ مسدود شد: نیاز به اقدام مستقیم کاربر است.",
+        printUnavailable = "چاپ برای این زبانه در دسترس نیست.",
+        printFailed = "شروع چاپ ممکن نشد.",
+        printContentDesc = "چاپ یا ذخیره به‌صورت PDF",
+        httpAuthTitleFormat = "ورود به %s",
+        httpAuthUsername = "نام کاربری",
+        httpAuthPassword = "رمز عبور",
+        httpAuthSignIn = "ورود",
+        jsAlertTitleFormat = "پیام از %s",
+        jsDialogOk = "تأیید",
+        jsDialogSuppress = "جلوگیری از پنجره‌های بیشتر این صفحه",
+        toastSafeBrowsingBlocked = "سایت خطرناک توسط مرور ایمن مسدود شد.",
+    ),
 )
 
 fun stringsFor(language: AppLanguage): AppStrings = when (language) {
