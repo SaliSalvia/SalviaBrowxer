@@ -101,6 +101,7 @@ dependencies {
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.webkit)
+  implementation(libs.androidx.swiperefreshlayout)
   implementation(libs.androidx.work.runtime.ktx)
   // implementation(libs.androidx.camera.camera2)
   // implementation(libs.androidx.camera.core)

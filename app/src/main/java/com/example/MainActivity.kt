@@ -401,6 +401,7 @@ fun SalviaBrowserApp(viewModel: BrowserViewModel) {
                     onToggleIncognito3pCookies = { viewModel.setIncognito3pCookieBlock(it) },
                     onToggleJavaScript = { viewModel.setJavaScriptEnabled(it) },
                     onToggleDoNotTrack = { viewModel.setDoNotTrackEnabled(it) },
+                    onTogglePullToRefresh = { viewModel.setPullToRefreshEnabled(it) },
                     onSelectSearchEngine = { viewModel.setSearchEngine(it) },
                     onSelectTheme = { viewModel.setThemePreference(it) },
                     onSelectLanguage = { viewModel.setAppLanguage(it) },

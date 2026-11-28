@@ -438,6 +438,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         return httpsUpgradePolicy.upgradeFor(tabId, url)
     }
 
+    /** Safe Browsing blocked a main-frame navigation; the interstitial is already showing. */
+    fun onSafeBrowsingBlocked(tabId: String, url: String) {
+        android.util.Log.w("SalviaSafeBrowsing", "Blocked ${url.take(200)} in tab $tabId")
+        _statusToast.value = s().toastSafeBrowsingBlocked
+    }
+
     /**
      * Main-frame load failure. Returns an http:// URL to fall back to when the failure was an
      * automatic HTTPS upgrade; otherwise records the error so the browser error page shows.
@@ -542,6 +548,20 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (wv != null && wv.canGoForward()) {
             wv.goForward()
         }
+    }
+
+    /** Pull-to-refresh: always reloads (never stops), recovering from an error page too. */
+    fun pullToRefresh() {
+        val tab = getCurrentTab()
+        if (tab.isStartPage) return
+        if (tab.loadError != null) {
+            retryAfterLoadError()
+            return
+        }
+        val wv = webViews[tab.id] ?: return
+        pendingProbedUrls.removeIf { it.startsWith("${tab.id}|") }
+        updateTab(tab.id) { it.copy(detectedMedia = emptyList()) }
+        wv.reload()
     }
 
     fun reloadOrStop() {
@@ -1407,6 +1427,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setIncognito3pCookieBlock(enabled: Boolean) = viewModelScope.launch { prefsRepository.setIncognito3pCookieBlock(enabled) }
     fun setJavaScriptEnabled(enabled: Boolean) = viewModelScope.launch { prefsRepository.setJavaScriptEnabled(enabled) }
     fun setDoNotTrackEnabled(enabled: Boolean) = viewModelScope.launch { prefsRepository.setDoNotTrackEnabled(enabled) }
+    fun setPullToRefreshEnabled(enabled: Boolean) = viewModelScope.launch { prefsRepository.setPullToRefreshEnabled(enabled) }
     fun setSearchEngine(engine: SearchEngine) = viewModelScope.launch { prefsRepository.setSearchEngine(engine) }
     fun setThemePreference(theme: ThemePreference) = viewModelScope.launch { prefsRepository.setThemePreference(theme) }
     fun setAppLanguage(language: AppLanguage) = viewModelScope.launch { prefsRepository.setAppLanguage(language) }

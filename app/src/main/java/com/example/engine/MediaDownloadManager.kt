@@ -420,7 +420,8 @@ class MediaDownloadManager(
                 tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
             // Staged parts are kept so the user's retry resumes instead of restarting.
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
@@ -705,7 +706,8 @@ class MediaDownloadManager(
                 tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
             // Preserve atomically completed HLS segment files for explicit retry/resume.
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
@@ -779,7 +781,8 @@ class MediaDownloadManager(
                 tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
             // Keep completed segment files; a user retry can reuse them.
             repository.updateDownloadStatus(downloadId, "FAILED")
         }
@@ -928,7 +931,8 @@ class MediaDownloadManager(
                 tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
             // Partial video/audio files are kept; a retry resumes them with HTTP Range.
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {

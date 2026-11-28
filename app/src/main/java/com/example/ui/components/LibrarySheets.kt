@@ -570,6 +570,7 @@ fun SettingsSheet(
     onToggleIncognito3pCookies: (Boolean) -> Unit,
     onToggleJavaScript: (Boolean) -> Unit,
     onToggleDoNotTrack: (Boolean) -> Unit,
+    onTogglePullToRefresh: (Boolean) -> Unit,
     onSelectSearchEngine: (SearchEngine) -> Unit,
     onSelectTheme: (ThemePreference) -> Unit,
     onSelectLanguage: (AppLanguage) -> Unit,
@@ -636,6 +637,7 @@ fun SettingsSheet(
             SettingsSwitchRow(s.settingIncognitoCookieTitle, s.settingIncognitoCookieSub, settings.blockThirdPartyCookiesIncognito, onToggleIncognito3pCookies)
             SettingsSwitchRow(s.settingDntTitle, s.settingDntSub, settings.doNotTrackEnabled, onToggleDoNotTrack)
             SettingsSwitchRow(s.settingJsTitle, s.settingJsSub, settings.javaScriptEnabled, onToggleJavaScript)
+            SettingsSwitchRow(s.settingPullToRefreshTitle, s.settingPullToRefreshSub, settings.pullToRefreshEnabled, onTogglePullToRefresh)
 
             HorizontalDivider()
             SectionTitle(s.settingsSearchEngineSection)

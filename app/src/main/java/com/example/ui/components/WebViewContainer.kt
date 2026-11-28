@@ -31,9 +31,13 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -150,6 +154,7 @@ fun WebViewContainer(
     var authUsername by remember(tab.id) { mutableStateOf("") }
     var authPassword by remember(tab.id) { mutableStateOf("") }
     var pendingJsDialog by remember(tab.id) { mutableStateOf<PendingJsDialog?>(null) }
+    var jsDialogsSuppressedFor by remember(tab.id) { mutableStateOf<String?>(null) }
     var pendingExternalIntent by remember(tab.id) { mutableStateOf<Pair<Intent, String>?>(null) }
     var pageContextTarget by remember(tab.id) { mutableStateOf<PageContextTarget?>(null) }
 
@@ -222,14 +227,33 @@ fun WebViewContainer(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                FrameLayout(ctx).apply {
+                val frame = FrameLayout(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                 }
+                // Pull-to-refresh like mobile Chrome. A gesture only starts when the page's root
+                // scroller is at the very top, so in-page scrolling is never hijacked.
+                SwipeRefreshLayout(ctx).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
+                    addView(frame)
+                    setOnChildScrollUpCallback { _, _ ->
+                        val web = frame.getChildAt(0) as? WebView
+                        web == null || web.scrollY > 0 || web.canScrollVertically(-1)
+                    }
+                    setOnRefreshListener {
+                        viewModel.pullToRefresh()
+                        postDelayed({ isRefreshing = false }, 700L)
+                    }
+                }
             },
-            update = { container ->
+            update = { swipe ->
+                swipe.isEnabled = !tab.isStartPage && settings.pullToRefreshEnabled
+                val container = swipe.getChildAt(0) as FrameLayout
                 val targetWebView = viewModel.getWebView(tab.id) ?: createConfiguredWebView(
                     context = context,
                     tab = tab,
@@ -249,7 +273,16 @@ fun WebViewContainer(
                         pendingHttpAuth?.handler?.cancel()
                         pendingHttpAuth = pending
                     },
-                    onRequestJsDialog = { pending -> pendingJsDialog = pending },
+                    onRequestJsDialog = { pending ->
+                        val host = runCatching { Uri.parse(pending.origin).host }.getOrNull()
+                        if (host != null && host == jsDialogsSuppressedFor) {
+                            pending.result.cancel()
+                        } else {
+                            // Never stack dialogs: a newer one replaces (and cancels) the older.
+                            pendingJsDialog?.takeIf { it !== pending }?.result?.cancel()
+                            pendingJsDialog = pending
+                        }
+                    },
                     onRequestWebPermission = { request, currentUrl ->
                         val resources = request.resources.toList()
                         val androidPermissions = WebPermissionPolicy.androidPermissionsForCapture(resources)
@@ -358,6 +391,7 @@ fun WebViewContainer(
                             viewModel = viewModel,
                             onTitleChanged = { t -> popupTitle = t },
                             onClosePopup = dismissPopup,
+                            onExternalIntent = { intent, label -> pendingExternalIntent = intent to label },
                         )
                         dismissPopup()
                         popupWebView = popup
@@ -456,7 +490,7 @@ fun WebViewContainer(
                 val activeWebView = viewModel.getWebView(tab.id)
                 val printManager = activity?.getSystemService(Context.PRINT_SERVICE) as? PrintManager
                 if (activity == null || activeWebView == null || printManager == null) {
-                    Toast.makeText(context, "Printing is unavailable for this tab.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, s.printUnavailable, Toast.LENGTH_SHORT).show()
                 } else {
                     runCatching {
                         printManager.print(
@@ -465,7 +499,7 @@ fun WebViewContainer(
                             PrintAttributes.Builder().build(),
                         )
                     }.onFailure {
-                        Toast.makeText(context, "Unable to start printing.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, s.printFailed, Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -473,7 +507,7 @@ fun WebViewContainer(
                 MaterialTheme.colorScheme.surface.copy(alpha = 0.88f), RoundedCornerShape(24.dp),
             ),
         ) {
-            Icon(Icons.Default.Print, contentDescription = "Print or save as PDF")
+            Icon(Icons.Default.Print, contentDescription = s.printContentDesc)
         }
 
         // OAuth / Google Sign-In / Multi-Window Popup Overlay
@@ -594,15 +628,15 @@ fun WebViewContainer(
                     authPassword = ""
                     pendingHttpAuth = null
                 },
-                title = { Text("Sign in to ${pending.host}") },
+                title = { Text(String.format(s.httpAuthTitleFormat, pending.host)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(pending.realm.orEmpty())
-                        OutlinedTextField(value = authUsername, onValueChange = { authUsername = it }, label = { Text("Username") }, singleLine = true)
+                        OutlinedTextField(value = authUsername, onValueChange = { authUsername = it }, label = { Text(s.httpAuthUsername) }, singleLine = true)
                         OutlinedTextField(
                             value = authPassword,
                             onValueChange = { authPassword = it },
-                            label = { Text("Password") },
+                            label = { Text(s.httpAuthPassword) },
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -613,10 +647,10 @@ fun WebViewContainer(
                     Button(onClick = {
                         pending.handler.proceed(authUsername, authPassword)
                         authUsername = ""; authPassword = ""; pendingHttpAuth = null
-                    }) { Text("Sign in") }
+                    }) { Text(s.httpAuthSignIn) }
                 },
                 dismissButton = {
-                    OutlinedButton(onClick = { pending.handler.cancel(); authUsername = ""; authPassword = ""; pendingHttpAuth = null }) { Text("Cancel") }
+                    OutlinedButton(onClick = { pending.handler.cancel(); authUsername = ""; authPassword = ""; pendingHttpAuth = null }) { Text(s.dialogCancel) }
                 },
             )
         }
@@ -625,24 +659,35 @@ fun WebViewContainer(
             var promptValue by remember(pending) { mutableStateOf(pending.defaultValue) }
             AlertDialog(
                 onDismissRequest = { pending.result.cancel(); pendingJsDialog = null },
-                title = { Text(if (pending.kind == "alert") "JavaScript alert" else "JavaScript dialog") },
+                title = {
+                    val originHost = runCatching { Uri.parse(pending.origin).host }.getOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: pending.origin.take(60)
+                    Text(String.format(s.jsAlertTitleFormat, originHost))
+                },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(pending.message)
+                        // Pages cannot spoof long fake-UI messages: the text is capped and scrolls.
+                        Text(pending.message.take(4_000), modifier = Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()))
                         if (pending.kind == "prompt") {
                             OutlinedTextField(value = promptValue, onValueChange = { promptValue = it }, singleLine = true)
                         }
+                        // Dialog-loop protection (as in Chrome): stop this page's further dialogs.
+                        androidx.compose.material3.TextButton(onClick = {
+                            jsDialogsSuppressedFor = runCatching { Uri.parse(pending.origin).host }.getOrNull()
+                            pending.result.cancel()
+                            pendingJsDialog = null
+                        }) { Text(s.jsDialogSuppress, style = MaterialTheme.typography.labelMedium) }
                     }
                 },
                 confirmButton = {
                     Button(onClick = {
                         if (pending.kind == "prompt") pending.promptResult?.confirm(promptValue) else pending.result.confirm()
                         pendingJsDialog = null
-                    }) { Text("OK") }
+                    }) { Text(s.jsDialogOk) }
                 },
                 dismissButton = {
                     if (pending.kind != "alert") {
-                        OutlinedButton(onClick = { pending.result.cancel(); pendingJsDialog = null }) { Text("Cancel") }
+                        OutlinedButton(onClick = { pending.result.cancel(); pendingJsDialog = null }) { Text(s.dialogCancel) }
                     }
                 },
             )
@@ -950,6 +995,32 @@ private fun createConfiguredWebView(
                 }
             }
 
+            @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O_MR1)
+            override fun onSafeBrowsingHit(
+                view: WebView?,
+                request: WebResourceRequest?,
+                threatType: Int,
+                callback: android.webkit.SafeBrowsingResponse?,
+            ) {
+                // Chromium's interstitial with "Back to safety" as the primary action; reporting
+                // is opt-in by the user from the interstitial itself.
+                callback?.showInterstitial(true)
+                if (request?.isForMainFrame == true) {
+                    viewModel.onSafeBrowsingBlocked(tabId, request.url?.toString().orEmpty())
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?,
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (request?.isForMainFrame == true && errorResponse != null) {
+                    android.util.Log.i("SalviaWebView", "HTTP ${errorResponse.statusCode} for main frame of tab $tabId")
+                }
+            }
+
             override fun onReceivedHttpAuthRequest(
                 view: WebView?,
                 handler: HttpAuthHandler,
@@ -1074,6 +1145,7 @@ private fun createPopupWebView(
     viewModel: BrowserViewModel,
     onTitleChanged: (String) -> Unit,
     onClosePopup: () -> Unit,
+    onExternalIntent: (Intent, String) -> Unit,
 ): WebView {
     val parentHost = runCatching { Uri.parse(tab.url).host }.getOrNull()
     return WebView(context).apply {
@@ -1095,7 +1167,24 @@ private fun createPopupWebView(
                     onClosePopup()
                     return true
                 }
-                return false
+                val scheme = request.url?.scheme?.lowercase()
+                if (scheme == "http" || scheme == "https") return false
+                // Popups (OAuth, payment) often finish by redirecting to an app scheme or an
+                // intent:// link: apply the same hardened external-intent policy as tabs.
+                val pm = context.packageManager
+                when (val decision = ExternalIntentPolicy.resolve(url) { candidate ->
+                    runCatching { candidate.resolveActivity(pm) != null }.getOrDefault(false)
+                }) {
+                    is ExternalIntentPolicy.Decision.LoadInBrowser -> view?.loadUrl(decision.url)
+                    is ExternalIntentPolicy.Decision.LaunchExternal -> {
+                        if (request.hasGesture() || request.isRedirect) {
+                            onExternalIntent(decision.intent, decision.targetLabel)
+                        }
+                        if (view?.url.isNullOrBlank() || view?.url == "about:blank") onClosePopup()
+                    }
+                    ExternalIntentPolicy.Decision.Block -> Unit
+                }
+                return true
             }
 
             override fun shouldInterceptRequest(

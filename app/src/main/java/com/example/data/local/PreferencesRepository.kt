@@ -38,6 +38,7 @@ data class BrowserSettings(
     val blockThirdPartyCookiesIncognito: Boolean = true,
     val javaScriptEnabled: Boolean = true,
     val doNotTrackEnabled: Boolean = true,
+    val pullToRefreshEnabled: Boolean = true,
     val searchEngine: SearchEngine = SearchEngine.GOOGLE,
     val themePreference: ThemePreference = ThemePreference.DARK,
     val appLanguage: AppLanguage = AppLanguage.ENGLISH,
@@ -54,6 +55,7 @@ class PreferencesRepository(private val context: Context) {
         val INCOGNITO_3P_COOKIES = booleanPreferencesKey("incognito_block_3p_cookies")
         val JS_ENABLED = booleanPreferencesKey("js_enabled")
         val DO_NOT_TRACK = booleanPreferencesKey("do_not_track")
+        val PULL_TO_REFRESH = booleanPreferencesKey("pull_to_refresh")
         val SEARCH_ENGINE = stringPreferencesKey("search_engine")
         val THEME = stringPreferencesKey("theme_preference")
         val APP_LANGUAGE = stringPreferencesKey("app_language")
@@ -79,6 +81,7 @@ class PreferencesRepository(private val context: Context) {
             blockThirdPartyCookiesIncognito = prefs[Keys.INCOGNITO_3P_COOKIES] ?: true,
             javaScriptEnabled = prefs[Keys.JS_ENABLED] ?: true,
             doNotTrackEnabled = prefs[Keys.DO_NOT_TRACK] ?: true,
+            pullToRefreshEnabled = prefs[Keys.PULL_TO_REFRESH] ?: true,
             searchEngine = engine,
             themePreference = theme,
             appLanguage = language,
@@ -109,6 +112,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setDoNotTrackEnabled(enabled: Boolean) {
         context.browserDataStore.edit { it[Keys.DO_NOT_TRACK] = enabled }
+    }
+
+    suspend fun setPullToRefreshEnabled(enabled: Boolean) {
+        context.browserDataStore.edit { it[Keys.PULL_TO_REFRESH] = enabled }
     }
 
     suspend fun setSearchEngine(engine: SearchEngine) {
