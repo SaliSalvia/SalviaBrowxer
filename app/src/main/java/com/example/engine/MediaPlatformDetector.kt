@@ -29,7 +29,7 @@ object MediaPlatformDetector {
         Rule(
             id = "aparat",
             label = "Aparat",
-            hosts = setOf("aparat.com", "aparat.tv"),
+            hosts = setOf("aparat.com", "aparat.tv", "aparat.cloud"),
         ),
         Rule(
             id = "vimeo",
@@ -39,7 +39,12 @@ object MediaPlatformDetector {
         Rule(
             id = "dailymotion",
             label = "Dailymotion",
-            hosts = setOf("dailymotion.com", "dmcdn.net"),
+            hosts = setOf("dailymotion.com", "dai.ly", "dmcdn.net", "dmxleo.com"),
+        ),
+        Rule(
+            id = "reddit",
+            label = "Reddit",
+            hosts = setOf("reddit.com", "redd.it", "redditmedia.com"),
         ),
         Rule(
             id = "twitch",

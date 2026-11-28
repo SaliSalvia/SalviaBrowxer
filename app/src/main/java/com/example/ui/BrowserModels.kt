@@ -111,6 +111,12 @@ data class DomInspectionSnapshot(
     val viewport: String = "",
 )
 
+data class PageLoadError(
+    val url: String,
+    val description: String,
+    val isRendererCrash: Boolean = false,
+)
+
 data class BrowserTab(
     val id: String = UUID.randomUUID().toString(),
     val title: String = "New Tab",
@@ -130,6 +136,9 @@ data class BrowserTab(
     val consoleLogs: List<ConsoleLogEntry> = emptyList(),
     val networkRequests: List<NetworkRequestEntry> = emptyList(),
     val domSnapshot: DomInspectionSnapshot = DomInspectionSnapshot(),
+    /** Main-frame load failure or renderer crash shown as a browser error page. */
+    val loadError: PageLoadError? = null,
+    val isReaderMode: Boolean = false,
 ) {
     val hasMainMedia: Boolean
         get() = detectedMedia.isNotEmpty()

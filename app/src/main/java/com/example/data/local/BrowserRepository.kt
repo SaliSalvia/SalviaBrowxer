@@ -18,12 +18,38 @@ class BrowserRepository(private val db: BrowserDatabase) {
     val customAdRules: Flow<List<AdBlockRuleEntity>> = adBlockRuleDao.getAllRules()
 
     suspend fun ensureSeeded() {
-        extensionDao.insertAllIgnore(ExtensionEngine.builtInExtensions())
+        val builtIns = ExtensionEngine.builtInExtensions()
+        extensionDao.insertAllIgnore(builtIns)
+        builtIns.forEach { fresh ->
+            extensionDao.refreshBuiltIn(
+                id = fresh.id,
+                name = fresh.name,
+                version = fresh.version,
+                description = fresh.description,
+                jsCode = fresh.jsCode,
+                cssCode = fresh.cssCode,
+                matchPattern = fresh.matchPattern,
+                runAt = fresh.runAt,
+                permissions = fresh.permissions,
+            )
+        }
     }
 
     fun isBookmarked(url: String): Flow<Boolean> = bookmarkDao.isBookmarked(url)
 
     suspend fun addBookmark(title: String, url: String, category: String = "Bookmarks", pinned: Boolean = false) {
+        // De-duplicate by URL: re-adding an existing bookmark updates it instead of cloning it.
+        val existing = bookmarkDao.findByUrl(url)
+        if (existing != null) {
+            bookmarkDao.insert(
+                existing.copy(
+                    title = title.ifBlank { existing.title },
+                    category = category,
+                    isPinnedSpeedDial = pinned || existing.isPinnedSpeedDial,
+                ),
+            )
+            return
+        }
         bookmarkDao.insert(
             BookmarkEntity(
                 title = title.ifBlank { url },
@@ -40,7 +66,11 @@ class BrowserRepository(private val db: BrowserDatabase) {
 
     suspend fun recordHistory(title: String, url: String) {
         if (url.isBlank() || url.startsWith("about:") || url.startsWith("salvia://")) return
+        if (url.startsWith("data:") || url.startsWith("javascript:")) return
+        // A revisit moves the entry to the top instead of creating a duplicate row.
+        historyDao.deleteByUrl(url)
         historyDao.insert(HistoryEntity(title = title.ifBlank { url }, url = url))
+        historyDao.trimTo(MAX_HISTORY_ENTRIES)
     }
 
     suspend fun deleteHistoryItem(id: Long) = historyDao.deleteById(id)
@@ -100,6 +130,8 @@ class BrowserRepository(private val db: BrowserDatabase) {
 
     suspend fun deleteDownload(id: Long) = downloadDao.deleteById(id)
 
+    suspend fun updateDownloadFileName(id: Long, fileName: String) = downloadDao.updateFileName(id, fileName)
+
     suspend fun clearFinishedDownloads() = downloadDao.clearFinished()
 
     suspend fun addAdBlockRule(pattern: String, isWhitelist: Boolean) {
@@ -113,4 +145,8 @@ class BrowserRepository(private val db: BrowserDatabase) {
     suspend fun toggleAdBlockRule(id: Long, enabled: Boolean) = adBlockRuleDao.setEnabled(id, enabled)
 
     suspend fun deleteAdBlockRule(id: Long) = adBlockRuleDao.deleteById(id)
+
+    private companion object {
+        const val MAX_HISTORY_ENTRIES = 5_000
+    }
 }

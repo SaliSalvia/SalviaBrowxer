@@ -131,6 +131,22 @@ class DownloadCoordinator(context: Context) {
         cancelScheduledWork(download.id)
     }
 
+    /**
+     * Removes a download record. Any running transfer and its staging data are always
+     * discarded; the published file is deleted too when [deleteFile] is true, so "delete"
+     * never leaves orphaned files behind in Downloads.
+     */
+    suspend fun delete(download: DownloadEntity, deleteFile: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (download.status != "COMPLETED") {
+            manager.cancelDownloadAndWait(download)
+            cancelScheduledWork(download.id)
+        }
+        val fileRemoved = !deleteFile || DownloadFileAccess.deletePublishedFile(appContext, download.localUri)
+        repository.deleteMediaRequestContext(download.id)
+        repository.deleteDownload(download.id)
+        fileRemoved
+    }
+
     suspend fun clearIncognitoDownloads() {
         manager.clearIncognitoDownloads()
     }

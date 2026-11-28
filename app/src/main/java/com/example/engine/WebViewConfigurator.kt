@@ -102,7 +102,9 @@ object WebViewConfigurator {
         val settings = webView.settings
 
         settings.javaScriptEnabled = javaScriptEnabled
-        settings.javaScriptCanOpenWindowsAutomatically = true
+        // Chromium-level popup blocker: window.open() needs a user gesture. Gesture popups
+        // (OAuth / sign-in windows) still reach onCreateWindow.
+        settings.javaScriptCanOpenWindowsAutomatically = false
         settings.setSupportMultipleWindows(true)
         settings.domStorageEnabled = true
         settings.setGeolocationEnabled(true)
@@ -116,7 +118,8 @@ object WebViewConfigurator {
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
         settings.allowFileAccess = false
-        settings.allowContentAccess = true
+        // Pages must not read other apps' content:// URIs; file uploads use the chooser callback.
+        settings.allowContentAccess = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         settings.userAgentString = resolveUserAgent(context, desktopMode)
 

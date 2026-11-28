@@ -30,10 +30,13 @@ class MediaSnifferEngine {
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
+        // Probes are metadata-only: bound the whole call so a stalled server never pins a thread.
+        .callTimeout(25, TimeUnit.SECONDS)
         .followRedirects(false)
         .build()
 
     companion object {
+        private const val MAX_TEXT_BODY_BYTES = 8L * 1024L * 1024L
         private const val MIN_VIDEO_DURATION_SECONDS = 12.0
         private const val MIN_VIDEO_SIZE_BYTES = 850_000L
         private const val MIN_AUDIO_SIZE_BYTES = 120_000L
@@ -262,9 +265,22 @@ class MediaSnifferEngine {
                 reqBuilder.header("Cookie", cookies)
             }
             executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
-                if (!resp.isSuccessful) null else resp.body?.string()?.takeIf { it.isNotBlank() }
+                if (!resp.isSuccessful) null else resp.body?.let(::readBodyCapped)?.takeIf { it.isNotBlank() }
             }
         } ?: return@withContext null
+        // Expand platform master manifests into explicit per-resolution choices (with paired
+        // audio for DASH), so platform pages offer the same quality picker as generic HLS/DASH.
+        // CDN manifests are fetched without page cookies.
+        val expanded = buildList {
+            if (extraction.hlsManifestUrl.isNotBlank()) {
+                addAll(parseHlsPlaylist(extraction.hlsManifestUrl, pageUrl, userAgent, "", requestHeadersByOrigin))
+            }
+            if (extraction.dashManifestUrl.isNotBlank()) {
+                addAll(parseDashManifest(extraction.dashManifestUrl, pageUrl, userAgent, "", requestHeadersByOrigin))
+            }
+        }
+        val mergedQualities = (expanded + extraction.qualities)
+            .distinctBy { it.url + "|" + it.manifestRepresentationId + "|" + it.label }
         val platform = MediaPlatformDetector.detect(pageUrl, extraction.primaryUrl)
         DetectedMedia(
             id = normalizeMediaKey(extraction.primaryUrl),
@@ -282,8 +298,28 @@ class MediaSnifferEngine {
             captureStatus = MediaCaptureStatus.DOWNLOADABLE,
             confidenceScore = extraction.confidenceScore.coerceIn(0, 100),
             platformLabel = platform.label,
-            qualities = extraction.qualities,
+            qualities = mergedQualities,
         )
+    }
+
+    /** Reads a text body with a hard size cap so a hostile/huge response cannot exhaust memory. */
+    private fun readBodyCapped(body: okhttp3.ResponseBody): String? {
+        val declared = body.contentLength()
+        if (declared > MAX_TEXT_BODY_BYTES) return null
+        val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+        body.byteStream().use { input ->
+            val out = java.io.ByteArrayOutputStream(if (declared in 1..MAX_TEXT_BODY_BYTES) declared.toInt() else 16 * 1024)
+            val buffer = ByteArray(16 * 1024)
+            var total = 0L
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                total += n
+                if (total > MAX_TEXT_BODY_BYTES) return null
+                out.write(buffer, 0, n)
+            }
+            return String(out.toByteArray(), charset)
+        }
     }
 
     private fun pageHostOf(url: String): String =
@@ -523,7 +559,7 @@ class MediaSnifferEngine {
 
             val body = executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
-                resp.body?.string().orEmpty()
+                resp.body?.let(::readBodyCapped).orEmpty()
             }
             if (!body.contains("#EXT-X-STREAM-INF")) return emptyList()
 
@@ -630,9 +666,11 @@ class MediaSnifferEngine {
 
             val xml = executeProbeRequest(reqBuilder.build(), requestHeadersByOrigin).use { resp ->
                 if (!resp.isSuccessful) return emptyList()
-                resp.body?.string().orEmpty()
+                resp.body?.let(::readBodyCapped).orEmpty()
             }
             if (!xml.contains("<MPD", ignoreCase = true)) return emptyList()
+            // Never hand a DTD-bearing document to either XML parser (XXE / billion laughs).
+            if (DashManifestParser.containsDtd(xml)) return emptyList()
             // Parse finite DASH manifests with SegmentTemplate, SegmentTimeline, SegmentList,
             // and SegmentBase metadata. DRM/live manifests are rejected before the legacy path.
             val parsedDash = runCatching { DashManifestParser.parse(xml, mpdUrl) }.getOrNull()
@@ -1308,7 +1346,22 @@ class MediaSnifferEngine {
                 });
                 mo.observe(document.documentElement, { childList: true, subtree: true });
             }
-            setInterval(scanMedia, 4500);
+            // Adaptive polling instead of a fixed forever-interval: rescans back off from 4.5s
+            // to 30s while nothing changes, reset on playback, and stop while the page is hidden
+            // or in the back/forward cache.
+            var idleDelay = 4500;
+            function scheduleScan() {
+                clearTimeout(window.__salviaScanTimer);
+                window.__salviaScanTimer = setTimeout(function() {
+                    scanMedia();
+                    idleDelay = Math.min(Math.round(idleDelay * 1.5), 30000);
+                    scheduleScan();
+                }, idleDelay);
+            }
+            document.addEventListener('play', function() { idleDelay = 4500; scheduleScan(); }, true);
+            window.addEventListener('pagehide', function() { clearTimeout(window.__salviaScanTimer); });
+            window.addEventListener('pageshow', function() { idleDelay = 4500; scheduleScan(); });
+            scheduleScan();
         })();
     """.trimIndent()
 }

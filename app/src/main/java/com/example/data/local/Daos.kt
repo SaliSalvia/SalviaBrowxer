@@ -26,6 +26,9 @@ interface BookmarkDao {
 
     @Query("SELECT COUNT(*) FROM bookmarks")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM bookmarks WHERE url = :url LIMIT 1")
+    suspend fun findByUrl(url: String): BookmarkEntity?
 }
 
 @Dao
@@ -38,6 +41,13 @@ interface HistoryDao {
 
     @Query("DELETE FROM history WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM history WHERE url = :url")
+    suspend fun deleteByUrl(url: String)
+
+    /** Keeps the history table bounded so long-lived installs never grow it without limit. */
+    @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY visitedAt DESC LIMIT :keep)")
+    suspend fun trimTo(keep: Int)
 
     @Query("DELETE FROM history")
     suspend fun clearAll()
@@ -56,6 +66,27 @@ interface ExtensionDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAllIgnore(extensions: List<ExtensionEntity>)
+
+    /**
+     * Ships fixes for built-in extensions to existing installs while preserving the user's
+     * installed/enabled choice. Only rows whose bundled version changed are touched.
+     */
+    @Query(
+        "UPDATE extensions SET name = :name, version = :version, description = :description, " +
+            "jsCode = :jsCode, cssCode = :cssCode, matchPattern = :matchPattern, runAt = :runAt, " +
+            "permissions = :permissions WHERE id = :id AND isBuiltIn = 1 AND version != :version",
+    )
+    suspend fun refreshBuiltIn(
+        id: String,
+        name: String,
+        version: String,
+        description: String,
+        jsCode: String,
+        cssCode: String,
+        matchPattern: String,
+        runAt: String,
+        permissions: String,
+    ): Int
 
     @Update
     suspend fun update(extension: ExtensionEntity)
@@ -131,6 +162,9 @@ interface DownloadDao {
 
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("UPDATE downloads SET fileName = :fileName WHERE id = :id")
+    suspend fun updateFileName(id: Long, fileName: String)
 
     @Query("DELETE FROM downloads WHERE status IN ('COMPLETED', 'FAILED', 'CANCELLED')")
     suspend fun clearFinished()

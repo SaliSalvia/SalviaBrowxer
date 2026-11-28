@@ -42,7 +42,7 @@ import com.example.ui.theme.StealthViolet
 /**
  * Full-bleed deep cosmic space backdrop using the bespoke starfield nebula image,
  * optional large softly-blurred emblem watermark, and lightweight GPU radial prism glows
- * so the SalviaBrowxser UI floats inside empty starry space.
+ * so the SalviaBrowxer UI floats inside empty starry space.
  */
 @Composable
 fun CosmicSpaceBackdrop(

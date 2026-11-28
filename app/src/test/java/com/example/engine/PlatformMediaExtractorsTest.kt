@@ -225,4 +225,189 @@ class PlatformMediaExtractorsTest {
         assertEquals("https://cdn.example.com/i.jpg", PlatformMediaExtractors.metaContent(html, "og:image"))
         assertNull(PlatformMediaExtractors.metaContent(html, "og:missing"))
     }
+
+    @Test
+    fun `platform hosts are matched on label boundaries only`() {
+        assertNull(PlatformMediaExtractors.matchXStatus("https://box.com/a/status/123"))
+        assertNull(PlatformMediaExtractors.matchXStatus("https://notx.com/a/status/123"))
+        assertEquals("123", PlatformMediaExtractors.matchXStatus("https://mobile.x.com/a/status/123"))
+        assertNull(PlatformMediaExtractors.matchTikTokVideo("https://eviltiktok.com/@a/video/1"))
+        assertNull(PlatformMediaExtractors.matchInstagramPost("https://fakeinstagram.com/p/CxAbCdEf/"))
+        assertFalse(PlatformMediaExtractors.isSupported("https://box.com/a/status/123"))
+    }
+
+    // --- Aparat / Dailymotion / Reddit ---
+
+    @Test
+    fun `aparat dailymotion and reddit urls are matched with exact hosts`() {
+        assertEquals("abc123", PlatformMediaExtractors.matchAparatVideo("https://www.aparat.com/v/abc123"))
+        assertEquals(
+            "abc123",
+            PlatformMediaExtractors.matchAparatVideo("https://www.aparat.com/video/video/embed/videohash/abc123/vt/frame"),
+        )
+        assertNull(PlatformMediaExtractors.matchAparatVideo("https://www.aparat.com/explore"))
+        assertNull(PlatformMediaExtractors.matchAparatVideo("https://notaparat.com/v/abc123"))
+
+        assertEquals("x8abcd1", PlatformMediaExtractors.matchDailymotionVideo("https://www.dailymotion.com/video/x8abcd1"))
+        assertEquals("x8abcd1", PlatformMediaExtractors.matchDailymotionVideo("https://www.dailymotion.com/embed/video/x8abcd1"))
+        assertEquals("x8abcd1", PlatformMediaExtractors.matchDailymotionVideo("https://dai.ly/x8abcd1"))
+        assertEquals(
+            "x8abcd1",
+            PlatformMediaExtractors.matchDailymotionVideo("https://geo.dailymotion.com/player/xabc.html?video=x8abcd1"),
+        )
+        assertNull(PlatformMediaExtractors.matchDailymotionVideo("https://www.dailymotion.com/user/someone"))
+        assertNull(PlatformMediaExtractors.matchDailymotionVideo("https://dailymotion.com.evil.example/video/x8abcd1"))
+
+        assertEquals(
+            "abc123",
+            PlatformMediaExtractors.matchRedditPost("https://www.reddit.com/r/videos/comments/abc123/some_title/"),
+        )
+        assertEquals("abc123", PlatformMediaExtractors.matchRedditPost("https://old.reddit.com/comments/abc123"))
+        assertNull(PlatformMediaExtractors.matchRedditPost("https://www.reddit.com/r/videos/"))
+        assertNull(PlatformMediaExtractors.matchRedditPost("https://reddit.com.evil.example/r/a/comments/abc123/"))
+
+        assertTrue(PlatformMediaExtractors.isSupported("https://www.aparat.com/v/abc123"))
+        assertTrue(PlatformMediaExtractors.isSupported("https://dai.ly/x8abcd1"))
+        assertTrue(PlatformMediaExtractors.isSupported("https://www.reddit.com/r/videos/comments/abc123/t/"))
+    }
+
+    @Test
+    fun `reddit json url keeps known hosts and drops tracking query`() {
+        assertEquals(
+            "https://www.reddit.com/r/videos/comments/abc123/some_title/.json?raw_json=1",
+            PlatformMediaExtractors.redditJsonUrl("https://www.reddit.com/r/videos/comments/abc123/some_title/?utm_source=x"),
+        )
+        assertEquals(
+            "https://old.reddit.com/r/videos/comments/abc123/.json?raw_json=1",
+            PlatformMediaExtractors.redditJsonUrl("https://old.reddit.com/r/videos/comments/abc123/"),
+        )
+        assertEquals(
+            "https://www.reddit.com/r/videos/comments/abc123/.json?raw_json=1",
+            PlatformMediaExtractors.redditJsonUrl("https://m.reddit.com/r/videos/comments/abc123"),
+        )
+        assertNull(PlatformMediaExtractors.redditJsonUrl("https://www.reddit.com/r/videos/"))
+    }
+
+    @Test
+    fun `dailymotion metadata yields progressive qualities and the hls master`() {
+        val json = """
+            {"title":"Demo clip","duration":125,
+             "thumbnails":{"240":"https://s1.dmcdn.net/t/240.jpg","720":"https://s1.dmcdn.net/t/720.jpg"},
+             "qualities":{
+               "auto":[{"type":"application/x-mpegURL","url":"https://www.dailymotion.com/cdn/manifest/video/x8abcd1.m3u8?sec=abc#cell=core"}],
+               "720":[{"type":"video/mp4","url":"https://proxy.dmcdn.net/H264-1280x720/video.mp4#cell=core"}],
+               "380":[{"type":"application/vnd.lumberjack.manifest","url":"https://lj.dmcdn.net/manifest"}]
+             }}
+        """.trimIndent()
+        val extraction = PlatformMediaExtractors.parseDailymotionMetadata(json)
+        assertNotNull(extraction)
+        extraction!!
+        assertEquals("Demo clip", extraction.title)
+        assertEquals("https://proxy.dmcdn.net/H264-1280x720/video.mp4", extraction.primaryUrl)
+        assertEquals("https://www.dailymotion.com/cdn/manifest/video/x8abcd1.m3u8?sec=abc", extraction.hlsManifestUrl)
+        assertEquals(720, extraction.height)
+        assertEquals(1280, extraction.width)
+        assertEquals("https://s1.dmcdn.net/t/720.jpg", extraction.thumbnailUrl)
+        assertEquals(125.0, extraction.durationSeconds, 0.001)
+        assertEquals(2, extraction.qualities.size)
+        assertFalse(extraction.qualities.first().isHls)
+        assertTrue(extraction.qualities.any { it.isHls })
+    }
+
+    @Test
+    fun `dailymotion error objects fail closed`() {
+        assertNull(PlatformMediaExtractors.parseDailymotionMetadata("""{"error":{"title":"Geo blocked","raw_message":"DM007"}}"""))
+        assertNull(PlatformMediaExtractors.parseDailymotionMetadata("not json"))
+        assertNull(PlatformMediaExtractors.parseDailymotionMetadata("""{"title":"x","qualities":{}}"""))
+    }
+
+    @Test
+    fun `reddit post prefers hls with audio and labels the silent fallback`() {
+        val json = """
+            [{"data":{"children":[{"data":{
+                "title":"Cool &amp; clip",
+                "preview":{"images":[{"source":{"url":"https://preview.redd.it/a.jpg?width=640&amp;s=abc"}}]},
+                "secure_media":{"reddit_video":{
+                    "hls_url":"https://v.redd.it/abc/HLSPlaylist.m3u8?a=1&amp;v=1",
+                    "dash_url":"https://v.redd.it/abc/DASHPlaylist.mpd?a=1",
+                    "fallback_url":"https://v.redd.it/abc/DASH_720.mp4?source=fallback",
+                    "height":720,"width":1280,"bitrate_kbps":2400,"duration":31,"is_gif":false}}
+            }}]}},{"data":{"children":[]}}]
+        """.trimIndent()
+        val extraction = PlatformMediaExtractors.parseRedditPost(json)
+        assertNotNull(extraction)
+        extraction!!
+        assertEquals("Cool & clip", extraction.title)
+        assertEquals("https://v.redd.it/abc/HLSPlaylist.m3u8?a=1&v=1", extraction.hlsManifestUrl)
+        assertEquals("https://v.redd.it/abc/DASHPlaylist.mpd?a=1", extraction.dashManifestUrl)
+        assertEquals(extraction.hlsManifestUrl, extraction.primaryUrl)
+        assertEquals(2, extraction.qualities.size)
+        assertTrue(extraction.qualities[0].isHls)
+        assertTrue(extraction.qualities[1].label.contains("no audio"))
+        assertEquals(2_400_000L, extraction.qualities[1].bandwidthBps)
+        assertEquals("https://preview.redd.it/a.jpg?width=640&s=abc", extraction.thumbnailUrl)
+    }
+
+    @Test
+    fun `reddit crossposts are followed and posts without video return null`() {
+        val crosspost = """
+            [{"data":{"children":[{"data":{"title":"Shared","crosspost_parent_list":[
+                {"media":{"reddit_video":{"fallback_url":"https://v.redd.it/xyz/DASH_480.mp4","height":480,"width":854}}}
+            ]}}]}}]
+        """.trimIndent()
+        val extraction = PlatformMediaExtractors.parseRedditPost(crosspost)
+        assertNotNull(extraction)
+        assertEquals("https://v.redd.it/xyz/DASH_480.mp4", extraction!!.primaryUrl)
+        assertEquals(480, extraction.height)
+
+        assertNull(PlatformMediaExtractors.parseRedditPost("""[{"data":{"children":[{"data":{"title":"text post"}}]}}]"""))
+        assertNull(PlatformMediaExtractors.parseRedditPost("{}"))
+    }
+
+    @Test
+    fun `aparat player options yield progressive qualities and the hls master`() {
+        val html = """
+            <html><head><meta property="og:title" content="ویدیوی آزمایشی"></head><body><script>
+            var player = null;
+            var options = {"multiSRC":[[{"src":"https://hls.aparat.cam/x/master.m3u8","type":"application/vnd.apple.mpegurl","label":"auto"}],
+              [{"src":"https://cdn.aparat.cam/x-720p.mp4","type":"video/mp4","label":"720p"},
+               {"src":"https://cdn.aparat.cam/x-360p.mp4","type":"video/mp4","label":"360p"}]],
+              "poster":"https://static.cdn.asset.aparat.cloud/p.jpg","duration":95};
+            </script></body></html>
+        """.trimIndent()
+        val extraction = PlatformMediaExtractors.parseAparatPage(html)
+        assertNotNull(extraction)
+        extraction!!
+        assertEquals("https://cdn.aparat.cam/x-720p.mp4", extraction.primaryUrl)
+        assertEquals("https://hls.aparat.cam/x/master.m3u8", extraction.hlsManifestUrl)
+        assertEquals(720, extraction.height)
+        assertEquals(87, extraction.confidenceScore)
+        assertEquals("ویدیوی آزمایشی", extraction.title)
+        assertEquals("https://static.cdn.asset.aparat.cloud/p.jpg", extraction.thumbnailUrl)
+        assertEquals(3, extraction.qualities.size)
+        assertFalse(extraction.qualities.first().isHls)
+        assertEquals(720, extraction.qualities.first().resolutionHeight)
+    }
+
+    @Test
+    fun `aparat page without player options falls back to the embed page`() = runTest {
+        val embed = """<script>options = {"multiSRC":[[{"src":"https://cdn.aparat.cam/y-480p.mp4","type":"video/mp4","label":"480p"}]]};</script>"""
+        val extraction = PlatformMediaExtractors.extract("https://www.aparat.com/v/abc123") { url ->
+            if (url.contains("/embed/")) embed else "<html><head><meta property=\"og:title\" content=\"Watch\"></head></html>"
+        }
+        assertNotNull(extraction)
+        assertEquals("https://cdn.aparat.cam/y-480p.mp4", extraction!!.primaryUrl)
+        assertEquals("Watch", extraction.title)
+    }
+
+    @Test
+    fun `js object extraction is string aware and rejects unbalanced input`() {
+        val html = "var a = {\"x\":\"}{\",\"y\":{\"z\":1}}; var b = 2;"
+        assertEquals(
+            "{\"x\":\"}{\",\"y\":{\"z\":1}}",
+            PlatformMediaExtractors.extractJsObjectAfter(html, Regex("a\\s*=\\s*")),
+        )
+        assertNull(PlatformMediaExtractors.extractJsObjectAfter("var a = {\"x\": 1", Regex("a\\s*=\\s*")))
+        assertNull(PlatformMediaExtractors.extractJsObjectAfter("nothing here", Regex("a\\s*=\\s*")))
+    }
 }

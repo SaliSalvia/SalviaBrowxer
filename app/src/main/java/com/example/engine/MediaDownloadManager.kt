@@ -9,6 +9,7 @@ import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.StatFs
 import android.provider.MediaStore
 import android.webkit.CookieManager
 import com.example.data.local.BrowserRepository
@@ -27,6 +28,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlin.random.Random
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -326,7 +332,10 @@ class MediaDownloadManager(
     }
 
     /**
-     * Multi-threaded 4-part Range downloader with persistent chunk resume & real-time speed.
+     * Adaptive multi-connection Range downloader (up to [DownloadFilePolicy.MAX_PARTS] parts)
+     * with persistent part resume, per-part retries with backoff, a storage pre-check, a
+     * shared smoothed speed meter, and a safe single-stream fallback when a server stops
+     * honoring ranges mid-way.
      */
     private suspend fun downloadDirectMultiPart(
         downloadId: Long,
@@ -358,164 +367,225 @@ class MediaDownloadManager(
                 allowGlobalCookieFallback = allowGlobalCookieFallback,
             )
             val totalBytes = rangeProbe.first
-            val supportsRanges = rangeProbe.second
+            var supportsRanges = rangeProbe.second
+            val partCount = if (supportsRanges) DownloadFilePolicy.partCountFor(totalBytes) else 1
 
-            if (supportsRanges && totalBytes >= 1_500_000L) {
-                val threadCount = 4
-                val partSize = totalBytes / threadCount
-                val downloadedCounter = AtomicLong(0L)
-                val partFiles = (0 until threadCount).map { index ->
-                    File(tempDir, "part_$index.bin")
-                }
-
-                partFiles.forEach { part ->
-                    if (part.exists()) {
-                        downloadedCounter.addAndGet(part.length())
+            if (supportsRanges && partCount > 1) {
+                val completed = runCatching {
+                    downloadInParallelParts(
+                        downloadId = downloadId,
+                        fileName = fileName,
+                        url = url,
+                        totalBytes = totalBytes,
+                        partCount = partCount,
+                        tempDir = tempDir,
+                        referer = referer,
+                        userAgent = userAgent,
+                        mimeType = mimeType,
+                        sessionCookieManager = sessionCookieManager,
+                        allowGlobalCookieFallback = allowGlobalCookieFallback,
+                    )
+                    true
+                }.getOrElse { error ->
+                    // A server that stops honoring ranges is downloaded with one connection
+                    // instead of failing; every other error keeps the parts for a later resume.
+                    if (error is NonRetryableDownloadException) {
+                        tempDir.listFiles()?.forEach { it.delete() }
+                        supportsRanges = false
+                        false
+                    } else {
+                        throw error
                     }
                 }
-
-                coroutineScope {
-                    val tasks = (0 until threadCount).map { index ->
-                        async(Dispatchers.IO) {
-                            val rangeStart = index * partSize
-                            val rangeEnd = if (index == threadCount - 1) {
-                                totalBytes - 1L
-                            } else {
-                                ((index + 1) * partSize) - 1L
-                            }
-                            val partFile = partFiles[index]
-                            val expectedPartLength = rangeEnd - rangeStart + 1L
-                            var existingBytes = if (partFile.exists()) partFile.length() else 0L
-
-                            if (existingBytes > expectedPartLength) {
-                                downloadedCounter.addAndGet(-existingBytes)
-                                partFile.delete()
-                                existingBytes = 0L
-                            }
-                            if (existingBytes == expectedPartLength) {
-                                return@async
-                            }
-
-                            val requestStart = rangeStart + existingBytes
-                            val request = Request.Builder()
-                                .url(url)
-                                .header("User-Agent", userAgent)
-                                .header("Range", "bytes=$requestStart-$rangeEnd")
-                                .apply {
-                                    if (referer.isNotBlank()) header("Referer", referer)
-                                }
-                                .build()
-
-                            executeWithProfileCookies(
-                                request,
-                                sessionCookieManager,
-                                allowGlobalCookieFallback,
-                            ).use { response ->
-                                if (response.code != 206) {
-                                    throw IOException("Range request was not honored (HTTP ${response.code})")
-                                }
-
-                                val rangeMatch = RangeResponseParser.parse(
-                                    response.header("Content-Range"),
-                                ) ?: throw IOException("Missing or invalid Content-Range")
-
-                                val actualStart = rangeMatch.start
-                                val actualEnd = rangeMatch.end
-                                val actualTotal = rangeMatch.totalBytes
-                                if (actualStart != requestStart ||
-                                    actualEnd != rangeEnd ||
-                                    actualTotal != totalBytes
-                                ) {
-                                    throw IOException("Unexpected Content-Range")
-                                }
-
-                                val input = response.body?.byteStream()
-                                    ?: throw IOException("Empty range response body")
-                                var receivedBytes = 0L
-                                var lastReportAt = System.currentTimeMillis()
-                                var lastReportBytes = downloadedCounter.get()
-
-                                FileOutputStream(partFile, existingBytes > 0L).use { output ->
-                                    val buffer = ByteArray(16 * 1024)
-                                    while (true) {
-                                        val count = input.read(buffer)
-                                        if (count == -1) break
-                                        output.write(buffer, 0, count)
-                                        receivedBytes += count.toLong()
-                                        val overallDownloaded = downloadedCounter.addAndGet(count.toLong())
-                                        val now = System.currentTimeMillis()
-                                        val elapsed = now - lastReportAt
-
-                                        if (elapsed >= 500L) {
-                                            val speed = ((overallDownloaded - lastReportBytes) * 1000L) /
-                                                elapsed.coerceAtLeast(1L)
-                                            repository.updateDownloadProgress(
-                                                id = downloadId,
-                                                downloaded = overallDownloaded,
-                                                total = totalBytes,
-                                                speedBytesPerSec = speed.coerceAtLeast(0L),
-                                                status = "DOWNLOADING",
-                                                supportsResume = true,
-                                            )
-                                            lastReportAt = now
-                                            lastReportBytes = overallDownloaded
-                                        }
-                                    }
-                                }
-
-                                val expectedResponseBytes = rangeEnd - requestStart + 1L
-                                if (receivedBytes != expectedResponseBytes ||
-                                    partFile.length() != expectedPartLength
-                                ) {
-                                    throw IOException(
-                                        "Incomplete range part: ${partFile.length()} of ${expectedPartLength} bytes",
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    tasks.awaitAll()
-                }
-
-                val assembledBytes = partFiles.sumOf { part ->
-                    if (part.exists()) part.length() else 0L
-                }
-                if (assembledBytes != totalBytes) {
-                    throw IOException("Incomplete download: ${assembledBytes} of ${totalBytes} bytes")
-                }
-
-                val (destination, destinationUri) = openOutputDestination(fileName, mimeType)
-                destination.use { output ->
-                    val buffer = ByteArray(32 * 1024)
-                    partFiles.forEach { part ->
-                        FileInputStream(part).use { input ->
-                            while (true) {
-                                val count = input.read(buffer)
-                                if (count == -1) break
-                                output.write(buffer, 0, count)
-                            }
-                        }
-                    }
-                }
-
-                tempDir.deleteRecursively()
-                repository.updateDownloadProgress(
-                    id = downloadId,
-                    downloaded = totalBytes,
-                    total = totalBytes,
-                    speedBytesPerSec = 0L,
-                    status = "COMPLETED",
-                    localUri = destinationUri,
-                    supportsResume = true,
-                )
-                return
+                if (completed) return
             }
 
-            // Single stream fallback. Resume is attempted only when the server
-            // advertised byte ranges and an existing, verified staging file exists.
-            val singleFile = File(tempDir, "single.bin")
-            val existingBytes = if (supportsRanges && singleFile.exists()) singleFile.length() else 0L
-            if (!supportsRanges && singleFile.exists()) singleFile.delete()
+            downloadSingleStream(
+                downloadId = downloadId,
+                fileName = fileName,
+                url = url,
+                knownTotalBytes = totalBytes,
+                rangesUsable = supportsRanges,
+                tempDir = tempDir,
+                referer = referer,
+                userAgent = userAgent,
+                mimeType = mimeType,
+                sessionCookieManager = sessionCookieManager,
+                allowGlobalCookieFallback = allowGlobalCookieFallback,
+            )
+        } catch (_: CancellationException) {
+            if (pausedIds.remove(downloadId)) {
+                repository.updateDownloadStatus(downloadId, "PAUSED")
+            } else {
+                tempDir.deleteRecursively()
+                repository.updateDownloadStatus(downloadId, "CANCELLED")
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
+            // Staged parts are kept so the user's retry resumes instead of restarting.
+            repository.updateDownloadStatus(downloadId, "FAILED")
+        } finally {
+            // activeJobs is cleared by the central Job completion handler.
+        }
+    }
+
+    private suspend fun downloadInParallelParts(
+        downloadId: Long,
+        fileName: String,
+        url: String,
+        totalBytes: Long,
+        partCount: Int,
+        tempDir: File,
+        referer: String,
+        userAgent: String,
+        mimeType: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ) {
+        val layout = DownloadFilePolicy.layoutMarker(totalBytes, partCount)
+        val marker = File(tempDir, "layout.txt")
+        val markerMatches = marker.exists() && runCatching { marker.readText() }.getOrNull() == layout
+        if (!markerMatches) {
+            // Never append to part files produced by a different split (older versions used
+            // a fixed 4-part layout) — that would silently corrupt the output.
+            tempDir.listFiles()?.filter { it.name.startsWith("part_") || it.name == "single.bin" }
+                ?.forEach { it.delete() }
+            marker.writeText(layout)
+        }
+
+        val ranges = DownloadFilePolicy.partRanges(totalBytes, partCount)
+        val partFiles = ranges.indices.map { index -> File(tempDir, "part_$index.bin") }
+        partFiles.forEachIndexed { index, part ->
+            val expected = ranges[index].last - ranges[index].first + 1L
+            if (part.exists() && part.length() > expected) part.delete()
+        }
+        val staged = partFiles.sumOf { if (it.exists()) it.length() else 0L }
+        ensureStorageFor(totalBytes, staged)
+
+        val reporter = ProgressReporter(downloadId, staged, totalBytes, supportsResume = true)
+        coroutineScope {
+            ranges.mapIndexed { index, range ->
+                async(Dispatchers.IO) {
+                    downloadRangePart(
+                        url = url,
+                        range = range,
+                        partFile = partFiles[index],
+                        totalBytes = totalBytes,
+                        referer = referer,
+                        userAgent = userAgent,
+                        sessionCookieManager = sessionCookieManager,
+                        allowGlobalCookieFallback = allowGlobalCookieFallback,
+                        reporter = reporter,
+                    )
+                }
+            }.awaitAll()
+        }
+
+        val assembledBytes = partFiles.sumOf { part -> if (part.exists()) part.length() else 0L }
+        if (assembledBytes != totalBytes) {
+            throw IOException("Incomplete download: $assembledBytes of $totalBytes bytes")
+        }
+
+        val published = publishFile(fileName, mimeType) { output ->
+            val buffer = ByteArray(64 * 1024)
+            partFiles.forEach { part ->
+                FileInputStream(part).use { input ->
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count == -1) break
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+        }
+        tempDir.deleteRecursively()
+        completeDownload(downloadId, fileName, published, totalBytes, supportsResume = true)
+    }
+
+    private suspend fun downloadRangePart(
+        url: String,
+        range: LongRange,
+        partFile: File,
+        totalBytes: Long,
+        referer: String,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+        reporter: ProgressReporter,
+    ) {
+        val expectedPartLength = range.last - range.first + 1L
+        withRetries {
+            var existingBytes = if (partFile.exists()) partFile.length() else 0L
+            if (existingBytes > expectedPartLength) {
+                reporter.add(-existingBytes)
+                partFile.delete()
+                existingBytes = 0L
+            }
+            if (existingBytes == expectedPartLength) return@withRetries
+
+            val requestStart = range.first + existingBytes
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .header("Range", "bytes=$requestStart-${range.last}")
+                .apply { if (referer.isNotBlank()) header("Referer", referer) }
+                .build()
+
+            executeWithProfileCookies(request, sessionCookieManager, allowGlobalCookieFallback).use { response ->
+                if (response.code != 206) {
+                    if (response.isSuccessful) {
+                        throw NonRetryableDownloadException("Range request was not honored (HTTP ${response.code})")
+                    }
+                    throw HttpStatusException(response.code)
+                }
+                val rangeMatch = RangeResponseParser.parse(response.header("Content-Range"))
+                    ?: throw NonRetryableDownloadException("Missing or invalid Content-Range")
+                if (rangeMatch.start != requestStart ||
+                    rangeMatch.end != range.last ||
+                    rangeMatch.totalBytes != totalBytes
+                ) {
+                    throw NonRetryableDownloadException("Unexpected Content-Range")
+                }
+                val input = response.body?.byteStream() ?: throw IOException("Empty range response body")
+                FileOutputStream(partFile, existingBytes > 0L).use { output ->
+                    input.use { stream -> copyWithProgress(stream, output, reporter) }
+                }
+            }
+            if (partFile.length() != expectedPartLength) {
+                throw IOException("Incomplete range part: ${partFile.length()} of $expectedPartLength bytes")
+            }
+        }
+    }
+
+    /**
+     * Single-connection transfer with automatic resume when the server supports ranges, and a
+     * clean restart otherwise. Retries transient failures with exponential backoff.
+     */
+    private suspend fun downloadSingleStream(
+        downloadId: Long,
+        fileName: String,
+        url: String,
+        knownTotalBytes: Long,
+        rangesUsable: Boolean,
+        tempDir: File,
+        referer: String,
+        userAgent: String,
+        mimeType: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+    ) {
+        val singleFile = File(tempDir, "single.bin")
+        if (!rangesUsable && singleFile.exists()) singleFile.delete()
+        val staged = if (singleFile.exists()) singleFile.length() else 0L
+        ensureStorageFor(knownTotalBytes, staged)
+
+        val reporter = ProgressReporter(downloadId, staged, knownTotalBytes, supportsResume = rangesUsable)
+        var expectedTotal = knownTotalBytes
+        withRetries {
+            val existingBytes = if (rangesUsable && singleFile.exists()) singleFile.length() else 0L
+            if (existingBytes == 0L && singleFile.exists()) singleFile.delete()
+            if (existingBytes > 0L && expectedTotal > 0L && existingBytes == expectedTotal) return@withRetries
+            reporter.reset(existingBytes)
 
             val request = Request.Builder()
                 .url(url)
@@ -526,104 +596,43 @@ class MediaDownloadManager(
                 }
                 .build()
 
-            executeWithProfileCookies(
-                request,
-                sessionCookieManager,
-                allowGlobalCookieFallback,
-            ).use { response ->
-                val validResponse = if (existingBytes > 0L) {
-                    response.code == 206
-                } else {
-                    response.isSuccessful
-                }
-                if (!validResponse) {
-                    throw IOException("Download request failed (HTTP ${response.code})")
-                }
-
-                if (existingBytes > 0L) {
+            executeWithProfileCookies(request, sessionCookieManager, allowGlobalCookieFallback).use { response ->
+                val append = existingBytes > 0L && response.code == 206
+                if (existingBytes > 0L && response.code == 206) {
                     val contentRange = response.header("Content-Range").orEmpty()
                     if (!contentRange.startsWith("bytes $existingBytes-", ignoreCase = true)) {
-                        throw IOException("Unexpected resume Content-Range")
+                        throw NonRetryableDownloadException("Unexpected resume Content-Range")
                     }
+                } else if (!response.isSuccessful) {
+                    throw HttpStatusException(response.code)
                 }
+                if (!append) reporter.reset(0L)
 
                 val body = response.body ?: throw IOException("Empty download response body")
                 val responseLength = body.contentLength()
-                val expectedTotal = if (totalBytes > 0L) {
-                    totalBytes
-                } else if (responseLength > 0L) {
-                    existingBytes + responseLength
-                } else {
-                    -1L
+                expectedTotal = when {
+                    knownTotalBytes > 0L -> knownTotalBytes
+                    responseLength > 0L -> (if (append) existingBytes else 0L) + responseLength
+                    else -> -1L
                 }
+                reporter.totalBytes = expectedTotal
+                if (!append) ensureStorageFor(expectedTotal, 0L)
 
-                var downloaded = existingBytes
-                var lastReportAt = System.currentTimeMillis()
-                var lastReportBytes = downloaded
-
-                FileOutputStream(singleFile, existingBytes > 0L).use { output ->
-                    body.byteStream().use { input ->
-                        val buffer = ByteArray(16 * 1024)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count == -1) break
-                            output.write(buffer, 0, count)
-                            downloaded += count.toLong()
-
-                            val now = System.currentTimeMillis()
-                            val elapsed = now - lastReportAt
-                            if (elapsed >= 450L) {
-                                val speed = ((downloaded - lastReportBytes) * 1000L) /
-                                    elapsed.coerceAtLeast(1L)
-                                repository.updateDownloadProgress(
-                                    id = downloadId,
-                                    downloaded = downloaded,
-                                    total = expectedTotal,
-                                    speedBytesPerSec = speed.coerceAtLeast(0L),
-                                    status = "DOWNLOADING",
-                                    supportsResume = supportsRanges,
-                                )
-                                lastReportAt = now
-                                lastReportBytes = downloaded
-                            }
-                        }
-                    }
+                FileOutputStream(singleFile, append).use { output ->
+                    body.byteStream().use { input -> copyWithProgress(input, output, reporter) }
                 }
-
-                if (expectedTotal > 0L && singleFile.length() != expectedTotal) {
-                    throw IOException(
-                        "Incomplete download: ${singleFile.length()} of ${expectedTotal} bytes",
-                    )
-                }
-
-                val (destination, destinationUri) = openOutputDestination(fileName, mimeType)
-                destination.use { output ->
-                    FileInputStream(singleFile).use { input -> input.copyTo(output) }
-                }
-                val completedBytes = singleFile.length()
-                tempDir.deleteRecursively()
-                repository.updateDownloadProgress(
-                    id = downloadId,
-                    downloaded = completedBytes,
-                    total = completedBytes,
-                    speedBytesPerSec = 0L,
-                    status = "COMPLETED",
-                    localUri = destinationUri,
-                    supportsResume = supportsRanges,
-                )
             }
-        } catch (_: CancellationException) {
-            if (pausedIds.remove(downloadId)) {
-                repository.updateDownloadStatus(downloadId, "PAUSED")
-            } else {
-                tempDir.deleteRecursively()
-                repository.updateDownloadStatus(downloadId, "CANCELLED")
+            if (expectedTotal > 0L && singleFile.length() != expectedTotal) {
+                throw IOException("Incomplete download: ${singleFile.length()} of $expectedTotal bytes")
             }
-        } catch (_: Exception) {
-            repository.updateDownloadStatus(downloadId, "FAILED")
-        } finally {
-            // activeJobs is cleared by the central Job completion handler.
         }
+
+        val published = publishFile(fileName, mimeType) { output ->
+            FileInputStream(singleFile).use { input -> input.copyTo(output, 64 * 1024) }
+        }
+        val completedBytes = singleFile.length()
+        tempDir.deleteRecursively()
+        completeDownload(downloadId, fileName, published, completedBytes, supportsResume = rangesUsable)
     }
 
     /**
@@ -678,19 +687,18 @@ class MediaDownloadManager(
             val remuxedTempMp4 = File(tempDir, "muxed_output.mp4")
             val remuxSuccess = remuxToMp4(rawVideoFile, rawAudioFile, remuxedTempMp4)
 
-            val (finalStream, finalUri) = if (remuxSuccess && remuxedTempMp4.exists() && remuxedTempMp4.length() > 0L) {
-                val dest = openOutputDestination(mp4FileName, "video/mp4")
-                dest.first.use { out -> FileInputStream(remuxedTempMp4).use { it.copyTo(out) } }
-                dest
+            val remuxed = remuxSuccess && remuxedTempMp4.exists() && remuxedTempMp4.length() > 0L
+            // When MediaMuxer cannot remux (rare codecs), the untouched MPEG-TS stream is kept
+            // with an honest .ts name/MIME instead of being mislabeled as MP4.
+            val outputName = if (remuxed) mp4FileName else DownloadFilePolicy.withExtension(fileName, "ts")
+            val published = if (remuxed) {
+                publishFromFile(remuxedTempMp4, outputName, "video/mp4")
             } else {
-                val fallbackName = fileName.substringBeforeLast('.') + ".ts"
-                val dest = openOutputDestination(fallbackName, "video/mp2t")
-                dest.first.use { out -> FileInputStream(rawVideoFile).use { it.copyTo(out) } }
-                dest
+                publishFromFile(rawVideoFile, outputName, "video/mp2t")
             }
-            val finalSize = if (remuxSuccess && remuxedTempMp4.exists()) remuxedTempMp4.length() else totalWritten
+            val finalSize = if (remuxed) remuxedTempMp4.length() else totalWritten
             tempDir.deleteRecursively()
-            repository.updateDownloadProgress(downloadId, finalSize, finalSize, 0L, "COMPLETED", finalUri, true)
+            completeDownload(downloadId, fileName, published, finalSize, supportsResume = true)
         } catch (_: CancellationException) {
             if (pausedIds.remove(downloadId)) {
                 repository.updateDownloadStatus(downloadId, "PAUSED")
@@ -698,7 +706,8 @@ class MediaDownloadManager(
                 tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
             // Preserve atomically completed HLS segment files for explicit retry/resume.
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
@@ -733,11 +742,10 @@ class MediaDownloadManager(
                     "audio_" + manifestFingerprint(xml) + "_" + safeSegmentName(selected.id), referer, userAgent,
                     sessionCookieManager, allowGlobalCookieFallback, downloadId)
                 val outName = fileName.substringBeforeLast('.') + ".m4a"
-                val (out, uri) = openOutputDestination(outName, "audio/mp4")
-                out.use { stream -> FileInputStream(audioOnly).use { it.copyTo(stream) } }
+                val published = publishFromFile(audioOnly, outName, "audio/mp4")
                 val bytes = audioOnly.length()
                 tempDir.deleteRecursively()
-                repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, audioResumeSupported)
+                completeDownload(downloadId, fileName, published, bytes, audioResumeSupported)
                 return
             }
 
@@ -762,11 +770,10 @@ class MediaDownloadManager(
             val muxOk = remuxToMp4(videoFile, audioFile, muxed)
             val source = if (muxOk && muxed.exists() && muxed.length() > 0L) muxed else videoFile
             val outName = fileName.substringBeforeLast('.') + ".mp4"
-            val (out, uri) = openOutputDestination(outName, "video/mp4")
-            out.use { stream -> FileInputStream(source).use { it.copyTo(stream) } }
+            val published = publishFromFile(source, outName, "video/mp4")
             val bytes = source.length()
             tempDir.deleteRecursively()
-            repository.updateDownloadProgress(downloadId, bytes, bytes, 0L, "COMPLETED", uri, supportsResume)
+            completeDownload(downloadId, fileName, published, bytes, supportsResume)
         } catch (_: CancellationException) {
             if (pausedIds.remove(downloadId)) {
                 repository.updateDownloadStatus(downloadId, "PAUSED")
@@ -774,7 +781,8 @@ class MediaDownloadManager(
                 tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
             // Keep completed segment files; a user retry can reuse them.
             repository.updateDownloadStatus(downloadId, "FAILED")
         }
@@ -824,37 +832,51 @@ class MediaDownloadManager(
         if (rep.isSingleFile && rep.byteRanges.isEmpty()) {
             downloadUrlToFile(rep.urls.first(), target, referer, userAgent,
                 sessionCookieManager, allowGlobalCookieFallback) { dl, total, speed ->
-                repository.updateDownloadProgress(downloadId, dl, total, speed, "DOWNLOADING", supportsResume = false)
+                repository.updateDownloadProgress(downloadId, dl, total, speed, "DOWNLOADING", supportsResume = true)
             }
             return
         }
 
-        val ranges = rep.byteRanges.ifEmpty { List(rep.urls.size) { null } }
-        val files = rep.urls.indices.map { File(staging, "dash_" + label + "_" + it + ".part") }
-        for (group in rep.urls.indices.toList().chunked(4)) {
-            coroutineScope {
-                group.map { index ->
-                    async(Dispatchers.IO) {
+        val plan = rep
+        val ranges = plan.byteRanges.ifEmpty { List(plan.urls.size) { null } }
+        val files = plan.urls.indices.map { File(staging, "dash_" + label + "_" + it + ".part") }
+        fun isDone(index: Int): Boolean {
+            val range = ranges.getOrNull(index)
+            val file = files[index]
+            return file.exists() && file.length() > 0L &&
+                (range == null || file.length() == range.last - range.first + 1L)
+        }
+        val stagedBytes = files.indices.filter(::isDone).sumOf { files[it].length() }
+        val reporter = ProgressReporter(downloadId, stagedBytes, -1L, supportsResume = true)
+        val doneCount = java.util.concurrent.atomic.AtomicInteger(files.indices.count(::isDone))
+        val doneBytes = AtomicLong(stagedBytes)
+        val semaphore = Semaphore(DownloadFilePolicy.SEGMENT_CONCURRENCY)
+        coroutineScope {
+            plan.urls.indices.filterNot(::isDone).map { index ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
                         val range = ranges.getOrNull(index)
                         val file = files[index]
-                        if (file.exists() && file.length() > 0L &&
-                            (range == null || file.length() == range.last - range.first + 1L)) return@async
                         file.delete()
-                        val bytes = fetchHlsBytes(rep.urls[index], range?.let {
-                            ManifestSegmentPlanner.ByteRange(it.last - it.first + 1L, it.first)
-                        }, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                        val tmp = File(staging, file.name + ".tmp")
-                        tmp.writeBytes(bytes)
-                        if (!tmp.renameTo(file)) {
-                            tmp.delete()
-                            throw IOException("Could not atomically finalize DASH segment")
-                        }
+                        fetchToFile(
+                            url = plan.urls[index],
+                            range = range?.let { ManifestSegmentPlanner.ByteRange(it.last - it.first + 1L, it.first) },
+                            target = file,
+                            referer = referer,
+                            userAgent = userAgent,
+                            sessionCookieManager = sessionCookieManager,
+                            allowGlobalCookieFallback = allowGlobalCookieFallback,
+                            onBytes = { delta -> reporter.add(delta) },
+                        )
+                        val count = doneCount.incrementAndGet()
+                        val bytes = doneBytes.addAndGet(file.length())
+                        reporter.totalBytes = estimateTotal(bytes, count, files.size)
+                            .coerceAtLeast(reporter.downloaded.get())
                     }
-                }.awaitAll()
-            }
-            val total = files.sumOf { if (it.exists()) it.length() else 0L }
-            repository.updateDownloadProgress(downloadId, total, -1L, 0L, "DOWNLOADING", supportsResume = true)
+                }
+            }.awaitAll()
         }
+        reporter.flush()
         if (files.any { !it.exists() || it.length() == 0L }) throw IOException("DASH representation is incomplete")
         FileOutputStream(target, false).use { out ->
             files.forEach { file -> FileInputStream(file).use { it.copyTo(out) } }
@@ -882,25 +904,26 @@ class MediaDownloadManager(
     ) {
         val tempDir = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
         try {
-            repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = false)
+            repository.updateDownloadProgress(downloadId, 0L, -1L, 0L, "DOWNLOADING", supportsResume = true)
             val vFile = File(tempDir, "dash_video.mp4")
             val aFile = File(tempDir, "dash_audio.m4a")
 
             downloadUrlToFile(videoUrl, vFile, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) { dl, total, spd ->
-                repository.updateDownloadProgress(downloadId, dl, total, spd, "DOWNLOADING")
+                repository.updateDownloadProgress(downloadId, dl, total, spd, "DOWNLOADING", supportsResume = true)
             }
-            downloadUrlToFile(audioUrl, aFile, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) { _, _, _ -> }
+            downloadUrlToFile(audioUrl, aFile, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback) { dl, total, spd ->
+                repository.updateDownloadProgress(downloadId, dl, total, spd, "DOWNLOADING", supportsResume = true)
+            }
 
             val mp4FileName = fileName.substringBeforeLast('.') + ".mp4"
             val muxedFile = File(tempDir, "dash_muxed.mp4")
             val muxed = remuxToMp4(vFile, aFile, muxedFile)
             val sourceOut = if (muxed && muxedFile.exists() && muxedFile.length() > 0L) muxedFile else vFile
 
-            val (outStream, outUri) = openOutputDestination(mp4FileName, "video/mp4")
-            outStream.use { out -> FileInputStream(sourceOut).use { it.copyTo(out) } }
+            val published = publishFromFile(sourceOut, mp4FileName, "video/mp4")
             val len = sourceOut.length()
             tempDir.deleteRecursively()
-            repository.updateDownloadProgress(downloadId, len, len, 0L, "COMPLETED", outUri, false)
+            completeDownload(downloadId, fileName, published, len, supportsResume = true)
         } catch (_: CancellationException) {
             if (pausedIds.remove(downloadId)) {
                 repository.updateDownloadStatus(downloadId, "PAUSED")
@@ -908,8 +931,9 @@ class MediaDownloadManager(
                 tempDir.deleteRecursively()
                 repository.updateDownloadStatus(downloadId, "CANCELLED")
             }
-        } catch (_: Exception) {
-            tempDir.deleteRecursively()
+        } catch (e: Exception) {
+            android.util.Log.w("SalviaDownloads", "Download $downloadId failed: ${e.javaClass.simpleName}: ${e.message?.take(200)}")
+            // Partial video/audio files are kept; a retry resumes them with HTTP Range.
             repository.updateDownloadStatus(downloadId, "FAILED")
         } finally {
             // activeJobs is cleared by the central Job completion handler.
@@ -927,81 +951,114 @@ class MediaDownloadManager(
     ): Long {
         val staging = chunkDir(downloadId).apply { if (!exists()) mkdirs() }
         var mediaUrl = playlistUrl
-        var text = fetchText(mediaUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-            ?: throw IOException("Could not fetch HLS playlist")
+        var text = withRetries {
+            fetchText(mediaUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                ?: throw IOException("Could not fetch HLS playlist")
+        }
         if (text.contains("#EXT-X-STREAM-INF")) {
             mediaUrl = extractHighestVariantUrl(mediaUrl, text)
                 ?: throw IOException("Could not resolve HLS master playlist")
-            text = fetchText(mediaUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
-                ?: throw IOException("Could not fetch selected HLS media playlist")
+            text = withRetries {
+                fetchText(mediaUrl, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    ?: throw IOException("Could not fetch selected HLS media playlist")
+            }
         }
         val plan = ManifestSegmentPlanner.parseHls(mediaUrl, text)
         val keyCache = ConcurrentHashMap<String, ByteArray>()
         val prefix = targetFile.nameWithoutExtension + "_" + manifestFingerprint(text)
         val initFile = File(staging, prefix + "_hls_init.bin")
-        if (plan.initUri != null && (!initFile.exists() || initFile.length() == 0L)) {
-            val bytes = fetchHlsBytes(plan.initUri, plan.initRange, referer, userAgent,
-                sessionCookieManager, allowGlobalCookieFallback)
-                val tmp = File(staging, "hls_init.tmp")
-                tmp.writeBytes(bytes)
-                if (!tmp.renameTo(initFile)) {
-                    tmp.delete()
-                    throw IOException("Could not atomically finalize HLS init map")
-                }
-        }
 
-        suspend fun segmentBytes(segment: ManifestSegmentPlanner.HlsSegment): ByteArray {
-            val raw = fetchHlsBytes(segment.uri, segment.range, referer, userAgent,
-                sessionCookieManager, allowGlobalCookieFallback)
-            val key = segment.key
-            if (key == null) return raw
-            if (key.method != "AES-128") throw IOException("Unsupported HLS key method")
-            val keyBytes = keyCache[key.uri] ?: fetchBytes(key.uri, referer, userAgent,
-                sessionCookieManager, allowGlobalCookieFallback)?.also {
-                if (it.size != 16) throw IOException("Invalid AES-128 HLS key length")
+        suspend fun keyBytesFor(key: ManifestSegmentPlanner.HlsKey): ByteArray {
+            if (key.method != "AES-128") throw NonRetryableDownloadException("Unsupported HLS key method")
+            return keyCache[key.uri] ?: withRetries {
+                fetchBytes(key.uri, referer, userAgent, sessionCookieManager, allowGlobalCookieFallback)
+                    ?: throw IOException("Could not fetch HLS AES-128 key")
+            }.also {
+                if (it.size != 16) throw NonRetryableDownloadException("Invalid AES-128 HLS key length")
                 keyCache[key.uri] = it
-            } ?: throw IOException("Could not fetch HLS AES-128 key")
-            val iv = if (key.ivHex.isNotBlank()) hexToBytes(key.ivHex) else sequenceIv(segment.sequence)
-            return decryptAes128(raw, keyBytes, iv)
-                ?: throw IOException("HLS AES-128 decryption failed; refusing to save encrypted bytes")
+            }
         }
 
-        var completedBytes = if (initFile.exists()) initFile.length() else 0L
-        val segmentFiles = plan.segments.map { File(staging, prefix + "_hls_seg_" + it.index + ".bin") }
-        for (group in plan.segments.indices.toList().chunked(4)) {
-            coroutineScope {
-                group.map { index ->
-                    async(Dispatchers.IO) {
-                        val segment = plan.segments[index]
-                        val out = segmentFiles[index]
-                        val expectedRangeLength = segment.range?.length
-                        val encryptedRange = segment.key != null
-                        if (out.exists() && out.length() > 0L &&
-                            (expectedRangeLength == null || encryptedRange || out.length() == expectedRangeLength)) {
-                            return@async
-                        }
-                        out.delete()
-                        val bytes = segmentBytes(segment)
-                        val tmp = File(staging, out.name + ".tmp")
-                        tmp.writeBytes(bytes)
-                        if (!tmp.renameTo(out)) {
-                            tmp.delete()
-                            throw IOException("Could not atomically finalize HLS segment")
-                        }
-                    }
-                }.awaitAll()
+        suspend fun keyFor(segment: ManifestSegmentPlanner.HlsSegment): Pair<ByteArray, ByteArray>? {
+            val key = segment.key ?: return null
+            val keyBytes = keyBytesFor(key)
+            val iv = if (key.ivHex.isNotBlank()) hexToBytes(key.ivHex) else sequenceIv(segment.sequence)
+            return keyBytes to iv
+        }
+
+        val initUri = plan.initUri
+        if (initUri != null && (!initFile.exists() || initFile.length() == 0L)) {
+            // RFC 8216 §4.3.2.5: an encrypted EXT-X-MAP section must carry an explicit IV.
+            val initKey = plan.initKey
+            val initDecryption = if (initKey != null) {
+                if (initKey.ivHex.isBlank()) throw NonRetryableDownloadException("Encrypted HLS init section without IV")
+                keyBytesFor(initKey) to hexToBytes(initKey.ivHex)
+            } else {
+                null
             }
-            completedBytes = (if (initFile.exists()) initFile.length() else 0L) +
-                segmentFiles.sumOf { if (it.exists()) it.length() else 0L }
-            repository.updateDownloadProgress(
-                id = downloadId,
-                downloaded = completedBytes,
-                total = -1L,
-                speedBytesPerSec = 0L,
-                status = "DOWNLOADING",
-                supportsResume = true,
+            fetchToFile(
+                url = initUri,
+                range = plan.initRange,
+                target = initFile,
+                referer = referer,
+                userAgent = userAgent,
+                sessionCookieManager = sessionCookieManager,
+                allowGlobalCookieFallback = allowGlobalCookieFallback,
+                aesKey = initDecryption?.first,
+                aesIv = initDecryption?.second,
             )
         }
+
+        val segmentFiles = plan.segments.map { File(staging, prefix + "_hls_seg_" + it.index + ".bin") }
+        fun isSegmentDone(index: Int): Boolean {
+            val segment = plan.segments[index]
+            val out = segmentFiles[index]
+            val expectedRangeLength = segment.range?.length
+            return out.exists() && out.length() > 0L &&
+                (expectedRangeLength == null || segment.key != null || out.length() == expectedRangeLength)
+        }
+
+        val alreadyDone = plan.segments.indices.filter(::isSegmentDone)
+        val stagedBytes = (if (initFile.exists()) initFile.length() else 0L) +
+            alreadyDone.sumOf { segmentFiles[it].length() }
+        ensureStorageFor(estimateTotal(stagedBytes, alreadyDone.size, plan.segments.size), stagedBytes)
+
+        val reporter = ProgressReporter(downloadId, stagedBytes, -1L, supportsResume = true)
+        val completedSegments = java.util.concurrent.atomic.AtomicInteger(alreadyDone.size)
+        val completedSegmentBytes = AtomicLong(alreadyDone.sumOf { segmentFiles[it].length() })
+        val semaphore = Semaphore(DownloadFilePolicy.SEGMENT_CONCURRENCY)
+
+        // Continuous worker pool: a slow segment no longer stalls a whole batch.
+        coroutineScope {
+            plan.segments.indices.filterNot(::isSegmentDone).map { index ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        val segment = plan.segments[index]
+                        val out = segmentFiles[index]
+                        out.delete()
+                        val decryption = keyFor(segment)
+                        val written = fetchToFile(
+                            url = segment.uri,
+                            range = segment.range,
+                            target = out,
+                            referer = referer,
+                            userAgent = userAgent,
+                            sessionCookieManager = sessionCookieManager,
+                            allowGlobalCookieFallback = allowGlobalCookieFallback,
+                            aesKey = decryption?.first,
+                            aesIv = decryption?.second,
+                            onBytes = { delta -> reporter.add(delta) },
+                        )
+                        if (written <= 0L) throw IOException("Empty HLS segment")
+                        val doneCount = completedSegments.incrementAndGet()
+                        val doneBytes = completedSegmentBytes.addAndGet(out.length())
+                        reporter.totalBytes = estimateTotal(doneBytes, doneCount, plan.segments.size)
+                            .coerceAtLeast(reporter.downloaded.get())
+                    }
+                }
+            }.awaitAll()
+        }
+        reporter.flush()
 
         if (segmentFiles.any { !it.exists() || it.length() == 0L }) {
             throw IOException("HLS download is incomplete")
@@ -1022,6 +1079,11 @@ class MediaDownloadManager(
         return targetFile.length()
     }
 
+    /** Extrapolates a manifest's total size from the segments finished so far. */
+    private fun estimateTotal(doneBytes: Long, doneSegments: Int, totalSegments: Int): Long =
+        if (doneSegments < 2 || totalSegments <= 0) -1L else doneBytes / doneSegments * totalSegments
+
+    /** Small manifest side resources only (sidx indexes); never used for media segments. */
     private fun fetchHlsBytes(
         url: String,
         range: ManifestSegmentPlanner.ByteRange?,
@@ -1034,18 +1096,104 @@ class MediaDownloadManager(
         if (referer.isNotBlank()) builder.header("Referer", referer)
         if (range != null) builder.header("Range", "bytes=" + range.offset + "-" + (range.offset + range.length - 1L))
         executeWithProfileCookies(builder.build(), sessionCookieManager, allowGlobalCookieFallback).use { response ->
-            if (range == null) {
-                if (response.code != 200) throw IOException("Expected complete HLS/DASH response, got HTTP " + response.code)
-            } else {
-                if (response.code != 206) throw IOException("HLS byte-range request was not honored")
-                val expected = "bytes " + range.offset + "-" + (range.offset + range.length - 1L)
-                if (!response.header("Content-Range").orEmpty().startsWith(expected)) {
-                    throw IOException("Unexpected HLS Content-Range")
-                }
-            }
-            val bytes = response.body?.bytes() ?: throw IOException("Empty HLS response")
+            validateSegmentResponse(response, range)
+            val body = response.body ?: throw IOException("Empty HLS response")
+            val bytes = readCapped(body, MAX_INDEX_BYTES)
             if (range != null && bytes.size.toLong() != range.length) throw IOException("Truncated HLS byte range")
             return bytes
+        }
+    }
+
+    private fun validateSegmentResponse(response: okhttp3.Response, range: ManifestSegmentPlanner.ByteRange?) {
+        if (range == null) {
+            if (response.code != 200) {
+                if (response.isSuccessful) {
+                    throw NonRetryableDownloadException("Expected complete HLS/DASH response, got HTTP " + response.code)
+                }
+                throw HttpStatusException(response.code)
+            }
+        } else {
+            if (response.code != 206) {
+                if (response.isSuccessful) throw NonRetryableDownloadException("HLS byte-range request was not honored")
+                throw HttpStatusException(response.code)
+            }
+            val expected = "bytes " + range.offset + "-" + (range.offset + range.length - 1L)
+            if (!response.header("Content-Range").orEmpty().startsWith(expected)) {
+                throw NonRetryableDownloadException("Unexpected HLS Content-Range")
+            }
+        }
+    }
+
+    /**
+     * Streams one segment/resource (optionally a byte range) to [target] through a temp file
+     * that is atomically renamed. AES-128 segments are decrypted on the fly, so no segment is
+     * ever held in memory as a whole. Transient failures are retried with backoff.
+     */
+    private suspend fun fetchToFile(
+        url: String,
+        range: ManifestSegmentPlanner.ByteRange?,
+        target: File,
+        referer: String,
+        userAgent: String,
+        sessionCookieManager: CookieManager?,
+        allowGlobalCookieFallback: Boolean,
+        aesKey: ByteArray? = null,
+        aesIv: ByteArray? = null,
+        onBytes: suspend (Long) -> Unit = {},
+    ): Long = withRetries {
+        val tmp = File(target.parentFile, target.name + ".tmp")
+        tmp.delete()
+        val builder = Request.Builder().url(url).header("User-Agent", userAgent)
+        if (referer.isNotBlank()) builder.header("Referer", referer)
+        if (range != null) builder.header("Range", "bytes=" + range.offset + "-" + (range.offset + range.length - 1L))
+        var received = 0L
+        try {
+            executeWithProfileCookies(builder.build(), sessionCookieManager, allowGlobalCookieFallback).use { response ->
+                validateSegmentResponse(response, range)
+                val body = response.body ?: throw IOException("Empty segment response")
+                val cipher = if (aesKey != null && aesIv != null) {
+                    Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
+                        init(Cipher.DECRYPT_MODE, SecretKeySpec(aesKey, "AES"), IvParameterSpec(aesIv))
+                    }
+                } else {
+                    null
+                }
+                FileOutputStream(tmp).use { output ->
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            if (cipher != null) {
+                                cipher.update(buffer, 0, n)?.let { output.write(it) }
+                            } else {
+                                output.write(buffer, 0, n)
+                            }
+                            received += n
+                            onBytes(n.toLong())
+                            currentCoroutineContext().ensureActive()
+                        }
+                    }
+                    if (cipher != null) {
+                        val tail = try {
+                            cipher.doFinal()
+                        } catch (e: java.security.GeneralSecurityException) {
+                            throw IOException("HLS AES-128 decryption failed; refusing to save encrypted bytes", e)
+                        }
+                        output.write(tail)
+                    }
+                }
+            }
+            if (range != null && received != range.length) throw IOException("Truncated segment byte range")
+            if (!tmp.renameTo(target)) {
+                tmp.delete()
+                throw IOException("Could not atomically finalize segment")
+            }
+            received
+        } catch (e: Throwable) {
+            tmp.delete()
+            if (received > 0L) runCatching { onBytes(-received) }
+            throw e
         }
     }
 
@@ -1197,11 +1345,198 @@ class MediaDownloadManager(
                 val match = Regex("^bytes\\s+0-0/(\\d+)$", RegexOption.IGNORE_CASE)
                     .matchEntire(resp.header("Content-Range").orEmpty()) ?: return@use -1L to false
                 val total = match.groupValues[1].toLongOrNull() ?: return@use -1L to false
-                val bodySize = resp.body?.bytes()?.size ?: return@use -1L to false
+                val bodySize = resp.body?.let { readCapped(it, 1024L).size } ?: return@use -1L to false
                 if (bodySize != 1) return@use -1L to false
                 total to (total > 0L)
             }
         }.getOrDefault(-1L to false)
+    }
+
+    // --- Transfer infrastructure -------------------------------------------------------------
+
+    /** Throttled, thread-safe progress publisher shared by every parallel connection. */
+    private inner class ProgressReporter(
+        private val downloadId: Long,
+        initialBytes: Long,
+        @Volatile var totalBytes: Long,
+        private val supportsResume: Boolean,
+    ) {
+        val downloaded = AtomicLong(initialBytes)
+        private val lastReportAt = AtomicLong(System.currentTimeMillis())
+        private val lastReportBytes = AtomicLong(initialBytes)
+
+        @Volatile
+        private var smoothedSpeed = 0L
+
+        fun reset(bytes: Long) {
+            downloaded.set(bytes)
+            lastReportBytes.set(bytes)
+        }
+
+        suspend fun add(delta: Long) {
+            val current = downloaded.addAndGet(delta)
+            val now = System.currentTimeMillis()
+            val last = lastReportAt.get()
+            if (now - last < PROGRESS_INTERVAL_MS || !lastReportAt.compareAndSet(last, now)) return
+            val previous = lastReportBytes.getAndSet(current)
+            val instant = DownloadFilePolicy.speedBytesPerSecond(current - previous, now - last)
+            // Exponential smoothing keeps the displayed speed and ETA from jumping around.
+            smoothedSpeed = if (smoothedSpeed == 0L) instant else (smoothedSpeed * 6L + instant * 4L) / 10L
+            publish(current)
+        }
+
+        suspend fun flush() = publish(downloaded.get())
+
+        private suspend fun publish(current: Long) {
+            repository.updateDownloadProgress(
+                id = downloadId,
+                downloaded = current.coerceAtLeast(0L),
+                total = totalBytes,
+                speedBytesPerSec = smoothedSpeed.coerceAtLeast(0L),
+                status = "DOWNLOADING",
+                supportsResume = supportsResume,
+            )
+        }
+    }
+
+    /** Retries transient failures with exponential backoff and jitter; never retries cancellation. */
+    private suspend fun <T> withRetries(block: suspend (attempt: Int) -> T): T {
+        var attempt = 0
+        while (true) {
+            try {
+                return block(attempt)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                attempt++
+                if (attempt >= DownloadFilePolicy.MAX_ATTEMPTS || !DownloadFilePolicy.isRetryable(e)) throw e
+                delay(DownloadFilePolicy.retryDelayMs(attempt - 1, Random.nextLong(0L, 400L)))
+            }
+        }
+    }
+
+    private suspend fun copyWithProgress(
+        input: java.io.InputStream,
+        output: OutputStream,
+        reporter: ProgressReporter,
+    ) {
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count == -1) break
+            output.write(buffer, 0, count)
+            reporter.add(count.toLong())
+            // Pause/cancel takes effect immediately instead of after the whole stream.
+            currentCoroutineContext().ensureActive()
+        }
+    }
+
+    /** Fails fast, before any transfer, when the device cannot hold the finished download. */
+    private fun ensureStorageFor(totalBytes: Long, alreadyStaged: Long) {
+        val available = runCatching { StatFs(context.filesDir.absolutePath).availableBytes }.getOrDefault(-1L)
+        if (!DownloadFilePolicy.hasEnoughSpace(available, totalBytes, alreadyStaged)) {
+            throw InsufficientStorageException(
+                DownloadFilePolicy.requiredBytesFor(totalBytes, alreadyStaged),
+                available,
+            )
+        }
+    }
+
+    private fun readCapped(body: okhttp3.ResponseBody, maxBytes: Long): ByteArray {
+        val declared = body.contentLength()
+        if (declared > maxBytes) throw NonRetryableDownloadException("Response exceeds $maxBytes bytes")
+        body.byteStream().use { input ->
+            val out = java.io.ByteArrayOutputStream(if (declared in 1..maxBytes) declared.toInt() else 8 * 1024)
+            val buffer = ByteArray(16 * 1024)
+            var total = 0L
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                total += n
+                if (total > maxBytes) throw NonRetryableDownloadException("Response exceeds $maxBytes bytes")
+                out.write(buffer, 0, n)
+            }
+            return out.toByteArray()
+        }
+    }
+
+    private data class PublishedFile(val uri: String, val displayName: String)
+
+    /**
+     * Publishes a finished file. On Android 10+ it is written to the shared Downloads
+     * collection with IS_PENDING so other apps never see a partial file, and a failed write
+     * removes the pending row. Older versions write to app-specific storage with a unique
+     * name and expose it through FileProvider (never a file:// URI).
+     */
+    private fun publishFile(fileName: String, mimeType: String, writer: (OutputStream) -> Unit): PublishedFile {
+        val resolvedMime = DownloadFilePolicy.outputMimeType(mimeType, fileName).let {
+            if (it == "*/*") "application/octet-stream" else it
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, resolvedMime)
+                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$DOWNLOAD_FOLDER")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = runCatching { resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) }.getOrNull()
+            if (uri != null) {
+                try {
+                    val stream = resolver.openOutputStream(uri) ?: throw IOException("Cannot open MediaStore output")
+                    stream.use(writer)
+                    resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+                    val finalName = runCatching {
+                        resolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getString(0) else null
+                        }
+                    }.getOrNull() ?: fileName
+                    return PublishedFile(uri.toString(), finalName)
+                } catch (e: Exception) {
+                    runCatching { resolver.delete(uri, null, null) }
+                    if (e is CancellationException) throw e
+                    // Fall back to app-specific storage below.
+                }
+            }
+        }
+        val root = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: File(context.filesDir, "downloads")
+        val dir = File(root, DOWNLOAD_FOLDER).apply { if (!exists()) mkdirs() }
+        val finalName = DownloadFilePolicy.uniqueFileName(fileName) { File(dir, it).exists() }
+        val file = File(dir, finalName)
+        try {
+            FileOutputStream(file).use(writer)
+        } catch (e: Exception) {
+            file.delete()
+            throw e
+        }
+        return PublishedFile(DownloadFileAccess.shareableUriForFile(context, file).toString(), finalName)
+    }
+
+    private fun publishFromFile(source: File, fileName: String, mimeType: String): PublishedFile =
+        publishFile(fileName, mimeType) { output ->
+            FileInputStream(source).use { input -> input.copyTo(output, 64 * 1024) }
+        }
+
+    private suspend fun completeDownload(
+        downloadId: Long,
+        requestedName: String,
+        published: PublishedFile,
+        bytes: Long,
+        supportsResume: Boolean,
+    ) {
+        if (published.displayName.isNotBlank() && published.displayName != requestedName) {
+            repository.updateDownloadFileName(downloadId, published.displayName)
+        }
+        repository.updateDownloadProgress(
+            id = downloadId,
+            downloaded = bytes,
+            total = bytes,
+            speedBytesPerSec = 0L,
+            status = "COMPLETED",
+            localUri = published.uri,
+            supportsResume = supportsResume,
+        )
     }
 
     private suspend fun downloadUrlToFile(
@@ -1213,46 +1548,61 @@ class MediaDownloadManager(
         allowGlobalCookieFallback: Boolean,
         onProgress: suspend (Long, Long, Long) -> Unit,
     ) {
-        val req = Request.Builder()
-            .url(url)
-            .header("User-Agent", userAgent)
-            .apply { if (referer.isNotBlank()) header("Referer", referer) }
-            .build()
-        executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
-            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-            val body = resp.body ?: return
-            val total = body.contentLength()
-            var dl = 0L
-            var lastTime = System.currentTimeMillis()
-            var lastBytes = 0L
-            FileOutputStream(file).use { out ->
-                val buf = ByteArray(16 * 1024)
-                body.byteStream().use { input ->
-                    while (true) {
-                        val r = input.read(buf)
-                        if (r == -1) break
-                        out.write(buf, 0, r)
-                        dl += r
-                        val now = System.currentTimeMillis()
-                        val dt = now - lastTime
-                        if (dt >= 450L) {
-                            val spd = ((dl - lastBytes) * 1000L) / dt.coerceAtLeast(1L)
-                            lastTime = now
-                            lastBytes = dl
-                            onProgress(dl, total, spd.coerceAtLeast(0L))
+        withRetries {
+            val existing = if (file.exists()) file.length() else 0L
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .apply {
+                    if (referer.isNotBlank()) header("Referer", referer)
+                    if (existing > 0L) header("Range", "bytes=$existing-")
+                }
+                .build()
+            executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
+                if (existing > 0L && resp.code == 416) {
+                    // Already complete when the server reports exactly the staged size.
+                    val total = resp.header("Content-Range").orEmpty().substringAfter('/', "").toLongOrNull()
+                    if (total != null && total == existing) return@withRetries
+                    file.delete()
+                    throw IOException("Stale partial file discarded")
+                }
+                val append = existing > 0L && resp.code == 206 &&
+                    resp.header("Content-Range").orEmpty().startsWith("bytes $existing-", ignoreCase = true)
+                if (!append && !resp.isSuccessful) throw HttpStatusException(resp.code)
+                if (!append && resp.code == 206) throw NonRetryableDownloadException("Unexpected partial response")
+                val body = resp.body ?: throw IOException("Empty response body")
+                val contentLength = body.contentLength()
+                val start = if (append) existing else 0L
+                val total = if (contentLength > 0L) start + contentLength else -1L
+                if (!append) ensureStorageFor(total, 0L)
+                var dl = start
+                var lastTime = System.currentTimeMillis()
+                var lastBytes = dl
+                FileOutputStream(file, append).use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    body.byteStream().use { input ->
+                        while (true) {
+                            val r = input.read(buf)
+                            if (r == -1) break
+                            out.write(buf, 0, r)
+                            dl += r
+                            val now = System.currentTimeMillis()
+                            val dt = now - lastTime
+                            if (dt >= PROGRESS_INTERVAL_MS) {
+                                val spd = DownloadFilePolicy.speedBytesPerSecond(dl - lastBytes, dt)
+                                lastTime = now
+                                lastBytes = dl
+                                onProgress(dl, total, spd)
+                            }
+                            currentCoroutineContext().ensureActive()
                         }
                     }
                 }
+                if (total > 0L && file.length() != total) {
+                    throw IOException("Incomplete transfer: ${file.length()} of $total bytes")
+                }
             }
         }
-    }
-
-    private fun decryptAes128(data: ByteArray, key: ByteArray, iv: ByteArray): ByteArray? {
-        return runCatching {
-            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
-            cipher.doFinal(data)
-        }.getOrNull()
     }
 
     private fun sequenceIv(seq: Long): ByteArray {
@@ -1270,25 +1620,6 @@ class MediaDownloadManager(
         return ByteArray(16) { i ->
             padded.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }
-    }
-
-    private fun openOutputDestination(fileName: String, mimeType: String): Pair<OutputStream, String> {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                put(MediaStore.Downloads.MIME_TYPE, mimeType.ifBlank { "video/mp4" })
-                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/SalviaBrowxser")
-            }
-            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
-                val stream = context.contentResolver.openOutputStream(uri)
-                if (stream != null) return stream to uri.toString()
-            }
-        }
-        val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "SalviaBrowxser")
-        if (!dir.exists()) dir.mkdirs()
-        val file = File(dir, fileName)
-        return FileOutputStream(file) to Uri.fromFile(file).toString()
     }
 
     private fun fetchText(
@@ -1309,7 +1640,14 @@ class MediaDownloadManager(
                 }
                 .build()
             executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
-                if (resp.isSuccessful) resp.body?.string() else null
+                if (resp.isSuccessful) {
+                    resp.body?.let { body ->
+                        val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+                        String(readCapped(body, MAX_MANIFEST_BYTES), charset)
+                    }
+                } else {
+                    null
+                }
             }
         }.getOrNull()
     }
@@ -1332,23 +1670,31 @@ class MediaDownloadManager(
                 }
                 .build()
             executeWithProfileCookies(req, sessionCookieManager, allowGlobalCookieFallback).use { resp ->
-                if (resp.isSuccessful) resp.body?.bytes() else null
+                if (resp.isSuccessful) resp.body?.let { readCapped(it, MAX_KEY_BYTES) } else null
             }
         }.getOrNull()
     }
 
+    /**
+     * Picks the best HLS variant: highest resolution first, then highest bandwidth, so a
+     * high-bitrate low-resolution rendition never wins over real HD.
+     */
     private fun extractHighestVariantUrl(masterUrl: String, text: String): String? {
         val base = Uri.parse(masterUrl)
         val lines = text.lines().map { it.trim() }
+        var bestHeight = -1
         var bestBw = -1L
         var bestUrl: String? = null
         var i = 0
         while (i < lines.size) {
             if (lines[i].startsWith("#EXT-X-STREAM-INF:")) {
-                val bw = Regex("BANDWIDTH=(\\d+)").find(lines[i])?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+                val attrs = lines[i]
+                val bw = Regex("(?<![A-Z-])BANDWIDTH=(\\d+)").find(attrs)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+                val height = Regex("RESOLUTION=\\d+x(\\d+)").find(attrs)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
                 var j = i + 1
                 while (j < lines.size && (lines[j].isBlank() || lines[j].startsWith("#"))) j++
-                if (j < lines.size && bw >= bestBw) {
+                if (j < lines.size && (height > bestHeight || (height == bestHeight && bw >= bestBw))) {
+                    bestHeight = height
                     bestBw = bw
                     bestUrl = resolveUrl(base, lines[j])
                 }
@@ -1439,17 +1785,31 @@ class MediaDownloadManager(
         File(context.filesDir, "salvia_download_staging/$downloadId")
 
     private fun sanitizeFileName(rawName: String, quality: MediaQualityOption): String {
-        val base = rawName.replace(Regex("[^\\p{L}\\p{N}._\\- ]"), "_")
-            .trim()
-            .ifBlank { "salvia_video_${System.currentTimeMillis()}" }
-            .take(55)
         val ext = when {
-            quality.isHls || quality.isDash -> "mp4"
+            quality.isHls || quality.isDash ->
+                if (quality.mimeType.startsWith("audio/") || quality.resolutionHeight == 0 &&
+                    quality.label.contains("audio", ignoreCase = true)
+                ) "m4a" else "mp4"
             quality.format.equals("WEBM", true) -> "webm"
             quality.format.equals("M4A", true) -> "m4a"
             quality.format.equals("MP3", true) -> "mp3"
+            quality.format.equals("MP4", true) || quality.mimeType.startsWith("video/") -> "mp4"
+            quality.format.isNotBlank() && quality.format.length <= 5 &&
+                quality.format.all { it.isLetterOrDigit() } -> quality.format.lowercase()
             else -> "mp4"
         }
-        return if (base.contains('.')) base else "$base.$ext"
+        return DownloadFilePolicy.sanitizeFileName(
+            rawName = rawName,
+            defaultExtension = ext,
+            fallbackBase = "salvia_video_${System.currentTimeMillis()}",
+        )
+    }
+
+    private companion object {
+        const val DOWNLOAD_FOLDER = DownloadFileAccess.DOWNLOAD_FOLDER
+        const val PROGRESS_INTERVAL_MS = 500L
+        const val MAX_MANIFEST_BYTES = 16L * 1024L * 1024L
+        const val MAX_INDEX_BYTES = 16L * 1024L * 1024L
+        const val MAX_KEY_BYTES = 4L * 1024L
     }
 }

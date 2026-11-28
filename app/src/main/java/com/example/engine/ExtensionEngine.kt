@@ -88,7 +88,7 @@ object ExtensionEngine {
         ExtensionEntity(
             id = "ext_video_ad_skipper",
             name = "Video Ad Auto-Skipper",
-            version = "1.8.2",
+            version = "1.9.0",
             author = "Salvia Media Labs",
             description = "Automatically clicks Skip Ad buttons and fast-forwards embedded pre-roll video ads.",
             iconKey = "fast_forward",
@@ -100,7 +100,20 @@ object ExtensionEngine {
                 (function() {
                     if (window.__navaAdSkipperActive) return;
                     window.__navaAdSkipperActive = true;
-                    setInterval(function() {
+                    var skipperTimer = null;
+                    function startSkipper() {
+                        if (skipperTimer === null) skipperTimer = setInterval(skipTick, 600);
+                    }
+                    function stopSkipper() {
+                        if (skipperTimer !== null) { clearInterval(skipperTimer); skipperTimer = null; }
+                    }
+                    // The poll only runs while the page is visible and stops in the bfcache.
+                    document.addEventListener('visibilitychange', function() {
+                        if (document.hidden) stopSkipper(); else startSkipper();
+                    });
+                    window.addEventListener('pagehide', stopSkipper);
+                    window.addEventListener('pageshow', startSkipper);
+                    function skipTick() {
                         const skipSelectors = [
                             '.ytp-ad-skip-button', '.ytp-ad-skip-button-modern',
                             '.ytp-skip-ad-button', '[class*="skip-ad"]', '[class*="skipAd"]',
@@ -121,7 +134,8 @@ object ExtensionEngine {
                                 adShowing.currentTime = adShowing.duration - 0.1;
                             }
                         }
-                    }, 600);
+                    }
+                    if (!document.hidden) startSkipper();
                 })();
             """.trimIndent(),
             isInstalled = true,
@@ -160,7 +174,7 @@ object ExtensionEngine {
         ExtensionEntity(
             id = "ext_video_speed",
             name = "Video Speed Controller",
-            version = "2.1.0",
+            version = "2.2.0",
             author = "Salvia Media Labs",
             description = "Adds a floating playback speed controller (0.75x to 2.5x) onto HTML5 video players.",
             iconKey = "speed",
@@ -172,27 +186,46 @@ object ExtensionEngine {
                 (function() {
                     if (window.__navaSpeedWidget) return;
                     window.__navaSpeedWidget = true;
-                    function attachBadge(video) {
-                        if (video.dataset.navaSpeedAttached) return;
-                        video.dataset.navaSpeedAttached = '1';
-                        const badge = document.createElement('button');
-                        badge.textContent = video.playbackRate + 'x';
-                        badge.style.cssText = 'position:fixed;bottom:84px;left:14px;z-index:2147483640;background:rgba(10,14,23,0.82);color:#22D3EE;border:1px solid #22D3EE;border-radius:16px;padding:4px 10px;font-size:12px;font-weight:700;backdrop-filter:blur(6px);';
-                        const speeds = [1.0, 1.25, 1.5, 2.0, 2.5, 0.75];
-                        let idx = 0;
+                    // One shared badge that controls the active video, instead of one stacked
+                    // fixed badge per video element.
+                    const speeds = [1.0, 1.25, 1.5, 2.0, 2.5, 0.75];
+                    let active = null;
+                    let badge = null;
+                    function label() {
+                        if (badge && active) badge.textContent = active.playbackRate + 'x';
+                    }
+                    function ensureBadge() {
+                        if (badge || !document.body) return;
+                        badge = document.createElement('button');
+                        badge.id = 'nava-speed-badge';
+                        badge.style.cssText = 'position:fixed;bottom:84px;left:14px;z-index:2147483640;background:rgba(10,14,23,0.82);color:#22D3EE;border:1px solid #22D3EE;border-radius:16px;padding:4px 10px;font-size:12px;font-weight:700;backdrop-filter:blur(6px);display:none;';
                         badge.onclick = function(e) {
                             e.stopPropagation();
-                            idx = (idx + 1) % speeds.length;
-                            video.playbackRate = speeds[idx];
-                            badge.textContent = speeds[idx] + 'x';
+                            e.preventDefault();
+                            if (!active) return;
+                            const idx = speeds.indexOf(active.playbackRate);
+                            active.playbackRate = speeds[(idx + 1) % speeds.length];
+                            label();
                         };
-                        document.body && document.body.appendChild(badge);
+                        document.body.appendChild(badge);
                     }
-                    setInterval(() => {
-                        document.querySelectorAll('video').forEach(v => {
-                            if (v.videoWidth > 180 || v.clientWidth > 180) attachBadge(v);
-                        });
-                    }, 1500);
+                    function setActive(video) {
+                        if (!video || (video.videoWidth <= 180 && video.clientWidth <= 180)) return;
+                        active = video;
+                        ensureBadge();
+                        if (badge) badge.style.display = 'block';
+                        label();
+                    }
+                    document.addEventListener('play', function(e) {
+                        if (e.target && e.target.tagName === 'VIDEO') setActive(e.target);
+                    }, true);
+                    document.addEventListener('ratechange', function(e) {
+                        if (e.target === active) label();
+                    }, true);
+                    const first = Array.prototype.find.call(document.querySelectorAll('video'), function(v) {
+                        return v.videoWidth > 180 || v.clientWidth > 180;
+                    });
+                    if (first) setActive(first);
                 })();
             """.trimIndent(),
             isInstalled = false,
@@ -238,6 +271,9 @@ object ExtensionEngine {
     private val matchRegexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
 
     fun matchesUrl(pattern: String, url: String): Boolean {
+        // Extensions only ever run on web pages, never on file:, content:, data: or about: URLs.
+        val lowerUrl = url.trim().lowercase()
+        if (!lowerUrl.startsWith("http://") && !lowerUrl.startsWith("https://")) return false
         val trimmed = pattern.trim()
         if (trimmed.isEmpty() || trimmed == "*://*/*" || trimmed == "<all_urls>") return true
         val regex = matchRegexCache[trimmed] ?: run {
@@ -263,10 +299,37 @@ object ExtensionEngine {
         return regex.containsMatchIn(url)
     }
 
-    fun buildInjectionScript(extensions: List<ExtensionEntity>, url: String, phase: String): String {
+    /** True when a match pattern grants access to every website. */
+    fun isAllSitesPattern(pattern: String): Boolean {
+        val trimmed = pattern.trim()
+        return trimmed.isEmpty() || trimmed == "<all_urls>" || trimmed == "*://*/*" ||
+            trimmed == "*" || trimmed == "http*://*/*" || trimmed == "https://*/*" || trimmed == "http://*/*"
+    }
+
+    /**
+     * Validates a user-supplied match pattern. Only http(s)/wildcard schemes are accepted and a
+     * host part is mandatory, mirroring WebExtension match-pattern rules.
+     */
+    fun isValidMatchPattern(pattern: String): Boolean {
+        val trimmed = pattern.trim()
+        if (trimmed == "<all_urls>") return true
+        val match = Regex("^(\\*|https?)://([^/]+)(/.*)$").matchEntire(trimmed) ?: return false
+        val host = match.groupValues[2]
+        return host == "*" || Regex("^(\\*\\.)?[A-Za-z0-9.-]+$").matches(host)
+    }
+
+    fun buildInjectionScript(
+        extensions: List<ExtensionEntity>,
+        url: String,
+        phase: String,
+        isIncognito: Boolean = false,
+    ): String {
         val matching = extensions.filter {
             it.isInstalled && it.isEnabled &&
                 it.runAt == phase &&
+                // User-created scripts are not allowed in private tabs (like "Allow in
+                // incognito" being off by default in desktop browsers).
+                (it.isBuiltIn || !isIncognito) &&
                 matchesUrl(it.matchPattern, url)
         }
         if (matching.isEmpty()) return ""
