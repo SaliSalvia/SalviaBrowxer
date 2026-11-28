@@ -86,7 +86,33 @@ jobs:
           fi
 
       - name: Run Unit Tests
-        run: gradle :app:testDebugUnitTest --no-daemon --console=plain
+        run: |
+          set -o pipefail
+          gradle :app:testDebugUnitTest --no-daemon --console=plain 2>&1 | tee gradle-test.log
+
+      - name: Report compile errors and test failures
+        # Surfaces Kotlin compiler errors and failing tests as annotations on the run, so they
+        # are visible without downloading the full log.
+        if: failure()
+        run: |
+          grep -E '^e: ' gradle-test.log | head -10 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done || true
+          python3 - <<'PY' || true
+          import glob, xml.etree.ElementTree as ET
+          shown = 0
+          for path in sorted(glob.glob("app/build/test-results/testDebugUnitTest/*.xml")):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for failure in list(case.findall("failure")) + list(case.findall("error")):
+                      if shown >= 10:
+                          break
+                      msg = (failure.get("message") or failure.text or "").strip().replace("\n", " ")[:300]
+                      print(f"::warning::{case.get('classname')}.{case.get('name')}: {msg}")
+                      shown += 1
+          PY
+          grep -E 'What went wrong|FAILED|> ' gradle-test.log | head -10 | while IFS= read -r line; do
+            echo "::notice::${line}"
+          done || true
 
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon --console=plain
